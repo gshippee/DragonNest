@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Generated model/runtime artifacts
+artifacts/
+*.onnx
+*.dlc
+*.bin
+*.raw
+*.wav
+
+# Local hardware/tooling config
+.env
+local*.yaml
+

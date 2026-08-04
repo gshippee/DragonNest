@@ -1,0 +1,16 @@
+vectors:
+  - vector_id: concise-vs-verbose-layer-7
+    model_family: mock
+    model_revision: demo
+    hidden_size: 1024
+    target_layers: [7]
+    default_layer: 7
+    alpha_min: -4.0
+    alpha_max: 4.0
+    default_alpha: -2.0
+    positions: [all, last]
+    default_positions: last
+    storage_uri: artifacts/vector_layer_7.pt
+    safety_label: style_verbosity
+    allow_remote_vector: false
+

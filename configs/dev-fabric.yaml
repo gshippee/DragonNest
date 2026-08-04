@@ -1,0 +1,79 @@
+devices:
+  - device_id: phone-01
+    display_name: Snapdragon Phone
+    device_type: phone
+    platform: android
+    total_memory_mb: 8192
+    health:
+      battery_pct: 72
+      charging: false
+      thermal_level: 0.34
+      cpu_utilization: 0.30
+      accelerator_utilization: 0.22
+      available_memory_mb: 4096
+      network_rtt_ms: 18
+      reachable: true
+    models:
+      - model_id: small-chat-v1
+        model_family: mock
+        role: small_chat
+        task_classes: [chat_qa, summarization, translation_rewrite, reasoning_analysis]
+        max_context_tokens: 4096
+        warm: true
+        quality_score: 0.65
+        steering_vector_ids: [concise-vs-verbose-layer-7]
+        supported_steering_layers: [7]
+      - model_id: qwen3-0.6b-part-a
+        model_family: qwen3
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis, summarization]
+        max_context_tokens: 2048
+        warm: true
+        quality_score: 0.70
+        segment:
+          pipeline_id: qwen3-0.6b-split-14
+          start_layer: 0
+          end_layer: 14
+          total_layers: 28
+          includes_embedding: true
+          includes_lm_head: false
+
+  - device_id: pc-01
+    display_name: Snapdragon PC
+    device_type: pc
+    platform: windows
+    total_memory_mb: 32768
+    health:
+      battery_pct: 100
+      charging: true
+      thermal_level: 0.18
+      cpu_utilization: 0.20
+      accelerator_utilization: 0.15
+      available_memory_mb: 16384
+      network_rtt_ms: 6
+      reachable: true
+    models:
+      - model_id: large-reasoning-v1
+        model_family: mock
+        role: large_reasoning
+        task_classes: [chat_qa, summarization, document_extraction, reasoning_analysis, code_assistance]
+        max_context_tokens: 8192
+        warm: true
+        quality_score: 0.92
+        steering_vector_ids: [concise-vs-verbose-layer-7]
+        supported_steering_layers: [7]
+      - model_id: qwen3-0.6b-part-b
+        model_family: qwen3
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis, summarization]
+        max_context_tokens: 2048
+        warm: true
+        quality_score: 0.72
+        segment:
+          pipeline_id: qwen3-0.6b-split-14
+          start_layer: 14
+          end_layer: 28
+          total_layers: 28
+          includes_embedding: false
+          includes_lm_head: true
+
