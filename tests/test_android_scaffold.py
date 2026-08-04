@@ -77,8 +77,9 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     capture = (sources / "EnrollmentCaptureActivity.java").read_text(
         encoding="utf-8"
     )
-    assert "new CaptureManager(this, barcodeView)" in capture
-    assert "ACTION_SCAN" in capture
+    assert "requestPermissions(new String[]{Manifest.permission.CAMERA}" in capture
+    assert "DecoratedBarcodeView" in capture
+    assert "decodeSingle(new BarcodeCallback()" in capture
     assert ".setAction(SCAN_ACTION)" in capture
     assert "dragonnest.enrollment" in payload
     assert "Build.SOC_MODEL" in inventory

@@ -37,7 +37,6 @@ public final class AgentSettingsActivity extends Activity {
         configuration = new AgentConfiguration(this);
         enrollmentStore = new EnrollmentStore(this);
         profileStore = new UserProfileStore(this);
-        requestNotificationPermission();
         if (enrollmentStore.hasCredential() && profileStore.load() != null) {
             showQuery();
         } else {
@@ -167,6 +166,7 @@ public final class AgentSettingsActivity extends Activity {
     }
 
     private void startAgent() {
+        requestNotificationPermission();
         Intent start = new Intent(this, AgentForegroundService.class);
         start.setAction(AgentForegroundService.ACTION_RELOAD);
         startForegroundService(start);
