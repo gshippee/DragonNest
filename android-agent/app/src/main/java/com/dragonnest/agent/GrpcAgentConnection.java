@@ -61,9 +61,10 @@ public final class GrpcAgentConnection implements AgentConnection {
     }
 
     @Override
-    public void connect(String enrollmentCredential) throws Exception {
+    public String connect(String enrollmentCredential) throws Exception {
         CountDownLatch registration = new CountDownLatch(1);
         AtomicReference<String> rejection = new AtomicReference<>("");
+        AtomicReference<String> replacementCredential = new AtomicReference<>("");
         OkHttpChannelBuilder builder = OkHttpChannelBuilder.forAddress(
                 configuration.brainHost(), configuration.brainPort());
         if (configuration.useTls()) {
@@ -81,6 +82,8 @@ public final class GrpcAgentConnection implements AgentConnection {
             public void onNext(BrainToDevice message) {
                 switch (message.getPayloadCase()) {
                     case REGISTRATION_ACCEPTED -> {
+                        replacementCredential.set(
+                                message.getRegistrationAccepted().getDeviceCredential());
                         heartbeatIntervalMs = Math.max(
                                 250,
                                 message.getRegistrationAccepted().getHeartbeatIntervalMs());
@@ -131,6 +134,7 @@ public final class GrpcAgentConnection implements AgentConnection {
             close();
             throw new IllegalStateException("Brain rejected registration: " + rejection.get());
         }
+        return replacementCredential.get();
     }
 
     @Override

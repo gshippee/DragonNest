@@ -232,6 +232,22 @@ Use `10.0.2.2:50051` from the Android emulator or the Brain host's LAN address
 from a physical device. See [android-agent/README.md](android-agent/README.md)
 for configuration and verification details.
 
+For QR enrollment, open the dashboard, select **Add device**, enter the Brain
+host's LAN address and gRPC port, and generate the code. In the APK, select
+**Scan enrollment QR** and confirm the address. The five-minute bootstrap
+credential is bound to the first device ID that registers; the Brain returns a
+device-specific reconnect credential which the APK replaces in Android
+Keystore. Unused sessions can be cancelled and expire automatically. This is a
+development-mode onboarding path; production QR enrollment must issue an mTLS
+client certificate instead of a token credential.
+
+The Add Device form also creates a durable personal profile containing the
+person and device names, routing preference, and optional steering
+vector/alpha/position defaults. The claimed device is associated with that
+profile in `local/dragonnest-state.sqlite3`. Tasks submitted with that device as
+their origin inherit the saved preference and steering policy unless profile
+steering is disabled or an explicit steering request is supplied.
+
 ## Product Threads
 
 DragonNest keeps three product threads under one roof:

@@ -345,12 +345,14 @@ class ShutdownEvent(_message.Message):
     def __init__(self, device_id: _Optional[str] = ..., reason: _Optional[str] = ..., simulated: _Optional[bool] = ...) -> None: ...
 
 class RegistrationAccepted(_message.Message):
-    __slots__ = ("brain_id", "heartbeat_interval_ms")
+    __slots__ = ("brain_id", "heartbeat_interval_ms", "device_credential")
     BRAIN_ID_FIELD_NUMBER: _ClassVar[int]
     HEARTBEAT_INTERVAL_MS_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_CREDENTIAL_FIELD_NUMBER: _ClassVar[int]
     brain_id: str
     heartbeat_interval_ms: int
-    def __init__(self, brain_id: _Optional[str] = ..., heartbeat_interval_ms: _Optional[int] = ...) -> None: ...
+    device_credential: str
+    def __init__(self, brain_id: _Optional[str] = ..., heartbeat_interval_ms: _Optional[int] = ..., device_credential: _Optional[str] = ...) -> None: ...
 
 class RegistrationRejected(_message.Message):
     __slots__ = ("reason",)
@@ -375,7 +377,7 @@ class HeartbeatAck(_message.Message):
     def __init__(self, brain_timestamp_ms: _Optional[int] = ...) -> None: ...
 
 class SubmitTaskRequest(_message.Message):
-    __slots__ = ("request_text", "preferred_mode", "execution_mode", "timeout_ms", "steering", "origin_device_id", "reducer")
+    __slots__ = ("request_text", "preferred_mode", "execution_mode", "timeout_ms", "steering", "origin_device_id", "reducer", "use_profile_steering")
     REQUEST_TEXT_FIELD_NUMBER: _ClassVar[int]
     PREFERRED_MODE_FIELD_NUMBER: _ClassVar[int]
     EXECUTION_MODE_FIELD_NUMBER: _ClassVar[int]
@@ -383,6 +385,7 @@ class SubmitTaskRequest(_message.Message):
     STEERING_FIELD_NUMBER: _ClassVar[int]
     ORIGIN_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     REDUCER_FIELD_NUMBER: _ClassVar[int]
+    USE_PROFILE_STEERING_FIELD_NUMBER: _ClassVar[int]
     request_text: str
     preferred_mode: str
     execution_mode: str
@@ -390,7 +393,8 @@ class SubmitTaskRequest(_message.Message):
     steering: SteeringSpec
     origin_device_id: str
     reducer: str
-    def __init__(self, request_text: _Optional[str] = ..., preferred_mode: _Optional[str] = ..., execution_mode: _Optional[str] = ..., timeout_ms: _Optional[int] = ..., steering: _Optional[_Union[SteeringSpec, _Mapping]] = ..., origin_device_id: _Optional[str] = ..., reducer: _Optional[str] = ...) -> None: ...
+    use_profile_steering: bool
+    def __init__(self, request_text: _Optional[str] = ..., preferred_mode: _Optional[str] = ..., execution_mode: _Optional[str] = ..., timeout_ms: _Optional[int] = ..., steering: _Optional[_Union[SteeringSpec, _Mapping]] = ..., origin_device_id: _Optional[str] = ..., reducer: _Optional[str] = ..., use_profile_steering: _Optional[bool] = ...) -> None: ...
 
 class SubmitTaskResponse(_message.Message):
     __slots__ = ("task_id", "state", "success", "output_text", "error_code", "error_message", "accepted_attempt_id", "device_id", "model_id", "route_reasons", "steering", "origin_device_id", "reducer")

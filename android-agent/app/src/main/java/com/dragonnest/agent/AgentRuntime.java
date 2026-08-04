@@ -61,13 +61,20 @@ public final class AgentRuntime {
         if (stopping || (connection != null && connection.isConnected())) {
             return;
         }
+        AgentConnection next = null;
         try {
-            AgentConnection next = connectionFactory.get();
-            next.connect(enrollmentStore.load());
+            next = connectionFactory.get();
+            String replacementCredential = next.connect(enrollmentStore.load());
+            if (replacementCredential != null && !replacementCredential.isBlank()) {
+                enrollmentStore.save(replacementCredential);
+            }
             connection = next;
             reconnectBackoffSeconds = 1;
             sendHeartbeat();
         } catch (Exception failure) {
+            if (next != null) {
+                next.close();
+            }
             scheduleReconnect();
         }
     }

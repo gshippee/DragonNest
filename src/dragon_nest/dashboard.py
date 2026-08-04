@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from io import BytesIO
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .models import HealthStatus, TaskResult
+from .enrollment import EnrollmentError, EnrollmentStatus
+from .profiles import PersonalProfile, ProfileError
 from .proto import dragonnest_pb2 as pb
 from .tasks import AttemptState, TaskRecord
 from .transport.brain import BrainService
@@ -36,6 +39,7 @@ class TaskSubmission(BaseModel):
     reducer: str = "mock_synthesis"
     timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
     steering: SteeringRequest = Field(default_factory=SteeringRequest)
+    use_profile_steering: bool = True
 
 
 class SimulationRequest(BaseModel):
@@ -48,6 +52,31 @@ class SimulationRequest(BaseModel):
     cpu_utilization: float | None = Field(default=None, ge=0, le=1)
     accelerator_utilization: float | None = Field(default=None, ge=0, le=1)
     network_rtt_ms: float | None = Field(default=None, ge=0)
+
+
+class EnrollmentSessionRequest(BaseModel):
+    brain_host: str = Field(min_length=1, max_length=253)
+    brain_port: int = Field(default=50051, ge=1, le=65535)
+    use_tls: bool = False
+    ttl_seconds: int = Field(default=300, ge=30, le=900)
+    person_name: str = Field(min_length=1, max_length=120)
+    device_name: str = Field(min_length=1, max_length=120)
+    preferred_mode: str = "auto"
+    steering_vector_id: str = ""
+    steering_alpha: float = 0
+    steering_positions: str = "last"
+    allow_remote_vector: bool = False
+    notes: str = Field(default="", max_length=500)
+
+
+class PersonalProfileUpdate(BaseModel):
+    person_name: str = Field(min_length=1, max_length=120)
+    preferred_mode: str = "auto"
+    steering_vector_id: str = ""
+    steering_alpha: float = 0
+    steering_positions: str = "last"
+    allow_remote_vector: bool = False
+    notes: str = Field(default="", max_length=500)
 
 
 def create_dashboard_app(service: BrainService) -> FastAPI:
@@ -71,6 +100,103 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
     @app.get("/api/devices")
     async def api_devices():
         return [_device_dict(service, record) for record in service.registry.records()]
+
+    @app.post("/api/enrollment-sessions")
+    async def api_create_enrollment(request: EnrollmentSessionRequest):
+        if not service.config.dev_mode:
+            raise HTTPException(
+                status_code=409,
+                detail="QR token enrollment is available only in dev mode",
+            )
+        enrollment_values = request.model_dump(
+            include={"brain_host", "brain_port", "use_tls", "ttl_seconds"}
+        )
+        profile_values = request.model_dump(
+            include={
+                "person_name",
+                "preferred_mode",
+                "steering_vector_id",
+                "steering_alpha",
+                "steering_positions",
+                "allow_remote_vector",
+                "notes",
+            }
+        )
+        session = None
+        try:
+            session = service.enrollment.create(**enrollment_values)
+            _validate_profile_steering(service, profile_values)
+            profile = service.profiles.create(**profile_values)
+            session.profile_id = profile.profile_id
+            session.device_name = request.device_name.strip()
+        except (EnrollmentError, ProfileError) as exc:
+            if session is not None:
+                service.enrollment.cancel(session.session_id)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            **session.public_dict(),
+            "qr_url": f"/api/enrollment-sessions/{session.session_id}/qr.svg",
+        }
+
+    @app.get("/api/enrollment-sessions/{session_id}")
+    async def api_enrollment_status(session_id: str):
+        try:
+            session = service.enrollment.get(session_id)
+            if session.status == EnrollmentStatus.EXPIRED and session.profile_id:
+                service.profiles.delete_if_unassociated(session.profile_id)
+            return session.public_dict()
+        except EnrollmentError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/enrollment-sessions/{session_id}/qr.svg")
+    async def api_enrollment_qr(session_id: str):
+        try:
+            session = service.enrollment.get(session_id)
+        except EnrollmentError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if session.status != EnrollmentStatus.PENDING:
+            raise HTTPException(
+                status_code=410,
+                detail=f"enrollment session is {session.status.value.lower()}",
+            )
+        import qrcode
+        import qrcode.image.svg
+
+        image = qrcode.make(
+            session.qr_payload(), image_factory=qrcode.image.svg.SvgPathImage
+        )
+        output = BytesIO()
+        image.save(output)
+        return Response(
+            content=output.getvalue(),
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.delete("/api/enrollment-sessions/{session_id}")
+    async def api_cancel_enrollment(session_id: str):
+        try:
+            session = service.enrollment.cancel(session_id)
+            if session.status == EnrollmentStatus.CANCELLED and session.profile_id:
+                service.profiles.delete_if_unassociated(session.profile_id)
+            return session.public_dict()
+        except EnrollmentError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/personal-profiles")
+    async def api_personal_profiles():
+        return [_profile_dict(profile) for profile in service.profiles.all()]
+
+    @app.put("/api/personal-profiles/{profile_id}")
+    async def api_update_personal_profile(
+        profile_id: str, request: PersonalProfileUpdate
+    ):
+        values = request.model_dump()
+        try:
+            _validate_profile_steering(service, values)
+            return _profile_dict(service.profiles.update(profile_id, **values))
+        except ProfileError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/devices/{device_id}/simulate")
     async def api_simulate_device(device_id: str, request: SimulationRequest):
@@ -127,6 +253,7 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
                 reducer=request.reducer,
                 timeout_ms=request.timeout_ms,
                 steering=pb.SteeringSpec(**request.steering.model_dump()),
+                use_profile_steering=request.use_profile_steering,
             ),
             None,
         )
@@ -171,6 +298,7 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
 
 def _device_dict(service: BrainService, record) -> dict[str, Any]:
     device = record.device
+    personal_profile = service.profiles.profile_for_device(device.device_id)
     active_task_ids = sorted(
         {
             *record.active_task_ids,
@@ -219,6 +347,9 @@ def _device_dict(service: BrainService, record) -> dict[str, Any]:
         ],
         "active_tasks": active_task_ids,
         "simulated_constraint": record.simulated_constraint,
+        "personal_profile": (
+            _profile_dict(personal_profile) if personal_profile else None
+        ),
     }
 
 
@@ -351,3 +482,31 @@ def _response_dict(response: pb.SubmitTaskResponse):
             "positions": response.steering.positions,
         },
     }
+
+
+def _profile_dict(profile: PersonalProfile) -> dict[str, Any]:
+    return asdict(profile)
+
+
+def _validate_profile_steering(
+    service: BrainService, values: dict[str, Any]
+) -> None:
+    vector_id = str(values.get("steering_vector_id", ""))
+    if not vector_id:
+        return
+    if service.steering_registry is None:
+        raise ProfileError("Brain has no steering registry configured")
+    vectors = {
+        vector.vector_id: vector for vector in service.steering_registry.vectors()
+    }
+    vector = vectors.get(vector_id)
+    if vector is None:
+        raise ProfileError(f"unknown steering vector {vector_id}")
+    alpha = float(values.get("steering_alpha", 0))
+    positions = str(values.get("steering_positions", "last"))
+    if not vector.alpha_min <= alpha <= vector.alpha_max:
+        raise ProfileError(
+            f"steering alpha must be between {vector.alpha_min} and {vector.alpha_max}"
+        )
+    if positions not in vector.positions:
+        raise ProfileError(f"steering positions {positions!r} are not supported")

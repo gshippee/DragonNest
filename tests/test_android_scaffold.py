@@ -21,6 +21,7 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
 
     assert "android.permission.FOREGROUND_SERVICE" in permissions
     assert "android.permission.ACCESS_NETWORK_STATE" in permissions
+    assert "android.permission.CAMERA" in permissions
     assert service is not None
     assert service.attrib[f"{ANDROID}foregroundServiceType"] == "dataSync"
     assert receiver is not None
@@ -32,6 +33,8 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     )
     enrollment = (sources / "EnrollmentStore.java").read_text(encoding="utf-8")
     connection = (sources / "GrpcAgentConnection.java").read_text(encoding="utf-8")
+    settings = (sources / "AgentSettingsActivity.java").read_text(encoding="utf-8")
+    payload = (sources / "EnrollmentPayload.java").read_text(encoding="utf-8")
     executor = (sources / "MockAndroidTaskExecutor.java").read_text(
         encoding="utf-8"
     )
@@ -43,7 +46,11 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert 'KeyStore.getInstance(ANDROID_KEYSTORE)' in enrollment
     assert "BrainControlGrpc.newStub" in connection
     assert "setRegisterDevice" in connection
+    assert "getDeviceCredential" in connection
     assert "setTaskResult" in connection
     assert "setPartialTaskResult" in connection
     assert "setPipelineStageResult" in connection
     assert "Android mock result" in executor
+    assert "IntentIntegrator" in settings
+    assert "Scan enrollment QR" in settings
+    assert "dragonnest.enrollment" in payload

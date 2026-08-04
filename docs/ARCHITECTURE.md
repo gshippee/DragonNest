@@ -39,10 +39,24 @@ accepts health, result, and shutdown messages while sending assignments and
 heartbeat acknowledgements. `DeviceAgent` reconnects with exponential backoff
 and advertises real models only after artifact validation.
 
-Development mode authenticates with a shared enrollment token. Production mode
-requires mutual TLS, matches the Agent-reported SHA-256 certificate fingerprint
-to the authenticated peer certificate, tracks rotation on reconnect, and can
-revoke a fingerprint and offline every associated session.
+Development mode accepts either the configured shared token or QR bootstrap.
+The dashboard creates a short-lived bootstrap secret, the first registration
+binds it to one device ID, and the Brain returns a device-specific credential
+for reconnects. Android validates the QR and stores the replacement credential
+with an Android Keystore key. Production mode requires mutual TLS, matches the
+Agent-reported SHA-256 certificate fingerprint to the authenticated peer
+certificate, tracks rotation on reconnect, and can revoke a fingerprint and
+offline every associated session. Production QR onboarding must replace the
+development credential exchange with a Keystore-backed CSR and signed client
+certificate.
+
+`ProfileStore` persists personal profiles and device associations in SQLite.
+The profile owns the human-entered name, routing preference, and steering
+defaults; the Agent remains authoritative for hardware inventory and live
+telemetry. When a QR session is claimed, the Brain associates its profile with
+the generated device ID and uses the saved device name in the registry. A task
+originating from that device inherits profile steering unless the request
+disables profile steering or supplies an explicit steering spec.
 
 Agent heartbeats come from an injectable platform telemetry interface. The
 default source reports host battery, thermal, memory, and CPU data when

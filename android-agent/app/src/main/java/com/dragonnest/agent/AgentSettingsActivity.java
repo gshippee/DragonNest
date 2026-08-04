@@ -2,6 +2,7 @@ package com.dragonnest.agent;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -16,7 +17,11 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
+
 public final class AgentSettingsActivity extends Activity {
+    private static final int CAMERA_PERMISSION_REQUEST = 101;
     private AgentConfiguration configuration;
     private EnrollmentStore enrollmentStore;
     private EditText host;
@@ -55,6 +60,11 @@ public final class AgentSettingsActivity extends Activity {
         deviceId.setText("Device ID: " + configuration.deviceId());
         form.addView(deviceId, matchWidth());
 
+        Button scan = new Button(this);
+        scan.setText("Scan enrollment QR");
+        scan.setOnClickListener(view -> startQrScan());
+        form.addView(scan, matchWidth());
+
         host = field("Brain host", configuration.brainHost(), InputType.TYPE_CLASS_TEXT);
         port = field(
                 "Brain gRPC port",
@@ -63,7 +73,7 @@ public final class AgentSettingsActivity extends Activity {
         displayName = field(
                 "Display name", configuration.displayName(), InputType.TYPE_CLASS_TEXT);
         enrollmentToken = field(
-                "Enrollment token", loadEnrollmentToken(),
+                "Manual enrollment token", loadEnrollmentToken(),
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         form.addView(host, matchWidth());
         form.addView(port, matchWidth());
@@ -140,7 +150,10 @@ public final class AgentSettingsActivity extends Activity {
                     parsedPort,
                     tls.isChecked(),
                     displayName.getText().toString());
-            enrollmentStore.save(enrollmentToken.getText().toString());
+            String manualCredential = enrollmentToken.getText().toString().trim();
+            if (!manualCredential.isEmpty()) {
+                enrollmentStore.save(manualCredential);
+            }
             configuration.saveSimulation(
                     optionalFloat(simulatedBattery),
                     boundedFloat(simulatedThermal, 0, 1),
@@ -154,6 +167,79 @@ public final class AgentSettingsActivity extends Activity {
             Toast.makeText(this, "Agent started", Toast.LENGTH_SHORT).show();
         } catch (Exception failure) {
             Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void startQrScan() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && checkSelfPermission(Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                    new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST);
+            return;
+        }
+        launchQrScanner();
+    }
+
+    private void launchQrScanner() {
+        new IntentIntegrator(this)
+                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+                .setPrompt("Scan DragonNest enrollment")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+                .initiateScan();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        IntentResult result = IntentIntegrator.parseActivityResult(
+                requestCode, resultCode, data);
+        if (result == null) {
+            super.onActivityResult(requestCode, resultCode, data);
+            return;
+        }
+        if (result.getContents() == null) {
+            return;
+        }
+        try {
+            confirmEnrollment(EnrollmentPayload.parse(result.getContents()));
+        } catch (Exception failure) {
+            Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void confirmEnrollment(EnrollmentPayload payload) {
+        String address = payload.brainHost() + ":" + payload.brainPort()
+                + (payload.useTls() ? " · TLS" : "");
+        new AlertDialog.Builder(this)
+                .setTitle("Enroll with DragonNest")
+                .setMessage(address)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Enroll", (dialog, which) -> applyEnrollment(payload))
+                .show();
+    }
+
+    private void applyEnrollment(EnrollmentPayload payload) {
+        try {
+            host.setText(payload.brainHost());
+            port.setText(String.valueOf(payload.brainPort()));
+            tls.setChecked(payload.useTls());
+            enrollmentStore.save(payload.credential());
+            enrollmentToken.setText("");
+            saveAndStart();
+        } catch (Exception failure) {
+            Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == CAMERA_PERMISSION_REQUEST
+                && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            launchQrScanner();
         }
     }
 

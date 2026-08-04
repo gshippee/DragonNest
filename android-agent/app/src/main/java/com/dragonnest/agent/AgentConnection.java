@@ -3,7 +3,7 @@ package com.dragonnest.agent;
 import java.util.List;
 
 public interface AgentConnection extends AutoCloseable {
-    void connect(String enrollmentCredential) throws Exception;
+    String connect(String enrollmentCredential) throws Exception;
 
     void sendHeartbeat(TelemetrySnapshot telemetry) throws Exception;
 

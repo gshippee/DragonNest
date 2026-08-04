@@ -25,6 +25,7 @@ async def run(args) -> None:
             tls_server_certificate_path=str(args.tls_certificate or ""),
             tls_server_key_path=str(args.tls_key or ""),
             tls_client_ca_path=str(args.tls_client_ca or ""),
+            state_db_path=str(args.state_db),
         ),
         steering_registry=SteeringRegistry.from_yaml(args.steering_config),
     )
@@ -59,6 +60,11 @@ def main() -> None:
     parser.add_argument("--tls-client-ca", type=Path)
     parser.add_argument("--http-host", default="127.0.0.1")
     parser.add_argument("--http-port", type=int, default=8080)
+    parser.add_argument(
+        "--state-db",
+        type=Path,
+        default=Path("local/dragonnest-state.sqlite3"),
+    )
     parser.add_argument(
         "--steering-config",
         type=Path,

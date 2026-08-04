@@ -61,7 +61,9 @@ dependencies {
     implementation("io.grpc:grpc-protobuf-lite:1.68.1")
     implementation("io.grpc:grpc-stub:1.68.1")
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

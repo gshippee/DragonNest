@@ -204,6 +204,7 @@ message ShutdownEvent {
 message RegistrationAccepted {
   string brain_id = 1;
   uint32 heartbeat_interval_ms = 2;
+  string device_credential = 3;
 }
 
 message RegistrationRejected {
@@ -228,6 +229,7 @@ message SubmitTaskRequest {
   SteeringSpec steering = 5;
   string origin_device_id = 6;
   string reducer = 7;
+  optional bool use_profile_steering = 8;
 }
 
 message SubmitTaskResponse {

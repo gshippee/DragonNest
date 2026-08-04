@@ -8,6 +8,9 @@ http:
   host: 127.0.0.1
   port: 8080
 
+state:
+  db_path: local/dragonnest-state.sqlite3
+
 registry:
   stale_after_seconds: 10
   offline_after_seconds: 20

@@ -42,6 +42,9 @@ public final class AgentProfile {
                 .setRuntimeVersion("dragon-nest-android-0.1.0")
                 .addSupportedAccelerators("cpu")
                 .setMinMemoryMb(128)
+                .addSteeringVectorIds("concise-vs-verbose-layer-7")
+                .addSupportedSteeringLayers(7)
+                .setSupportsSteering(true)
                 .setSupportsDataParallel(true)
                 .build();
         return RegisterDevice.newBuilder()

@@ -41,6 +41,7 @@ main { width: 100%; }
 .band-dark { background: var(--dark); color: #eef4f0; border-color: var(--dark); }
 .section-head { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .section-head > div { display: flex; align-items: baseline; gap: 10px; }
+.section-head .section-actions { align-items: center; }
 .section-head h1, .section-head h2 { margin: 0; font-size: 18px; line-height: 1.2; }
 .index { color: var(--green); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .band-dark .index { color: #65c79f; }
@@ -119,6 +120,12 @@ dialog form { padding: 18px; display: grid; gap: 14px; }
 .dialog-head h2 { margin: 0; font-size: 16px; }
 .dialog-actions { justify-content: flex-end; padding-top: 8px; }
 .check-row { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.enrollment-settings { display: grid; grid-template-columns: 1fr 110px; gap: 12px; }
+.enrollment-settings .check-row { grid-column: 1 / -1; }
+.enrollment-settings .enrollment-notes { grid-column: 1 / -1; }
+.enrollment-code { display: grid; justify-items: center; gap: 8px; padding: 8px 0; }
+.enrollment-code img { width: min(256px, 72vw); height: auto; aspect-ratio: 1; background: white; }
+.enrollment-code strong { font-size: 13px; }
 #toast { position: fixed; right: 18px; bottom: 18px; max-width: min(380px, calc(100vw - 36px)); padding: 11px 14px; background: var(--dark); color: white; border-radius: var(--radius); opacity: 0; pointer-events: none; transform: translateY(8px); transition: .18s ease; z-index: 30; }
 #toast.visible { opacity: 1; transform: translateY(0); }
 
@@ -136,6 +143,7 @@ dialog form { padding: 18px; display: grid; gap: 14px; }
   .brand-block span:not(.brand-mark) { display: none; }
   .control-grid, .steering-controls { grid-template-columns: 1fr; }
   .section-head { align-items: flex-start; }
+  .section-actions { flex-direction: column; align-items: flex-end !important; }
   #task-select { width: 46vw; }
   .device-grid { grid-template-columns: 1fr; }
 }

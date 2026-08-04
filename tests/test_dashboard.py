@@ -32,6 +32,7 @@ def test_dashboard_serves_six_panel_ui_and_registry_api():
         assert page.status_code == 200
         for panel in (
             "Device Registry",
+            "Add device",
             "Task Submission",
             "Routing Trace",
             "Parallel Progress",
@@ -44,6 +45,117 @@ def test_dashboard_serves_six_panel_ui_and_registry_api():
             "pc-01",
         }
         assert vectors[0]["vector_id"] == "concise-vs-verbose-layer-7"
+
+    asyncio.run(scenario())
+
+
+def test_dashboard_creates_qr_enrollment_without_exposing_secret():
+    async def scenario() -> None:
+        service = BrainService()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=create_dashboard_app(service)),
+            base_url="http://test",
+        ) as client:
+            created = await client.post(
+                "/api/enrollment-sessions",
+                json={
+                    "brain_host": "192.168.1.20",
+                    "brain_port": 50051,
+                    "use_tls": False,
+                    "ttl_seconds": 60,
+                    "person_name": "Alex",
+                    "device_name": "Alex's Phone",
+                },
+            )
+            body = created.json()
+            qr = await client.get(body["qr_url"])
+            status = await client.get(
+                f"/api/enrollment-sessions/{body['session_id']}"
+            )
+            profiles = await client.get("/api/personal-profiles")
+            cancelled = await client.delete(
+                f"/api/enrollment-sessions/{body['session_id']}"
+            )
+            gone = await client.get(body["qr_url"])
+            profiles_after_cancel = await client.get("/api/personal-profiles")
+
+        assert created.status_code == 200
+        assert body["status"] == "PENDING"
+        assert "credential" not in body
+        assert qr.status_code == 200
+        assert qr.headers["content-type"].startswith("image/svg+xml")
+        assert qr.headers["cache-control"] == "no-store"
+        assert status.json()["status"] == "PENDING"
+        assert profiles.json()[0]["person_name"] == "Alex"
+        assert body["profile_id"] == profiles.json()[0]["profile_id"]
+        assert cancelled.json()["status"] == "CANCELLED"
+        assert gone.status_code == 410
+        assert profiles_after_cancel.json() == []
+
+    asyncio.run(scenario())
+
+
+def test_personal_profile_supplies_default_mode_and_steering():
+    async def scenario() -> None:
+        steering = SteeringRegistry.from_yaml(ROOT / "configs/steering-vectors.yaml")
+        service = BrainService(steering_registry=steering)
+        profile = service.profiles.create(
+            person_name="Alex",
+            preferred_mode="private",
+            steering_vector_id="concise-vs-verbose-layer-7",
+            steering_alpha=-1.5,
+            steering_positions="last",
+        )
+        service.profiles.associate_device(
+            "phone-01", profile.profile_id, "Alex's Phone"
+        )
+        server, port = await create_server(service, "127.0.0.1:0")
+        device = load_devices(ROOT / "configs/dev-fabric.yaml")[0]
+        agent = DeviceAgent(
+            device,
+            AgentClientConfig(
+                brain_target=f"127.0.0.1:{port}",
+                heartbeat_interval_seconds=0.02,
+                reconnect_initial_seconds=0.01,
+            ),
+        )
+        agent_task = asyncio.create_task(agent.run_forever())
+        try:
+            await asyncio.wait_for(agent.registered.wait(), timeout=3)
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=create_dashboard_app(service)),
+                base_url="http://test",
+            ) as client:
+                submitted = await client.post(
+                    "/api/tasks",
+                    json={
+                        "request_text": "Rewrite this note.",
+                        "preferred_mode": "auto",
+                        "execution_mode": "single",
+                        "origin_device_id": "phone-01",
+                        "use_profile_steering": True,
+                    },
+                )
+                devices = (await client.get("/api/devices")).json()
+
+            result = submitted.json()
+            assert result["success"]
+            assert result["device_id"] == "phone-01"
+            assert result["steering"]["enabled"]
+            assert result["steering"]["vector_id"] == (
+                "concise-vs-verbose-layer-7"
+            )
+            assert result["steering"]["alpha"] == -1.5
+            assert any(
+                "Applied personal profile 'Alex'" in reason
+                for reason in result["route_reasons"]
+            )
+            assert devices[0]["display_name"] == "Alex's Phone"
+            assert devices[0]["personal_profile"]["person_name"] == "Alex"
+        finally:
+            await agent.stop()
+            await asyncio.gather(agent_task, return_exceptions=True)
+            await stop_server(server, service)
 
     asyncio.run(scenario())
 

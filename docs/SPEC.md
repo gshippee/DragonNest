@@ -518,11 +518,28 @@ Do not use MAC addresses or hardware serial numbers as the primary identity.
 
 Support two modes:
 
-- `dev_mode=true`: shared enrollment token in configuration.
+- `dev_mode=true`: shared enrollment token in configuration or an expiring QR
+  bootstrap credential that binds to one device ID and is exchanged for a
+  device-specific reconnect credential.
 - `dev_mode=false`: placeholder interface for mTLS/client certificates.
 
 The Brain must reject registration if the enrollment token is missing or
-invalid.
+invalid. QR bootstrap sessions must be single-device, expire automatically,
+support operator cancellation, and never expose the persistent reconnect
+credential in dashboard JSON or logs.
+
+The Add Device workflow must persist a personal profile independently of live
+Agent state. At minimum it stores the person name, friendly device name,
+routing preference, steering vector ID, steering alpha, steering positions,
+remote-vector policy, and notes. The QR session references the profile ID and
+the Brain associates it with the generated device ID after the first successful
+claim. Hardware inventory remains Agent-reported and is not editable profile
+data.
+
+For a task with an associated origin device, the Brain applies the personal
+profile's routing and steering defaults when no explicit override is supplied.
+Explicit task steering takes precedence, and callers must be able to disable
+profile steering. Profile and device associations must survive Brain restarts.
 
 ### 7.4 Network Departure and Mid-Job Recovery
 
@@ -879,6 +896,7 @@ message RouteDecision {
 message RegistrationAccepted {
   string brain_id = 1;
   uint32 heartbeat_interval_ms = 2;
+  string device_credential = 3; // set when a bootstrap credential is exchanged
 }
 
 message RegistrationRejected {
@@ -1751,6 +1769,16 @@ artifacts do not need to be committed to DragonNest.
 ### 21.4 Secure Enrollment
 
 The MVP may use a shared enrollment token when `dev_mode=true`.
+
+The Android development workflow should also support QR onboarding. The QR may
+contain only a short-lived bootstrap credential, Brain address, TLS mode,
+schema version, session ID, and expiry. The Agent must validate these fields,
+bind the first successful claim to its generated device ID, and replace the
+bootstrap credential in Android Keystore with the device credential returned by
+the Brain. A claimed bootstrap must not enroll a different device.
+
+Personal registration data used for steering must be persisted in durable Brain
+state. It must not be stored only in the QR session or Android process.
 
 The production design must include:
 

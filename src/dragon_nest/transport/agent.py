@@ -77,6 +77,7 @@ class DeviceAgent:
         self._event_loop: asyncio.AbstractEventLoop | None = None
         self._last_heartbeat_sent_at: float | None = None
         self._network_rtt_ms = -1.0
+        self._enrollment_token = self.config.enrollment_token
 
     async def run_forever(self) -> None:
         self._event_loop = asyncio.get_running_loop()
@@ -155,6 +156,10 @@ class DeviceAgent:
                     async for message in call:
                         kind = message.WhichOneof("payload")
                         if kind == "registration_accepted":
+                            if message.registration_accepted.device_credential:
+                                self._enrollment_token = (
+                                    message.registration_accepted.device_credential
+                                )
                             self.registered.set()
                         elif kind == "registration_rejected":
                             raise RegistrationRejectedError(
@@ -233,7 +238,7 @@ class DeviceAgent:
         yield pb.DeviceToBrain(
             register_device=registration_from_device(
                 self.device,
-                self.config.enrollment_token,
+                self._enrollment_token,
                 self.config.agent_version,
                 self._certificate_fingerprint(),
             )

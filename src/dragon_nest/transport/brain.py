@@ -12,6 +12,7 @@ import grpc
 
 from ..classifier import RuleBasedTaskClassifier
 from ..dispatch import DeviceOfflineError, DispatchManager
+from ..enrollment import EnrollmentManager
 from ..models import (
     Device,
     ExecutionMetrics,
@@ -27,6 +28,7 @@ from ..models import (
     TaskResult,
 )
 from ..planner import ExecutionPlanner
+from ..profiles import PersonalProfile, ProfileError, ProfileStore
 from ..proto import dragonnest_pb2 as pb
 from ..proto import dragonnest_pb2_grpc as pb_grpc
 from ..registry import DeviceRegistry
@@ -57,6 +59,8 @@ class BrainServiceConfig:
     tls_server_key_path: str = ""
     tls_client_ca_path: str = ""
     require_client_certificate: bool = True
+    enrollment_session_ttl_seconds: int = 300
+    state_db_path: str = ":memory:"
 
 
 @dataclass(frozen=True)
@@ -244,6 +248,10 @@ class BrainService(pb_grpc.BrainControlServicer):
         self._device_simulations: dict[str, dict[str, float | bool | int]] = {}
         self.certificate_fingerprints: dict[str, str] = {}
         self.revoked_certificate_fingerprints: set[str] = set()
+        self.enrollment = EnrollmentManager(
+            default_ttl_seconds=self.config.enrollment_session_ttl_seconds
+        )
+        self.profiles = ProfileStore(self.config.state_db_path)
         self._sweeper: asyncio.Task[None] | None = None
 
     def set_device_simulation(
@@ -284,7 +292,9 @@ class BrainService(pb_grpc.BrainControlServicer):
             return
         registration = first.register_device
         peer_fingerprint = self._peer_certificate_fingerprint(context)
-        rejection = self._registration_error(registration, peer_fingerprint)
+        rejection, issued_credential = self._authorize_registration(
+            registration, peer_fingerprint
+        )
         if rejection:
             yield pb.BrainToDevice(
                 registration_rejected=pb.RegistrationRejected(reason=rejection)
@@ -292,6 +302,9 @@ class BrainService(pb_grpc.BrainControlServicer):
             return
 
         device = device_from_registration(registration)
+        association = self.profiles.association_for_device(device.device_id)
+        if association:
+            device = replace(device, display_name=association.device_name)
         session = AgentSession(device.device_id)
         await self.sessions.replace(session)
         self.registry.register(device)
@@ -301,6 +314,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             registration_accepted=pb.RegistrationAccepted(
                 brain_id=self.config.brain_id,
                 heartbeat_interval_ms=self.config.heartbeat_interval_ms,
+                device_credential=issued_credential,
             )
         )
 
@@ -346,7 +360,18 @@ class BrainService(pb_grpc.BrainControlServicer):
                 error_code="INVALID_REQUEST",
                 error_message="request_text cannot be empty",
             )
+        personal_profile = (
+            self.profiles.profile_for_device(request.origin_device_id)
+            if request.origin_device_id
+            else None
+        )
         preferred_mode = request.preferred_mode or "auto"
+        if (
+            preferred_mode == "auto"
+            and personal_profile is not None
+            and personal_profile.preferred_mode != "auto"
+        ):
+            preferred_mode = personal_profile.preferred_mode
         execution_mode = request.execution_mode or "auto"
         reducer = request.reducer or ReducerMode.MOCK_SYNTHESIS.value
         supported_reducers = {item.value for item in ReducerMode}
@@ -410,9 +435,26 @@ class BrainService(pb_grpc.BrainControlServicer):
             )
         steering = (
             steering_from_proto(request.steering)
-            if request.HasField("steering")
+            if request.HasField("steering") and request.steering.enabled
             else SteeringSpec()
         )
+        use_profile_steering = (
+            request.use_profile_steering
+            if request.HasField("use_profile_steering")
+            else True
+        )
+        profile_steering_reason = ""
+        if (
+            not steering.enabled
+            and use_profile_steering
+            and personal_profile is not None
+            and personal_profile.steering_vector_id
+        ):
+            steering = self._steering_for_profile(personal_profile)
+            profile_steering_reason = (
+                f"Applied personal profile {personal_profile.person_name!r}: "
+                f"steering {steering.vector_id} at alpha {steering.alpha}."
+            )
         if steering.enabled and self.steering_registry is None:
             return pb.SubmitTaskResponse(
                 state="FAILED",
@@ -457,6 +499,13 @@ class BrainService(pb_grpc.BrainControlServicer):
             routed = replace(routed, reasons=(*routed.reasons, *exclusion_reasons))
             decision = replace(
                 decision, reasons=(*decision.reasons, *exclusion_reasons)
+            )
+        if profile_steering_reason:
+            routed = replace(
+                routed, reasons=(*routed.reasons, profile_steering_reason)
+            )
+            decision = replace(
+                decision, reasons=(*decision.reasons, profile_steering_reason)
             )
 
         self._route_reasons[plan.task_id] = decision.reasons
@@ -1177,22 +1226,63 @@ class BrainService(pb_grpc.BrainControlServicer):
     def _registration_error(
         self, registration: pb.RegisterDevice, peer_fingerprint: str = ""
     ) -> str:
+        error, _ = self._authorize_registration(registration, peer_fingerprint)
+        return error
+
+    def _authorize_registration(
+        self, registration: pb.RegisterDevice, peer_fingerprint: str = ""
+    ) -> tuple[str, str]:
         if not registration.device_id:
-            return "device_id is required"
-        if self.config.dev_mode and (
-            registration.enrollment_token != self.config.enrollment_token
-        ):
-            return "invalid enrollment token"
+            return "device_id is required", ""
+        if not registration.models:
+            return "at least one model capability is required", ""
+        issued_credential = ""
+        if self.config.dev_mode:
+            credential = registration.enrollment_token
+            if credential == self.config.enrollment_token:
+                pass
+            elif self.enrollment.valid_device_credential(
+                registration.device_id, credential
+            ):
+                pass
+            else:
+                claim = self.enrollment.claim(credential, registration.device_id)
+                if claim is None:
+                    return "invalid enrollment token or expired credential", ""
+                if claim.profile_id:
+                    try:
+                        self.profiles.associate_device(
+                            registration.device_id,
+                            claim.profile_id,
+                            claim.device_name or registration.display_name,
+                        )
+                    except ProfileError as exc:
+                        return f"personal profile association failed: {exc}", ""
+                issued_credential = claim.device_credential
         if not self.config.dev_mode:
             if not peer_fingerprint:
-                return "production enrollment requires a verified client certificate"
+                return (
+                    "production enrollment requires a verified client certificate",
+                    "",
+                )
             if registration.certificate_fingerprint != peer_fingerprint:
-                return "reported certificate fingerprint does not match TLS peer"
+                return "reported certificate fingerprint does not match TLS peer", ""
             if peer_fingerprint in self.revoked_certificate_fingerprints:
-                return "client certificate has been revoked"
-        if not registration.models:
-            return "at least one model capability is required"
-        return ""
+                return "client certificate has been revoked", ""
+        return "", issued_credential
+
+    def _steering_for_profile(self, profile: PersonalProfile) -> SteeringSpec:
+        if self.steering_registry is None:
+            return SteeringSpec()
+        default = self.steering_registry.default_spec(profile.steering_vector_id)
+        return replace(
+            default,
+            alpha=profile.steering_alpha,
+            positions=profile.steering_positions,
+            allow_remote_vector=(
+                default.allow_remote_vector and profile.allow_remote_vector
+            ),
+        )
 
     @staticmethod
     def _device_exclusion_reason(record) -> str:
