@@ -55,7 +55,8 @@ public final class AgentForegroundService extends Service {
                 () -> new GrpcAgentConnection(
                         configuration,
                         profile,
-                        runtimeCatalog),
+                        runtimeCatalog,
+                        debugLog),
                 new EnrollmentStore(this),
                 telemetry,
                 debugLog);

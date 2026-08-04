@@ -65,6 +65,8 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "setTaskResult" in connection
     assert "setPartialTaskResult" in connection
     assert "setPipelineStageResult" in connection
+    assert "Opening gRPC stream to" in connection
+    assert "RegistrationAccepted" in connection
     assert "Android mock result" in executor
     assert "QR_CAPTURE_REQUEST" in settings
     assert "Scan enrollment QR" in settings

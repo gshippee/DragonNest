@@ -37,6 +37,7 @@ public final class GrpcAgentConnection implements AgentConnection {
     private final AgentConfiguration configuration;
     private final AgentProfile profile;
     private final AndroidTaskExecutor taskExecutor;
+    private final ClientDebugLog debugLog;
     private final ExecutorService taskPool = Executors.newCachedThreadPool();
     private final ScheduledExecutorService timeoutPool =
             Executors.newSingleThreadScheduledExecutor();
@@ -54,14 +55,19 @@ public final class GrpcAgentConnection implements AgentConnection {
     public GrpcAgentConnection(
             AgentConfiguration configuration,
             AgentProfile profile,
-            AndroidTaskExecutor taskExecutor) {
+            AndroidTaskExecutor taskExecutor,
+            ClientDebugLog debugLog) {
         this.configuration = configuration;
         this.profile = profile;
         this.taskExecutor = taskExecutor;
+        this.debugLog = debugLog;
     }
 
     @Override
     public String connect(String enrollmentCredential) throws Exception {
+        debugLog.add("Opening gRPC stream to " + configuration.brainHost()
+                + ":" + configuration.brainPort()
+                + (configuration.useTls() ? " (TLS)" : ""));
         CountDownLatch registration = new CountDownLatch(1);
         AtomicReference<String> rejection = new AtomicReference<>("");
         AtomicReference<String> replacementCredential = new AtomicReference<>("");
@@ -88,10 +94,13 @@ public final class GrpcAgentConnection implements AgentConnection {
                                 250,
                                 message.getRegistrationAccepted().getHeartbeatIntervalMs());
                         connected.set(true);
+                        debugLog.add("Brain returned RegistrationAccepted");
                         registration.countDown();
                     }
                     case REGISTRATION_REJECTED -> {
                         rejection.set(message.getRegistrationRejected().getReason());
+                        debugLog.add("Brain rejected registration: "
+                                + message.getRegistrationRejected().getReason());
                         registration.countDown();
                     }
                     case EXECUTE_TASK -> dispatch(message.getExecuteTask());
@@ -113,12 +122,14 @@ public final class GrpcAgentConnection implements AgentConnection {
             @Override
             public void onError(Throwable failure) {
                 rejection.compareAndSet("", failure.getMessage());
+                debugLog.add("gRPC stream error: " + failureSummary(failure));
                 connected.set(false);
                 registration.countDown();
             }
 
             @Override
             public void onCompleted() {
+                debugLog.add("gRPC stream completed by Brain");
                 connected.set(false);
                 registration.countDown();
             }
@@ -135,6 +146,12 @@ public final class GrpcAgentConnection implements AgentConnection {
             throw new IllegalStateException("Brain rejected registration: " + rejection.get());
         }
         return replacementCredential.get();
+    }
+
+    private static String failureSummary(Throwable failure) {
+        String detail = failure.getMessage();
+        return failure.getClass().getSimpleName()
+                + (detail == null || detail.isBlank() ? "" : ": " + detail);
     }
 
     @Override
