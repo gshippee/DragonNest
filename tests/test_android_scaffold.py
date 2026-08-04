@@ -68,7 +68,7 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "Android mock result" in executor
     assert "QR_CAPTURE_REQUEST" in settings
     assert "Scan enrollment QR" in settings
-    assert "new Intent(this, EnrollmentCaptureActivity.class)" in settings
+    assert "EnrollmentCaptureActivity.scanIntent(this)" in settings
     assert "UserProfileStore" in settings
     assert "BrainTaskClient" in settings
     assert "EnrollmentCaptureActivity" in (
@@ -79,6 +79,7 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     )
     assert "new CaptureManager(this, barcodeView)" in capture
     assert "ACTION_SCAN" in capture
+    assert ".setAction(SCAN_ACTION)" in capture
     assert "dragonnest.enrollment" in payload
     assert "Build.SOC_MODEL" in inventory
     assert "setNpuStatus(runtimeCatalog.npuStatus())" in inventory

@@ -174,7 +174,7 @@ public final class AgentSettingsActivity extends Activity {
 
     private void startQrScan() {
         startActivityForResult(
-                new Intent(this, EnrollmentCaptureActivity.class), QR_CAPTURE_REQUEST);
+                EnrollmentCaptureActivity.scanIntent(this), QR_CAPTURE_REQUEST);
     }
 
     @Override
