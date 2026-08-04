@@ -27,7 +27,8 @@ results, and reroutes around health constraints.
 
 ## MVP Policy Rules
 
-- Offline, stale, or unhealthy devices cannot receive new work.
+- Healthy and degraded devices are eligible for routing; stale devices are
+  last-resort fallbacks, and offline devices cannot receive new work.
 - Private mode excludes remote devices.
 - Steering requests must match model family, vector ID, layer, alpha range, and
   positions mode.
@@ -37,9 +38,5 @@ results, and reroutes around health constraints.
 ## Roadmap
 
 1. Keep local mock planner/router tests green.
-2. Add gRPC proto and generated bindings.
-3. Add Brain service.
-4. Add Device Agent.
-5. Add dashboard.
-6. Replace mock executors with QNN/Genie adapters where available.
-
+2. Validate live QNN split boundaries on target hardware.
+3. Add production mTLS enrollment.

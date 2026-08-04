@@ -46,6 +46,9 @@ class SteeringRegistry:
             allow_remote_vector=vector.allow_remote_vector,
         )
 
+    def vectors(self) -> tuple[SteeringVector, ...]:
+        return tuple(self._vectors[key] for key in sorted(self._vectors))
+
     def validate(self, spec: SteeringSpec, model: ModelCapability) -> tuple[bool, str]:
         if not spec.enabled:
             return True, "steering disabled"
@@ -53,16 +56,36 @@ class SteeringRegistry:
         if vector is None:
             return False, f"unknown steering vector {spec.vector_id}"
         if vector.model_family != model.model_family and model.model_family != "mock":
-            return False, f"vector family {vector.model_family} does not match model family {model.model_family}"
+            return (
+                False,
+                f"vector family {vector.model_family} does not match model family {model.model_family}",
+            )
         if spec.vector_id not in model.steering_vector_ids:
-            return False, f"model {model.model_id} does not advertise vector {spec.vector_id}"
+            return (
+                False,
+                f"model {model.model_id} does not advertise vector {spec.vector_id}",
+            )
         if spec.target_layer not in vector.target_layers:
-            return False, f"vector {spec.vector_id} does not support layer {spec.target_layer}"
+            return (
+                False,
+                f"vector {spec.vector_id} does not support layer {spec.target_layer}",
+            )
         if spec.target_layer not in model.supported_steering_layers:
-            return False, f"model {model.model_id} does not support steering layer {spec.target_layer}"
+            return (
+                False,
+                f"model {model.model_id} does not support steering layer {spec.target_layer}",
+            )
         if not (vector.alpha_min <= spec.alpha <= vector.alpha_max):
-            return False, f"alpha {spec.alpha} outside range {vector.alpha_min}..{vector.alpha_max}"
+            return (
+                False,
+                f"alpha {spec.alpha} outside range {vector.alpha_min}..{vector.alpha_max}",
+            )
         if spec.positions not in vector.positions:
-            return False, f"positions {spec.positions} not supported by vector {spec.vector_id}"
-        return True, f"steering vector {spec.vector_id} compatible with {model.model_id}"
-
+            return (
+                False,
+                f"positions {spec.positions} not supported by vector {spec.vector_id}",
+            )
+        return (
+            True,
+            f"steering vector {spec.vector_id} compatible with {model.model_id}",
+        )

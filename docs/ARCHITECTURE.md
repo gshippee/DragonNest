@@ -4,7 +4,7 @@ DragonNest has one control plane and several execution backends.
 
 ## Control Plane
 
-The control plane is the future SnapRouter Brain:
+The SnapRouter Brain control plane consists of:
 
 - Device registry.
 - Health-state cache.
@@ -16,8 +16,73 @@ The control plane is the future SnapRouter Brain:
 - Steering vector registry.
 - Dashboard API.
 
-The scaffold implements these as local Python modules first. The same models
-can later be exposed through gRPC and FastAPI.
+The registry, classifier, planner, router, dispatch/retry manager, task state,
+artifact registry, and executor adapters are implemented as transport-neutral
+Python modules. Persistent gRPC streams and the FastAPI dashboard expose these
+modules rather than owning duplicate lifecycle state.
+
+### Device And Task Authority
+
+`DeviceRegistry` owns stream/heartbeat health transitions and routing
+eligibility. `TaskStore` owns stable task IDs, per-assignment attempt IDs,
+accepted results, and stale late-result history. `DispatchManager` performs at
+most one retry after `DEVICE_OFFLINE` and fails with
+`NO_ELIGIBLE_FALLBACK` when no candidate remains.
+
+Agents execute best-effort attempts. Only `TaskStore.record_result()` can
+accept a result, which fences responses from offline or superseded attempts.
+
+### gRPC Transport
+
+`BrainService.Connect` requires registration as the first stream message, then
+accepts health, result, and shutdown messages while sending assignments and
+heartbeat acknowledgements. `DeviceAgent` reconnects with exponential backoff
+and advertises real models only after artifact validation.
+
+Development mode authenticates with a shared enrollment token. Production mode
+requires mutual TLS, matches the Agent-reported SHA-256 certificate fingerprint
+to the authenticated peer certificate, tracks rotation on reconnect, and can
+revoke a fingerprint and offline every associated session.
+
+Agent heartbeats come from an injectable platform telemetry interface. The
+default source reports host battery, thermal, memory, and CPU data when
+available, uses explicit unknown values otherwise, measures gRPC heartbeat RTT,
+and includes active task IDs and warm model IDs. Platform network callbacks can
+force an immediate refresh instead of waiting for the normal heartbeat period.
+
+`SubmitTask` supports remote single-device execution and concurrent shard
+fanout. Each shard has an internal lifecycle record and retry fence while every
+wire message retains the stable parent task ID. Layer pipelines execute stages
+sequentially, validate SHA-256 boundary payloads, and retry a failed stage only
+on a device advertising the same pipeline and layer range. The mock path is
+fully runnable; real QNN boundary transport still requires target-hardware
+validation.
+
+Private requests filter the eligible set to their declared origin device before
+routing. A `first_success` data-parallel request sends one shard to two replicas,
+accepts the first valid result, cancels remaining attempts, and records any late
+loser output as stale.
+
+### HTTP Dashboard
+
+The FastAPI application reads directly from `DeviceRegistry`, `TaskStore`, and
+Brain route metadata. It provides task submission, device simulations, steering
+profiles, parent-task progress, results, and a merged registry/task event log.
+The browser polls once per second; no separate dashboard state store exists.
+
+### Android Agent
+
+`android-agent` generates Android-lite protobuf and gRPC bindings from the same
+canonical contract as the Python services. Its foreground service maintains the
+bidirectional stream, reports platform telemetry, dispatches task, shard, and
+pipeline commands to `AndroidTaskExecutor`, returns normalized metrics/results,
+and applies Brain cancellation by attempt ID.
+
+The packaged MVP executor is deterministic mock inference. The executor
+interface is the Android integration point for Qualcomm QNN/Genie libraries;
+the Python runtime adapters and artifact manifests remain the validated host
+reference until those vendor libraries and model binaries are available on the
+target Android device.
 
 ## Execution Modes
 
@@ -51,8 +116,10 @@ Part A: input_ids -> hidden boundary
 Part B: hidden boundary -> logits/output
 ```
 
-The MVP uses mock boundary tensors. A future QNN executor can move real hidden
-state tensors through the Brain or a trusted transport channel.
+The portable MVP sends mock boundary tensors over the live gRPC stream.
+`QnnPipelineExecutor` and the Agent stage adapter can serialize real QNN output
+arrays into the same boundary contract using validated manifests. The remaining
+gate is running that path with compiled split artifacts on target devices.
 
 ### Vector Steering
 
@@ -71,8 +138,9 @@ The eventual runtime operation is:
 steered_hidden = hidden + alpha * mask * steering_vector
 ```
 
-The current scaffold passes steering metadata through the route and mock
-executor. Real vector loading and QNN/Genie integration come later.
+The current scaffold passes steering metadata through routing and execution.
+QNN and Genie runners are ported; injecting a steering vector into a deployed
+runtime graph remains model-specific work.
 
 ## Source Repo Inheritance
 
@@ -90,4 +158,3 @@ From `PersonaCare-Steering-Research`:
 - QNN/AI Hub proof workflow.
 - Layer split-compute proof.
 - Reproducibility and result artifact discipline.
-

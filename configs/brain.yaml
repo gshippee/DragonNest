@@ -1,0 +1,24 @@
+grpc:
+  address: 0.0.0.0:50051
+  brain_id: dragon-nest-brain
+  enrollment_token: dev-token
+  heartbeat_interval_ms: 2000
+
+http:
+  host: 127.0.0.1
+  port: 8080
+
+registry:
+  stale_after_seconds: 10
+  offline_after_seconds: 20
+  unhealthy_thermal_level: 0.85
+  unhealthy_battery_pct: 10
+  degraded_memory_mb: 512
+  degraded_accelerator_utilization: 0.85
+
+dispatch:
+  max_offline_retries: 1
+
+artifacts:
+  manifest: configs/model-artifacts.yaml
+  verify_checksums: true

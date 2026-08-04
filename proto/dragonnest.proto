@@ -1,0 +1,251 @@
+syntax = "proto3";
+
+package dragonnest.v1;
+
+option java_package = "com.dragonnest.proto";
+option java_outer_classname = "DragonNestProto";
+option java_multiple_files = true;
+
+service BrainControl {
+  rpc Connect(stream DeviceToBrain) returns (stream BrainToDevice);
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
+  rpc GetTask(GetTaskRequest) returns (SubmitTaskResponse);
+}
+
+message DeviceToBrain {
+  oneof payload {
+    RegisterDevice register_device = 1;
+    HealthUpdate health_update = 2;
+    TaskResult task_result = 3;
+    ShutdownEvent shutdown = 4;
+    PartialTaskResult partial_task_result = 5;
+    PipelineStageResult pipeline_stage_result = 6;
+  }
+}
+
+message BrainToDevice {
+  oneof payload {
+    RegistrationAccepted registration_accepted = 1;
+    RegistrationRejected registration_rejected = 2;
+    ExecuteTask execute_task = 3;
+    CancelTask cancel_task = 4;
+    HeartbeatAck heartbeat_ack = 5;
+    ExecuteShard execute_shard = 6;
+    ExecutePipelineStage execute_pipeline_stage = 7;
+  }
+}
+
+message RegisterDevice {
+  string device_id = 1;
+  string display_name = 2;
+  string device_type = 3;
+  string platform = 4;
+  string agent_version = 5;
+  string enrollment_token = 6;
+  uint64 total_memory_mb = 7;
+  repeated ModelCapability models = 8;
+  string certificate_fingerprint = 9;
+}
+
+message ModelCapability {
+  string model_id = 1;
+  string model_family = 2;
+  string role = 3;
+  repeated string task_classes = 4;
+  uint32 max_context_tokens = 5;
+  bool warm = 6;
+  float quality_score = 7;
+  repeated string steering_vector_ids = 8;
+  repeated uint32 supported_steering_layers = 9;
+  ModelSegment segment = 10;
+  string model_version = 11;
+  string tokenizer_id = 12;
+  string precision = 13;
+  string boundary_format = 14;
+  string runtime_name = 15;
+  string runtime_version = 16;
+  repeated string supported_accelerators = 17;
+  uint64 min_memory_mb = 18;
+  bool supports_steering = 19;
+  bool supports_data_parallel = 20;
+  bool supports_layer_pipeline = 21;
+}
+
+message ModelSegment {
+  string pipeline_id = 1;
+  uint32 start_layer = 2;
+  uint32 end_layer = 3;
+  uint32 total_layers = 4;
+  bool includes_embedding = 5;
+  bool includes_lm_head = 6;
+}
+
+message HealthUpdate {
+  string device_id = 1;
+  int64 timestamp_ms = 2;
+  float battery_pct = 3;
+  bool charging = 4;
+  float thermal_level = 5;
+  float cpu_utilization = 6;
+  float accelerator_utilization = 7;
+  uint64 available_memory_mb = 8;
+  float network_rtt_ms = 9;
+  bool reachable = 10;
+  repeated string active_task_ids = 11;
+  bool simulated_constraint = 12;
+  repeated string warm_model_ids = 13;
+}
+
+message ExecuteTask {
+  string task_id = 1;
+  string attempt_id = 2;
+  string request_text = 3;
+  string model_id = 4;
+  uint32 timeout_ms = 5;
+  SteeringSpec steering = 6;
+}
+
+message ExecuteShard {
+  string task_id = 1;
+  string attempt_id = 2;
+  string shard_id = 3;
+  string request_text = 4;
+  string model_id = 5;
+  uint32 timeout_ms = 6;
+  SteeringSpec steering = 7;
+}
+
+message TaskResult {
+  string task_id = 1;
+  string attempt_id = 2;
+  string device_id = 3;
+  bool success = 4;
+  string output_text = 5;
+  string error_code = 6;
+  string error_message = 7;
+  ExecutionMetrics metrics = 8;
+}
+
+message PartialTaskResult {
+  string task_id = 1;
+  string attempt_id = 2;
+  string shard_id = 3;
+  string device_id = 4;
+  bool success = 5;
+  string output_text = 6;
+  string error_code = 7;
+  string error_message = 8;
+  ExecutionMetrics metrics = 9;
+}
+
+message BoundaryTensor {
+  string tensor_name = 1;
+  string dtype = 2;
+  repeated uint32 shape = 3;
+  bytes data = 4;
+  string checksum = 5;
+}
+
+message ExecutePipelineStage {
+  string task_id = 1;
+  string attempt_id = 2;
+  string stage_id = 3;
+  uint32 stage_index = 4;
+  string request_text = 5;
+  string model_id = 6;
+  BoundaryTensor input_boundary = 7;
+  bool final_stage = 8;
+  uint32 timeout_ms = 9;
+  SteeringSpec steering = 10;
+}
+
+message PipelineStageResult {
+  string task_id = 1;
+  string attempt_id = 2;
+  string stage_id = 3;
+  string device_id = 4;
+  bool success = 5;
+  BoundaryTensor output_boundary = 6;
+  string output_text = 7;
+  string error_code = 8;
+  string error_message = 9;
+  ExecutionMetrics metrics = 10;
+}
+
+message ExecutionMetrics {
+  string model_id = 1;
+  string model_version = 2;
+  string runtime_name = 3;
+  string runtime_version = 4;
+  string accelerator = 5;
+  uint32 execution_latency_ms = 6;
+  string error_code = 7;
+  string error_message = 8;
+  int64 observed_memory_delta_mb = 9;
+  float observed_thermal_delta = 10;
+}
+
+message SteeringSpec {
+  bool enabled = 1;
+  string vector_id = 2;
+  string model_family = 3;
+  uint32 target_layer = 4;
+  float alpha = 5;
+  string positions = 6;
+  bool allow_remote_vector = 7;
+}
+
+message ShutdownEvent {
+  string device_id = 1;
+  string reason = 2;
+  bool simulated = 3;
+}
+
+message RegistrationAccepted {
+  string brain_id = 1;
+  uint32 heartbeat_interval_ms = 2;
+}
+
+message RegistrationRejected {
+  string reason = 1;
+}
+
+message CancelTask {
+  string task_id = 1;
+  string attempt_id = 2;
+  string reason = 3;
+}
+
+message HeartbeatAck {
+  int64 brain_timestamp_ms = 1;
+}
+
+message SubmitTaskRequest {
+  string request_text = 1;
+  string preferred_mode = 2;
+  string execution_mode = 3;
+  uint32 timeout_ms = 4;
+  SteeringSpec steering = 5;
+  string origin_device_id = 6;
+  string reducer = 7;
+}
+
+message SubmitTaskResponse {
+  string task_id = 1;
+  string state = 2;
+  bool success = 3;
+  string output_text = 4;
+  string error_code = 5;
+  string error_message = 6;
+  string accepted_attempt_id = 7;
+  string device_id = 8;
+  string model_id = 9;
+  repeated string route_reasons = 10;
+  SteeringSpec steering = 11;
+  string origin_device_id = 12;
+  string reducer = 13;
+}
+
+message GetTaskRequest {
+  string task_id = 1;
+}

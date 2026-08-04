@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 .venv/
 venv/
+.gradle/
 build/
 dist/
 *.egg-info/
@@ -20,4 +21,3 @@ artifacts/
 # Local hardware/tooling config
 .env
 local*.yaml
-

@@ -9,19 +9,32 @@ description = "Snapdragon AI fabric for routing, multimodal pipelines, steering,
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "fastapi>=0.115",
+  "grpcio>=1.83",
+  "numpy>=1.26",
+  "protobuf>=7.35.1",
   "pydantic>=2.7",
   "PyYAML>=6.0",
+  "uvicorn>=0.32",
 ]
 
 [project.optional-dependencies]
 dev = [
+  "grpcio-tools>=1.83",
+  "httpx>=0.28",
   "pytest>=8.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+dragon_nest = ["web/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]
+"src/dragon_nest/proto/*.py" = ["E501", "F401"]

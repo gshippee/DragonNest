@@ -9,7 +9,6 @@ from .models import (
     HealthStatus,
     ModelCapability,
     PipelineStage,
-    PlannedTask,
     RouteDecision,
     SteeringSpec,
     TaskProfile,
@@ -27,6 +26,7 @@ class DeterministicRouter:
         profile: TaskProfile,
         devices: list[Device],
     ) -> tuple[ExecutionPlan, RouteDecision]:
+        devices = self._eligible_health_tier(devices)
         if plan.execution_mode == ExecutionMode.LAYER_PIPELINE:
             return self._route_pipeline(plan, profile, devices)
         if plan.execution_mode == ExecutionMode.DATA_PARALLEL:
@@ -51,7 +51,11 @@ class DeterministicRouter:
             fallback_device_ids=fallbacks,
         )
         routed_plan = replace(plan, tasks=(task,))
-        reasons = (*plan.reasons, reason, f"Fallbacks: {', '.join(fallbacks) or 'none'}.")
+        reasons = (
+            *plan.reasons,
+            reason,
+            f"Fallbacks: {', '.join(fallbacks) or 'none'}.",
+        )
         return routed_plan, RouteDecision(
             execution_mode=ExecutionMode.SINGLE,
             selected_device_id=device.device_id,
@@ -67,14 +71,20 @@ class DeterministicRouter:
         profile: TaskProfile,
         devices: list[Device],
     ) -> tuple[ExecutionPlan, RouteDecision]:
-        ranked = self._rank_models(profile, devices, plan.steering)
+        ranked = self._rank_models(
+            profile, devices, plan.steering, require_data_parallel=True
+        )
         if not ranked:
             raise ValueError("no eligible device/model for data-parallel task")
         routed_tasks = []
         reasons = list(plan.reasons)
         for idx, task in enumerate(plan.tasks):
             score, device, model, reason = ranked[idx % len(ranked)]
-            fallbacks = tuple(item[1].device_id for item in ranked if item[1].device_id != device.device_id)[:2]
+            fallbacks = tuple(
+                item[1].device_id
+                for item in ranked
+                if item[1].device_id != device.device_id
+            )[:2]
             routed_tasks.append(
                 replace(
                     task,
@@ -83,7 +93,9 @@ class DeterministicRouter:
                     fallback_device_ids=fallbacks,
                 )
             )
-            reasons.append(f"{task.shard_id} -> {device.device_id}/{model.model_id}: {reason}")
+            reasons.append(
+                f"{task.shard_id} -> {device.device_id}/{model.model_id}: {reason}"
+            )
         first = routed_tasks[0]
         routed_plan = replace(plan, tasks=tuple(routed_tasks))
         return routed_plan, RouteDecision(
@@ -92,7 +104,8 @@ class DeterministicRouter:
             selected_model_id=first.selected_model_id,
             fallback_device_ids=first.fallback_device_ids,
             reasons=tuple(reasons),
-            route_score=sum(item[0] for item in ranked[: len(routed_tasks)]) / min(len(ranked), len(routed_tasks)),
+            route_score=sum(item[0] for item in ranked[: len(routed_tasks)])
+            / min(len(ranked), len(routed_tasks)),
         )
 
     def _route_pipeline(
@@ -106,7 +119,12 @@ class DeterministicRouter:
             if not self._device_usable(device):
                 continue
             for model in device.models:
-                if model.segment and profile.task_class in model.task_classes:
+                if (
+                    model.segment
+                    and model.supports_layer_pipeline
+                    and profile.task_class in model.task_classes
+                    and self._has_model_memory(device, model)
+                ):
                     segments.append((device, model))
         for left_device, left_model in segments:
             left = left_model.segment
@@ -121,9 +139,31 @@ class DeterministicRouter:
                     and left.end_layer == right.start_layer
                     and left.start_layer == 0
                     and right.end_layer == right.total_layers
+                    and left_model.model_family == right_model.model_family
+                    and left_model.model_version == right_model.model_version
+                    and left_model.tokenizer_id == right_model.tokenizer_id
+                    and left_model.precision == right_model.precision
+                    and left_model.boundary_format == right_model.boundary_format
                 )
                 if not contiguous:
                     continue
+                if plan.steering.enabled:
+                    steering_model = None
+                    if left.start_layer <= plan.steering.target_layer < left.end_layer:
+                        steering_model = left_model
+                    elif (
+                        right.start_layer
+                        <= plan.steering.target_layer
+                        < right.end_layer
+                    ):
+                        steering_model = right_model
+                    if steering_model is None or self.steering_registry is None:
+                        continue
+                    compatible, _ = self.steering_registry.validate(
+                        plan.steering, steering_model
+                    )
+                    if not compatible:
+                        continue
                 stages = (
                     PipelineStage(
                         stage_id="stage-1",
@@ -133,6 +173,11 @@ class DeterministicRouter:
                         selected_model_id=left_model.model_id,
                         start_layer=left.start_layer,
                         end_layer=left.end_layer,
+                        model_family=left_model.model_family,
+                        model_version=left_model.model_version,
+                        tokenizer_id=left_model.tokenizer_id,
+                        precision=left_model.precision,
+                        boundary_format=left_model.boundary_format,
                     ),
                     PipelineStage(
                         stage_id="stage-2",
@@ -142,14 +187,30 @@ class DeterministicRouter:
                         selected_model_id=right_model.model_id,
                         start_layer=right.start_layer,
                         end_layer=right.end_layer,
+                        model_family=right_model.model_family,
+                        model_version=right_model.model_version,
+                        tokenizer_id=right_model.tokenizer_id,
+                        precision=right_model.precision,
+                        boundary_format=right_model.boundary_format,
                     ),
                 )
-                reasons = (
+                reason_list = [
                     *plan.reasons,
                     f"Selected layer pipeline {left.pipeline_id}: "
                     f"{left_device.device_id} layers {left.start_layer}..{left.end_layer}, "
                     f"{right_device.device_id} layers {right.start_layer}..{right.end_layer}.",
-                )
+                ]
+                if plan.steering.enabled and steering_model is not None:
+                    owner = (
+                        left_device.device_id
+                        if steering_model is left_model
+                        else right_device.device_id
+                    )
+                    reason_list.append(
+                        f"Applied steering vector {plan.steering.vector_id} at layer "
+                        f"{plan.steering.target_layer} on {owner}."
+                    )
+                reasons = tuple(reason_list)
                 return replace(plan, stages=stages, reasons=reasons), RouteDecision(
                     execution_mode=ExecutionMode.LAYER_PIPELINE,
                     selected_device_id=left_device.device_id,
@@ -165,6 +226,7 @@ class DeterministicRouter:
         profile: TaskProfile,
         devices: list[Device],
         steering: SteeringSpec,
+        require_data_parallel: bool = False,
     ) -> list[tuple[float, Device, ModelCapability, str]]:
         ranked = []
         for device in devices:
@@ -173,12 +235,18 @@ class DeterministicRouter:
             for model in device.models:
                 if model.segment is not None:
                     continue
+                if require_data_parallel and not model.supports_data_parallel:
+                    continue
+                if not self._has_model_memory(device, model):
+                    continue
                 if profile.task_class not in model.task_classes:
                     continue
                 if profile.estimated_input_tokens > model.max_context_tokens:
                     continue
                 if steering.enabled and self.steering_registry is not None:
-                    ok, steering_reason = self.steering_registry.validate(steering, model)
+                    ok, steering_reason = self.steering_registry.validate(
+                        steering, model
+                    )
                     if not ok:
                         continue
                 else:
@@ -193,18 +261,63 @@ class DeterministicRouter:
         ranked.sort(key=lambda item: (-item[0], item[1].device_id, item[2].model_id))
         return ranked
 
+    @staticmethod
+    def _has_model_memory(device: Device, model: ModelCapability) -> bool:
+        available = device.health.available_memory_mb
+        return available > 0 and available >= model.min_memory_mb
+
     def _device_usable(self, device: Device) -> bool:
         if not device.health.reachable:
             return False
-        return device.health.status in {HealthStatus.HEALTHY, HealthStatus.DEGRADED}
+        return device.health.status in {
+            HealthStatus.HEALTHY,
+            HealthStatus.DEGRADED,
+            HealthStatus.STALE,
+        }
+
+    def _eligible_health_tier(self, devices: list[Device]) -> list[Device]:
+        normal = [
+            device
+            for device in devices
+            if device.health.reachable
+            and device.health.status in {HealthStatus.HEALTHY, HealthStatus.DEGRADED}
+        ]
+        if normal:
+            return normal
+        return [
+            device
+            for device in devices
+            if device.health.reachable and device.health.status == HealthStatus.STALE
+        ]
 
     def _score(self, device: Device, model: ModelCapability) -> float:
-        health = 1.0 - max(device.health.thermal_level, device.health.accelerator_utilization) * 0.5
-        memory = min(device.health.available_memory_mb / 8192, 1.0)
+        observed_load = [
+            value
+            for value in (
+                device.health.thermal_level,
+                device.health.accelerator_utilization,
+            )
+            if value >= 0
+        ]
+        health = (
+            1.0 - max(observed_load) * 0.5 if observed_load else 0.5
+        )
+        memory = (
+            min(device.health.available_memory_mb / 8192, 1.0)
+            if device.health.available_memory_mb > 0
+            else 0.5
+        )
         readiness = 1.0 if model.warm else 0.5
-        latency = 1.0 / (1.0 + device.health.network_rtt_ms / 100.0)
+        latency = (
+            0.5
+            if device.health.network_rtt_ms < 0
+            else 1.0 / (1.0 + device.health.network_rtt_ms / 100.0)
+        )
         return round(
-            0.35 * model.quality_score + 0.25 * health + 0.20 * latency + 0.10 * memory + 0.10 * readiness,
+            0.35 * model.quality_score
+            + 0.25 * health
+            + 0.20 * latency
+            + 0.10 * memory
+            + 0.10 * readiness,
             4,
         )
-

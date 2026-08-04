@@ -4,7 +4,14 @@ import itertools
 import re
 import uuid
 
-from .models import ExecutionMode, ExecutionPlan, PlannedTask, SteeringSpec, TaskProfile
+from .models import (
+    ExecutionMode,
+    ExecutionPlan,
+    PlannedTask,
+    ReducerMode,
+    SteeringSpec,
+    TaskProfile,
+)
 
 
 class ExecutionPlanner:
@@ -15,6 +22,8 @@ class ExecutionPlanner:
         preferred_mode: str = "auto",
         requested_execution_mode: str = "auto",
         steering: SteeringSpec | None = None,
+        origin_device_id: str = "",
+        reducer: str = ReducerMode.MOCK_SYNTHESIS.value,
     ) -> ExecutionPlan:
         mode = self._choose_mode(profile, preferred_mode, requested_execution_mode)
         task_id = f"task-{uuid.uuid4().hex[:8]}"
@@ -22,8 +31,16 @@ class ExecutionPlanner:
         reasons: list[str] = []
 
         if mode == ExecutionMode.DATA_PARALLEL:
-            shards = self._split_shards(request_text)
-            reasons.append(f"Selected data_parallel: request split into {len(shards)} shard(s).")
+            if reducer == ReducerMode.FIRST_SUCCESS:
+                shards = [request_text]
+                reasons.append(
+                    "Selected replica_race: the first successful replica result wins."
+                )
+            else:
+                shards = self._split_shards(request_text)
+                reasons.append(
+                    f"Selected data_parallel: request split into {len(shards)} shard(s)."
+                )
             tasks = tuple(
                 PlannedTask(shard_id=f"shard-{idx + 1}", request_text=shard)
                 for idx, shard in enumerate(shards)
@@ -34,7 +51,8 @@ class ExecutionPlanner:
                 request_text=request_text,
                 tasks=tasks,
                 steering=steering,
-                reducer="mock_synthesis",
+                origin_device_id=origin_device_id,
+                reducer=reducer,
                 reasons=tuple(reasons),
             )
 
@@ -45,6 +63,8 @@ class ExecutionPlanner:
                 execution_mode=mode,
                 request_text=request_text,
                 steering=steering,
+                origin_device_id=origin_device_id,
+                reducer=reducer,
                 reasons=tuple(reasons),
             )
 
@@ -55,6 +75,8 @@ class ExecutionPlanner:
             request_text=request_text,
             tasks=(PlannedTask(shard_id="shard-1", request_text=request_text),),
             steering=steering,
+            origin_device_id=origin_device_id,
+            reducer=reducer,
             reasons=tuple(reasons),
         )
 

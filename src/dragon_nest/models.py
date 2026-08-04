@@ -19,15 +19,27 @@ class ExecutionMode(StrEnum):
     LAYER_PIPELINE = "layer_pipeline"
 
 
+class ReducerMode(StrEnum):
+    CONCAT = "concat"
+    FIRST_SUCCESS = "first_success"
+    MOCK_SYNTHESIS = "mock_synthesis"
+
+
+class RuntimeName(StrEnum):
+    MOCK = "mock"
+    GENIE = "genie"
+    QNN = "qnn"
+
+
 @dataclass(frozen=True)
 class HealthState:
     battery_pct: float = -1
     charging: bool = False
-    thermal_level: float = 0
-    cpu_utilization: float = 0
-    accelerator_utilization: float = 0
+    thermal_level: float = -1
+    cpu_utilization: float = -1
+    accelerator_utilization: float = -1
     available_memory_mb: int = 0
-    network_rtt_ms: float = 0
+    network_rtt_ms: float = -1
     reachable: bool = True
     status: HealthStatus = HealthStatus.HEALTHY
 
@@ -51,9 +63,20 @@ class ModelCapability:
     max_context_tokens: int
     warm: bool
     quality_score: float
+    model_version: str = ""
+    tokenizer_id: str = ""
+    precision: str = ""
+    boundary_format: str = ""
     steering_vector_ids: tuple[str, ...] = ()
     supported_steering_layers: tuple[int, ...] = ()
     segment: ModelSegment | None = None
+    runtime_name: str = RuntimeName.MOCK.value
+    runtime_version: str = ""
+    supported_accelerators: tuple[str, ...] = ("cpu",)
+    min_memory_mb: int = 0
+    supports_steering: bool = False
+    supports_data_parallel: bool = True
+    supports_layer_pipeline: bool = False
 
 
 @dataclass(frozen=True)
@@ -128,6 +151,11 @@ class PipelineStage:
     selected_model_id: str
     start_layer: int
     end_layer: int
+    model_family: str = ""
+    model_version: str = ""
+    tokenizer_id: str = ""
+    precision: str = ""
+    boundary_format: str = ""
 
 
 @dataclass(frozen=True)
@@ -138,7 +166,8 @@ class ExecutionPlan:
     tasks: tuple[PlannedTask, ...] = ()
     stages: tuple[PipelineStage, ...] = ()
     steering: SteeringSpec = field(default_factory=SteeringSpec)
-    reducer: str = "mock_synthesis"
+    origin_device_id: str = ""
+    reducer: str = ReducerMode.MOCK_SYNTHESIS.value
     reasons: tuple[str, ...] = ()
 
 
@@ -159,5 +188,21 @@ class TaskResult:
     output_text: str
     device_id: str = ""
     error_code: str = ""
+    error_message: str = ""
     latency_ms: int = 0
+    attempt_id: str = ""
+    metrics: "ExecutionMetrics | None" = None
 
+
+@dataclass(frozen=True)
+class ExecutionMetrics:
+    model_id: str
+    model_version: str
+    runtime_name: str
+    runtime_version: str
+    accelerator: str
+    execution_latency_ms: int
+    error_code: str = ""
+    error_message: str = ""
+    observed_memory_delta_mb: int | None = None
+    observed_thermal_delta: float | None = None

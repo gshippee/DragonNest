@@ -1,0 +1,6 @@
+# Install in a dedicated environment. qai-hub 0.53 pins protobuf <=6.31.1,
+# while the DragonNest gRPC process uses protobuf 7.
+qai-hub==0.53.0
+onnx==1.22.0
+numpy>=2,<3
+h5py>=3,<4

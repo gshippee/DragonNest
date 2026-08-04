@@ -30,6 +30,12 @@ devices:
         max_context_tokens: 2048
         warm: true
         quality_score: 0.70
+        model_version: c1899de289a04d12100db370d81485cdf75e47ca
+        tokenizer_id: Qwen/Qwen3-0.6B
+        precision: fp16
+        boundary_format: raw-fp32
+        steering_vector_ids: [concise-vs-verbose-layer-7]
+        supported_steering_layers: [7]
         segment:
           pipeline_id: qwen3-0.6b-split-14
           start_layer: 0
@@ -69,6 +75,10 @@ devices:
         max_context_tokens: 2048
         warm: true
         quality_score: 0.72
+        model_version: c1899de289a04d12100db370d81485cdf75e47ca
+        tokenizer_id: Qwen/Qwen3-0.6B
+        precision: fp16
+        boundary_format: raw-fp32
         segment:
           pipeline_id: qwen3-0.6b-split-14
           start_layer: 14
@@ -76,4 +86,3 @@ devices:
           total_layers: 28
           includes_embedding: false
           includes_lm_head: true
-
