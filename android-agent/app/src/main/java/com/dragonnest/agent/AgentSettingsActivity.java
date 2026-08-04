@@ -20,15 +20,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.dragonnest.proto.SubmitTaskResponse;
-import com.google.zxing.integration.android.IntentIntegrator;
-import com.google.zxing.integration.android.IntentResult;
-
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** The consumer app flow: connect a device, make it personal, then ask. */
 public final class AgentSettingsActivity extends Activity {
-    private static final int CAMERA_PERMISSION_REQUEST = 101;
+    private static final int QR_CAPTURE_REQUEST = 611;
     private AgentConfiguration configuration;
     private EnrollmentStore enrollmentStore;
     private UserProfileStore profileStore;
@@ -176,37 +173,22 @@ public final class AgentSettingsActivity extends Activity {
     }
 
     private void startQrScan() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                && checkSelfPermission(Manifest.permission.CAMERA)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST);
-            return;
-        }
-        launchQrScanner();
-    }
-
-    private void launchQrScanner() {
-        new IntentIntegrator(this)
-                .setCaptureActivity(EnrollmentCaptureActivity.class)
-                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                .setPrompt("Scan DragonNest enrollment")
-                .setBeepEnabled(false)
-                .setOrientationLocked(false)
-                .initiateScan();
+        startActivityForResult(
+                new Intent(this, EnrollmentCaptureActivity.class), QR_CAPTURE_REQUEST);
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
-        if (result == null) {
+        if (requestCode != QR_CAPTURE_REQUEST) {
             super.onActivityResult(requestCode, resultCode, data);
             return;
         }
-        if (result.getContents() == null) {
+        if (resultCode != RESULT_OK || data == null) {
             return;
         }
         try {
-            confirmEnrollment(EnrollmentPayload.parse(result.getContents()));
+            confirmEnrollment(EnrollmentPayload.parse(
+                    data.getStringExtra(EnrollmentCaptureActivity.EXTRA_SCAN_RESULT)));
         } catch (Exception failure) {
             Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
         }
@@ -229,17 +211,6 @@ public final class AgentSettingsActivity extends Activity {
             showProfile();
         } catch (Exception failure) {
             Toast.makeText(this, "Could not save enrollment", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(
-            int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == CAMERA_PERMISSION_REQUEST
-                && grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            launchQrScanner();
         }
     }
 
