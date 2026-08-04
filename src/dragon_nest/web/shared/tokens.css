@@ -1,0 +1,59 @@
+:root {
+  color-scheme: light;
+
+  /* Structure */
+  --canvas: #f4f6f5;
+  --surface: #ffffff;
+  --muted: #e9eeeb;
+  --ink: #17211b;
+  --subtle: #65716a;
+  --line: #cfd8d2;
+
+  /* Brand / action */
+  --accent: #126e4b;
+  --accent-strong: #0d5c3e;
+  --accent-soft: #dcefe6;
+
+  /* Status semantics — one meaning everywhere */
+  --status-healthy: #126e4b;
+  --status-healthy-soft: #dcefe6;
+  --status-warning: #a35d08;
+  --status-warning-soft: #f6e7ce;
+  --status-critical: #a53232;
+  --status-critical-soft: #f5dddd;
+  --status-neutral: #275d8c;
+  --status-neutral-soft: #dfeaf4;
+
+  /* Dark surface (event log, etc.) */
+  --dark: #19201c;
+  --dark-line: #37443c;
+  --dark-ink: #eef4f0;
+
+  /* Type */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 28px;
+  --space-7: 34px;
+
+  /* Shape */
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-dialog: 0 18px 60px rgba(0, 0, 0, .2);
+
+  /* Layout */
+  --content-width: 1240px;
+  --touch-target: 44px;
+}

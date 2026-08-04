@@ -13,6 +13,7 @@ from dragon_nest.transport.brain import BrainService, create_server, stop_server
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SERVICE_WORKER = ROOT / "src" / "dragon_nest" / "web" / "sw.js"
 
 
 def test_dashboard_serves_six_panel_ui_and_registry_api():
@@ -25,11 +26,14 @@ def test_dashboard_serves_six_panel_ui_and_registry_api():
             transport=httpx.ASGITransport(app=create_dashboard_app(service)),
             base_url="http://test",
         ) as client:
-            page = await client.get("/")
+            admin_page = await client.get("/admin")
+            user_page = await client.get("/")
+            manifest = await client.get("/manifest.webmanifest")
+            service_worker = await client.get("/sw.js")
             devices = (await client.get("/api/devices")).json()
             vectors = (await client.get("/api/steering-vectors")).json()
 
-        assert page.status_code == 200
+        assert admin_page.status_code == 200
         for panel in (
             "Device Registry",
             "Add device",
@@ -39,7 +43,11 @@ def test_dashboard_serves_six_panel_ui_and_registry_api():
             "Result",
             "Live Event Log",
         ):
-            assert panel in page.text
+            assert panel in admin_page.text
+        assert user_page.status_code == 200
+        assert "My Device" in user_page.text
+        assert manifest.status_code == 200
+        assert service_worker.status_code == 200
         assert {device["device_id"] for device in devices} == {
             "phone-01",
             "pc-01",
@@ -47,6 +55,15 @@ def test_dashboard_serves_six_panel_ui_and_registry_api():
         assert vectors[0]["vector_id"] == "concise-vs-verbose-layer-7"
 
     asyncio.run(scenario())
+
+
+def test_service_worker_uses_network_first_shell_updates():
+    source = SERVICE_WORKER.read_text()
+
+    assert 'const CACHE_NAME = "dragonnest-shell-v2"' in source
+    assert "event.respondWith(networkFirst(request));" in source
+    assert "const response = await fetch(request);" in source
+    assert "const cached = await caches.match(request);" in source
 
 
 def test_dashboard_creates_qr_enrollment_without_exposing_secret():

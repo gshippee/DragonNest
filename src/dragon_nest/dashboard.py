@@ -85,8 +85,26 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
     app.mount("/assets", StaticFiles(directory=WEB_ROOT), name="assets")
 
     @app.get("/", include_in_schema=False)
-    async def dashboard():
-        return FileResponse(WEB_ROOT / "index.html")
+    async def user_page():
+        return FileResponse(WEB_ROOT / "app" / "index.html")
+
+    @app.get("/admin", include_in_schema=False)
+    async def admin_page():
+        return FileResponse(WEB_ROOT / "admin" / "index.html")
+
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    async def manifest():
+        return FileResponse(
+            WEB_ROOT / "manifest.webmanifest", media_type="application/manifest+json"
+        )
+
+    @app.get("/sw.js", include_in_schema=False)
+    async def service_worker():
+        return FileResponse(
+            WEB_ROOT / "sw.js",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     @app.get("/api/health")
     async def api_health():

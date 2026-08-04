@@ -1,16 +1,6 @@
 const state = { devices: [], tasks: [], vectors: [], selectedTask: null, enrollment: null };
 
 const $ = (id) => document.getElementById(id);
-const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
-const statusClass = (value) => String(value || "neutral").toLowerCase();
-const fmt = (value, suffix = "") => value === -1 || value == null ? "Unknown" : `${value}${suffix}`;
-const decimal = (value, digits = 2) => value === -1 || value == null ? "Unknown" : Number(value).toFixed(digits);
-
-async function api(path, options) {
-  const response = await fetch(path, options);
-  if (!response.ok) throw new Error((await response.json()).detail || response.statusText);
-  return response.json();
-}
 
 async function refresh() {
   try {
@@ -51,7 +41,7 @@ function renderDevices() {
       inventory.npu_status ? `NPU ${inventory.npu_status}` : ""
     ].filter(Boolean).map((value) => `<span class="chip">${esc(value)}</span>`).join("");
     return `<article class="device-card ${statusClass(device.status)}">
-      <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(device.platform)} · ${device.connected ? "stream connected" : "disconnected"}</p></div><div><span class="status ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-button simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button></div></div>
+      <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(device.platform)} · ${device.connected ? "stream connected" : "disconnected"}</p></div><div><span class="status-pill ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-btn simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button></div></div>
       <div class="metrics"><div class="metric"><span>Battery</span><strong>${h.battery_pct < 0 ? "Unknown" : `${decimal(h.battery_pct, 0)}%${h.charging ? " charging" : ""}`}</strong></div><div class="metric"><span>Thermal</span><strong>${decimal(h.thermal_level)}</strong></div><div class="metric"><span>Memory</span><strong>${h.available_memory_mb === 0 ? "Unknown" : fmt(h.available_memory_mb, " MB")}</strong></div><div class="metric"><span>Accelerator</span><strong>${h.accelerator_utilization < 0 ? "Unknown" : `${decimal(h.accelerator_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>Network RTT</span><strong>${h.network_rtt_ms < 0 ? "Unknown" : `${decimal(h.network_rtt_ms, 0)} ms`}</strong></div><div class="metric"><span>Active</span><strong>${device.active_tasks.length}</strong></div></div>
       <div class="model-list">${hardware}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
     </article>`;
@@ -70,8 +60,8 @@ function renderTask(task) {
   const profile = task.profile;
   $("profile-strip").innerHTML = profile ? `<span class="profile-item">Class <strong>${esc(profile.task_class)}</strong></span><span class="profile-item">Confidence <strong>${Math.round(profile.confidence * 100)}%</strong></span><span class="profile-item">Mode <strong>${esc(task.execution_mode)}</strong></span><span class="profile-item">Privacy <strong>${esc(profile.privacy_tier)}</strong></span><span class="profile-item">Reducer <strong>${esc(task.reducer)}</strong></span>${task.origin_device_id ? `<span class="profile-item">Origin <strong>${esc(task.origin_device_id)}</strong></span>` : ""}${task.steering?.enabled ? `<span class="profile-item">Steering <strong>${esc(task.steering.vector_id)} @ ${task.steering.alpha}</strong></span>` : ""}` : "";
   $("route-trace").innerHTML = task.route_reasons?.length ? task.route_reasons.map((reason) => `<li>${esc(reason)}</li>`).join("") : '<li class="empty">No route trace available</li>';
-  $("progress").innerHTML = task.progress?.length ? task.progress.map((item) => `<tr><td>${esc(item.id)}</td><td>${esc(item.device_id)}${item.winner ? " · winner" : ""}</td><td>${esc(item.model_id)}</td><td><span class="status ${statusClass(item.state)}">${esc(item.state)}</span></td><td>${fmt(item.latency_ms, " ms")}</td><td>${item.retry_count}</td></tr>`).join("") : '<tr><td colspan="6" class="empty">No shards or pipeline stages</td></tr>';
-  $("result-state").className = `status ${statusClass(task.state)}`;
+  $("progress").innerHTML = task.progress?.length ? task.progress.map((item) => `<tr><td>${esc(item.id)}</td><td>${esc(item.device_id)}${item.winner ? " · winner" : ""}</td><td>${esc(item.model_id)}</td><td><span class="status-pill ${statusClass(item.state)}">${esc(item.state)}</span></td><td>${fmt(item.latency_ms, " ms")}</td><td>${item.retry_count}</td></tr>`).join("") : '<tr><td colspan="6" class="empty">No shards or pipeline stages</td></tr>';
+  $("result-state").className = `status-pill ${statusClass(task.state)}`;
   $("result-state").textContent = task.state;
   $("result-output").textContent = task.result?.output_text || task.error_message || "No result available.";
   const metrics = task.result?.metrics;
@@ -80,6 +70,10 @@ function renderTask(task) {
 
 function renderEvents(events) {
   $("events").innerHTML = events.length ? events.map((event) => `<div class="event-row"><span>${Number(event.timestamp).toFixed(2)}</span><span class="event-type">${esc(event.type)}</span><span class="event-subject">${esc(event.subject)}</span><span class="event-message">${esc(event.message)}</span></div>`).join("") : '<div class="empty">No events</div>';
+}
+
+function renderVectors() {
+  $("vector-list").innerHTML = state.vectors.length ? state.vectors.map((vector) => `<div class="vector-item"><strong>${esc(vector.vector_id)}</strong><span>${esc(vector.model_family)} · alpha ${vector.alpha_min} to ${vector.alpha_max} (default ${vector.default_alpha}) · ${esc(vector.positions.join(", "))}</span></div>`).join("") : '<div class="empty">No steering vectors configured</div>';
 }
 
 function selectTask(taskId) {
@@ -93,6 +87,7 @@ async function loadVectors() {
   $("vector-id").innerHTML = state.vectors.map((vector) => `<option value="${esc(vector.vector_id)}">${esc(vector.vector_id)}</option>`).join("");
   $("enrollment-vector").innerHTML = '<option value="">None</option>' + state.vectors.map((vector) => `<option value="${esc(vector.vector_id)}">${esc(vector.vector_id)}</option>`).join("");
   applyVectorDefaults();
+  renderVectors();
 }
 
 function applyVectorDefaults() {
@@ -134,8 +129,6 @@ async function applySimulation(event) {
   catch (error) { toast(error.message); }
 }
 
-function toast(message) { const node = $("toast"); node.textContent = message; node.classList.add("visible"); clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => node.classList.remove("visible"), 3200); }
-
 function openEnrollment() {
   $("enrollment-host").value = window.location.hostname || "127.0.0.1";
   $("enrollment-port").value = "50051";
@@ -152,7 +145,7 @@ function openEnrollment() {
 }
 
 function resetEnrollment() {
-  clearInterval(window.enrollmentTimer);
+  clearInterval(window.__enrollmentTimer);
   state.enrollment = null;
   $("enrollment-settings").hidden = false;
   $("enrollment-code").hidden = true;
@@ -177,7 +170,7 @@ async function createEnrollment(event) {
     $("enrollment-create").hidden = true;
     $("enrollment-qr").src = `${session.qr_url}?t=${Date.now()}`;
     updateEnrollmentStatus(session);
-    window.enrollmentTimer = setInterval(pollEnrollment, 1000);
+    window.__enrollmentTimer = setInterval(pollEnrollment, 1000);
   } catch (error) { toast(error.message); button.disabled = false; }
 }
 
@@ -186,8 +179,8 @@ async function pollEnrollment() {
   try {
     const session = await api(`/api/enrollment-sessions/${encodeURIComponent(state.enrollment.session_id)}`);
     state.enrollment = session; updateEnrollmentStatus(session);
-    if (session.status !== "PENDING") { clearInterval(window.enrollmentTimer); await refresh(); }
-  } catch (error) { clearInterval(window.enrollmentTimer); toast(error.message); }
+    if (session.status !== "PENDING") { clearInterval(window.__enrollmentTimer); await refresh(); }
+  } catch (error) { clearInterval(window.__enrollmentTimer); toast(error.message); }
 }
 
 function updateEnrollmentStatus(session) {
@@ -205,7 +198,7 @@ function updateEnrollmentStatus(session) {
 }
 
 async function closeEnrollment() {
-  clearInterval(window.enrollmentTimer);
+  clearInterval(window.__enrollmentTimer);
   if (state.enrollment?.status === "PENDING") {
     try { await api(`/api/enrollment-sessions/${encodeURIComponent(state.enrollment.session_id)}`, {method: "DELETE"}); }
     catch (error) { toast(error.message); }
@@ -214,6 +207,22 @@ async function closeEnrollment() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  $("task-form").addEventListener("submit", submitTask); $("task-select").addEventListener("change", (event) => selectTask(event.target.value)); $("steering-enabled").addEventListener("change", (event) => $("steering-controls").hidden = !event.target.checked); $("vector-id").addEventListener("change", applyVectorDefaults); $("alpha").addEventListener("input", () => $("alpha-value").value = $("alpha").value); $("refresh-events").addEventListener("click", refresh); $("simulation-form").addEventListener("submit", applySimulation); $("sim-cancel").addEventListener("click", () => $("simulation-dialog").close()); $("sim-thermal").addEventListener("input", updateSimulationOutputs); $("sim-load").addEventListener("input", updateSimulationOutputs); $("add-device").addEventListener("click", openEnrollment); $("enrollment-form").addEventListener("submit", createEnrollment); $("enrollment-close").addEventListener("click", closeEnrollment); $("enrollment-cancel").addEventListener("click", closeEnrollment); $("enrollment-vector").addEventListener("change", applyEnrollmentVectorDefaults);
+  $("task-form").addEventListener("submit", submitTask);
+  $("task-select").addEventListener("change", (event) => selectTask(event.target.value));
+  $("steering-enabled").addEventListener("change", (event) => $("steering-controls").hidden = !event.target.checked);
+  $("vector-id").addEventListener("change", applyVectorDefaults);
+  $("alpha").addEventListener("input", () => $("alpha-value").value = $("alpha").value);
+  $("refresh-events").addEventListener("click", refresh);
+  $("simulation-form").addEventListener("submit", applySimulation);
+  $("sim-cancel").addEventListener("click", () => $("simulation-dialog").close());
+  $("sim-thermal").addEventListener("input", updateSimulationOutputs);
+  $("sim-load").addEventListener("input", updateSimulationOutputs);
+  $("add-device").addEventListener("click", openEnrollment);
+  $("enrollment-form").addEventListener("submit", createEnrollment);
+  $("enrollment-close").addEventListener("click", closeEnrollment);
+  $("enrollment-cancel").addEventListener("click", closeEnrollment);
+  $("enrollment-vector").addEventListener("change", applyEnrollmentVectorDefaults);
+  watchOnlineStatus("offline-banner");
+  setupInstallPrompt("install-button");
   await loadVectors(); await refresh(); setInterval(refresh, 1000);
 });
