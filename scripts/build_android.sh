@@ -24,8 +24,13 @@ if [[ ! -d "$ANDROID_SDK_ROOT/platforms/android-35" ]]; then
   exit 2
 fi
 
+gradle_args=()
+if [[ "${DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS:-true}" == "false" ]]; then
+  gradle_args+=("-PincludeModelArtifacts=false")
+fi
+
 cd "$repo_root/android-agent"
-./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+./gradlew --no-daemon "${gradle_args[@]}" :app:testDebugUnitTest :app:assembleDebug
 
 apk="$repo_root/android-agent/app/build/outputs/apk/debug/app-debug.apk"
 echo "APK: $apk"

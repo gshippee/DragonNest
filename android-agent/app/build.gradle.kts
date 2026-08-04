@@ -9,6 +9,10 @@ plugins {
 val qairtSdkRoot = providers.gradleProperty("qairtSdkRoot")
     .orElse(providers.environmentVariable("DRAGONNEST_QAIRT_SDK_ROOT"))
     .orNull
+val includeModelArtifacts = providers.gradleProperty("includeModelArtifacts")
+    .orElse("true")
+    .map { it.toBoolean() }
+    .get()
 
 android {
     namespace = "com.dragonnest.agent"
@@ -18,8 +22,8 @@ android {
         applicationId = "com.dragonnest.agent"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
     }
 
     compileOptions {
@@ -36,7 +40,7 @@ android {
 
     // The open-source APK remains buildable without Qualcomm's SDK. A hardware
     // build opts in explicitly and compiles the JNI bridge for physical arm64 devices.
-    if (!qairtSdkRoot.isNullOrBlank()) {
+    if (includeModelArtifacts && !qairtSdkRoot.isNullOrBlank()) {
         defaultConfig {
             ndk {
                 abiFilters += "arm64-v8a"
@@ -55,8 +59,10 @@ android {
     }
 }
 
-android.sourceSets.getByName("main").jniLibs.srcDir("../vendor/jniLibs")
-android.sourceSets.getByName("main").assets.srcDir("../vendor/model-assets")
+if (includeModelArtifacts) {
+    android.sourceSets.getByName("main").jniLibs.srcDir("../vendor/jniLibs")
+    android.sourceSets.getByName("main").assets.srcDir("../vendor/model-assets")
+}
 
 val mainProto = (
     android.sourceSets.getByName("main") as ExtensionAware

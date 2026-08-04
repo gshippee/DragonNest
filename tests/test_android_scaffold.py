@@ -97,6 +97,7 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     gradle = (android_root / "app/build.gradle.kts").read_text(encoding="utf-8")
     assert 'jniLibs.srcDir("../vendor/jniLibs")' in gradle
     assert 'assets.srcDir("../vendor/model-assets")' in gradle
+    assert "includeModelArtifacts" in gradle
     assert 'noCompress += "bin"' in gradle
     assert "setHardware(hardwareInventory.snapshot())" in (
         sources / "AgentProfile.java"
