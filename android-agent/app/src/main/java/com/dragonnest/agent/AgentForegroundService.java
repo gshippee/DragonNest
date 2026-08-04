@@ -66,6 +66,11 @@ public final class AgentForegroundService extends Service {
                 runtime = null;
             }
         }
+        if (!new EnrollmentStore(this).hasCredential()
+                || new UserProfileStore(this).load() == null) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         if (runtime == null) {
             telemetry.setSimulation(configuration.simulation());
             startRuntime();
@@ -93,11 +98,11 @@ public final class AgentForegroundService extends Service {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(
                 CHANNEL_ID,
-                "DragonNest Agent",
+                "DragonNest",
                 NotificationManager.IMPORTANCE_LOW));
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("DragonNest Agent")
-                .setContentText("Connected device agent is running")
+                .setContentTitle("DragonNest is ready")
+                .setContentText("Your device is available when needed")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setOngoing(true)
                 .build();

@@ -10,7 +10,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="DragonNest Agent"
+        android:label="DragonNest"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="true">
         <activity
@@ -21,6 +21,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".EnrollmentCaptureActivity"
+            android:exported="false"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/zxing_CaptureTheme" />
         <service
             android:name=".AgentForegroundService"
             android:exported="false"

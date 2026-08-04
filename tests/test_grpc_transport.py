@@ -92,6 +92,51 @@ def test_grpc_agents_register_and_execute_routed_task():
     asyncio.run(scenario())
 
 
+def test_qr_registration_persists_client_profile_once():
+    steering_registry = SteeringRegistry.from_yaml(
+        ROOT / "configs/steering-vectors.yaml"
+    )
+    service = BrainService(steering_registry=steering_registry)
+    session = service.enrollment.create(
+        brain_host="192.168.1.20",
+        brain_port=50051,
+        use_tls=False,
+    )
+    registration = pb.RegisterDevice(
+        device_id="android-profile-test",
+        display_name="Test Phone",
+        enrollment_token=session.bootstrap_credential,
+        models=[pb.ModelCapability(model_id="android-mock")],
+        personal_profile=pb.PersonalProfileRegistration(
+            person_name="Alex",
+            preferred_mode="private",
+            steering_vector_id="concise-vs-verbose-layer-7",
+            steering_alpha=-2,
+            steering_positions="last",
+        ),
+    )
+
+    error, credential = service._authorize_registration(registration)
+    assert error == ""
+    assert credential.startswith("dn_device_")
+    profile = service.profiles.profile_for_device("android-profile-test")
+    assert profile is not None
+    assert profile.person_name == "Alex"
+    assert profile.preferred_mode == "private"
+    assert profile.steering_vector_id == "concise-vs-verbose-layer-7"
+    first_profile_id = profile.profile_id
+
+    # A duplicate bootstrap submission resolves to the existing claim rather
+    # than creating a second profile during a reconnect race.
+    error, duplicate_credential = service._authorize_registration(registration)
+    assert error == ""
+    assert duplicate_credential == credential
+    assert service.profiles.profile_for_device("android-profile-test").profile_id == (
+        first_profile_id
+    )
+    assert len(service.profiles.all()) == 1
+
+
 def test_grpc_stream_disconnect_retries_on_fallback_agent():
     async def scenario() -> None:
         service = BrainService()

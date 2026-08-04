@@ -184,6 +184,25 @@ class EnrollmentManager:
             session.device_name,
         )
 
+    def session_for_bootstrap(self, bootstrap_credential: str) -> EnrollmentSession | None:
+        """Return the active session for a bootstrap credential without claiming it."""
+        session_id = self._bootstrap_index.get(_digest(bootstrap_credential))
+        if not session_id:
+            return None
+        session = self.get(session_id)
+        return session if session.status in {EnrollmentStatus.PENDING, EnrollmentStatus.CLAIMED} else None
+
+    def attach_profile(
+        self, session_id: str, profile_id: str, device_name: str
+    ) -> EnrollmentSession:
+        """Bind a client-created profile to a claimed session for later reconnects."""
+        session = self.get(session_id)
+        if session.status != EnrollmentStatus.CLAIMED:
+            raise EnrollmentError("personal profiles can be attached only after enrollment")
+        session.profile_id = profile_id
+        session.device_name = device_name.strip()
+        return session
+
     def valid_device_credential(self, device_id: str, credential: str) -> bool:
         expected = self._device_credentials.get(device_id)
         return bool(expected and hmac.compare_digest(expected, _digest(credential)))

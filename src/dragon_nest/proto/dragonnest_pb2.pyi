@@ -41,7 +41,7 @@ class BrainToDevice(_message.Message):
     def __init__(self, registration_accepted: _Optional[_Union[RegistrationAccepted, _Mapping]] = ..., registration_rejected: _Optional[_Union[RegistrationRejected, _Mapping]] = ..., execute_task: _Optional[_Union[ExecuteTask, _Mapping]] = ..., cancel_task: _Optional[_Union[CancelTask, _Mapping]] = ..., heartbeat_ack: _Optional[_Union[HeartbeatAck, _Mapping]] = ..., execute_shard: _Optional[_Union[ExecuteShard, _Mapping]] = ..., execute_pipeline_stage: _Optional[_Union[ExecutePipelineStage, _Mapping]] = ...) -> None: ...
 
 class RegisterDevice(_message.Message):
-    __slots__ = ("device_id", "display_name", "device_type", "platform", "agent_version", "enrollment_token", "total_memory_mb", "models", "certificate_fingerprint", "hardware")
+    __slots__ = ("device_id", "display_name", "device_type", "platform", "agent_version", "enrollment_token", "total_memory_mb", "models", "certificate_fingerprint", "hardware", "personal_profile")
     DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
     DEVICE_TYPE_FIELD_NUMBER: _ClassVar[int]
@@ -52,6 +52,7 @@ class RegisterDevice(_message.Message):
     MODELS_FIELD_NUMBER: _ClassVar[int]
     CERTIFICATE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     HARDWARE_FIELD_NUMBER: _ClassVar[int]
+    PERSONAL_PROFILE_FIELD_NUMBER: _ClassVar[int]
     device_id: str
     display_name: str
     device_type: str
@@ -62,7 +63,26 @@ class RegisterDevice(_message.Message):
     models: _containers.RepeatedCompositeFieldContainer[ModelCapability]
     certificate_fingerprint: str
     hardware: HardwareInventory
-    def __init__(self, device_id: _Optional[str] = ..., display_name: _Optional[str] = ..., device_type: _Optional[str] = ..., platform: _Optional[str] = ..., agent_version: _Optional[str] = ..., enrollment_token: _Optional[str] = ..., total_memory_mb: _Optional[int] = ..., models: _Optional[_Iterable[_Union[ModelCapability, _Mapping]]] = ..., certificate_fingerprint: _Optional[str] = ..., hardware: _Optional[_Union[HardwareInventory, _Mapping]] = ...) -> None: ...
+    personal_profile: PersonalProfileRegistration
+    def __init__(self, device_id: _Optional[str] = ..., display_name: _Optional[str] = ..., device_type: _Optional[str] = ..., platform: _Optional[str] = ..., agent_version: _Optional[str] = ..., enrollment_token: _Optional[str] = ..., total_memory_mb: _Optional[int] = ..., models: _Optional[_Iterable[_Union[ModelCapability, _Mapping]]] = ..., certificate_fingerprint: _Optional[str] = ..., hardware: _Optional[_Union[HardwareInventory, _Mapping]] = ..., personal_profile: _Optional[_Union[PersonalProfileRegistration, _Mapping]] = ...) -> None: ...
+
+class PersonalProfileRegistration(_message.Message):
+    __slots__ = ("person_name", "preferred_mode", "steering_vector_id", "steering_alpha", "steering_positions", "allow_remote_vector", "notes")
+    PERSON_NAME_FIELD_NUMBER: _ClassVar[int]
+    PREFERRED_MODE_FIELD_NUMBER: _ClassVar[int]
+    STEERING_VECTOR_ID_FIELD_NUMBER: _ClassVar[int]
+    STEERING_ALPHA_FIELD_NUMBER: _ClassVar[int]
+    STEERING_POSITIONS_FIELD_NUMBER: _ClassVar[int]
+    ALLOW_REMOTE_VECTOR_FIELD_NUMBER: _ClassVar[int]
+    NOTES_FIELD_NUMBER: _ClassVar[int]
+    person_name: str
+    preferred_mode: str
+    steering_vector_id: str
+    steering_alpha: float
+    steering_positions: str
+    allow_remote_vector: bool
+    notes: str
+    def __init__(self, person_name: _Optional[str] = ..., preferred_mode: _Optional[str] = ..., steering_vector_id: _Optional[str] = ..., steering_alpha: _Optional[float] = ..., steering_positions: _Optional[str] = ..., allow_remote_vector: _Optional[bool] = ..., notes: _Optional[str] = ...) -> None: ...
 
 class HardwareInventory(_message.Message):
     __slots__ = ("manufacturer", "model", "device", "os_version", "api_level", "soc_manufacturer", "soc_model", "cpu_abis", "cpu_core_count", "total_storage_mb", "available_storage_mb", "npu_status", "npu_name", "qnn_runtime_version")

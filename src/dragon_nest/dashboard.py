@@ -59,8 +59,10 @@ class EnrollmentSessionRequest(BaseModel):
     brain_port: int = Field(default=50051, ge=1, le=65535)
     use_tls: bool = False
     ttl_seconds: int = Field(default=300, ge=30, le=900)
-    person_name: str = Field(min_length=1, max_length=120)
-    device_name: str = Field(min_length=1, max_length=120)
+    # Dashboard enrollment remains supported, but mobile clients now collect
+    # profile preferences locally and send them on their first registration.
+    person_name: str = Field(default="", max_length=120)
+    device_name: str = Field(default="", max_length=120)
     preferred_mode: str = "auto"
     steering_vector_id: str = ""
     steering_alpha: float = 0
@@ -143,10 +145,21 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
         session = None
         try:
             session = service.enrollment.create(**enrollment_values)
-            _validate_profile_steering(service, profile_values)
-            profile = service.profiles.create(**profile_values)
-            session.profile_id = profile.profile_id
-            session.device_name = request.device_name.strip()
+            if profile_values["person_name"].strip():
+                _validate_profile_steering(service, profile_values)
+                profile = service.profiles.create(**profile_values)
+                session.profile_id = profile.profile_id
+                session.device_name = request.device_name.strip()
+            elif any(
+                profile_values[key]
+                for key in (
+                    "steering_vector_id",
+                    "steering_alpha",
+                    "allow_remote_vector",
+                    "notes",
+                )
+            ) or profile_values["preferred_mode"] != "auto":
+                raise ProfileError("person_name is required when creating a profile")
         except (EnrollmentError, ProfileError) as exc:
             if session is not None:
                 service.enrollment.cancel(session.session_id)

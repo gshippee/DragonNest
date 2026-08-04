@@ -8,7 +8,10 @@ public final class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-            context.startForegroundService(new Intent(context, AgentForegroundService.class));
+            if (new EnrollmentStore(context).hasCredential()
+                    && new UserProfileStore(context).load() != null) {
+                context.startForegroundService(new Intent(context, AgentForegroundService.class));
+            }
         }
     }
 }

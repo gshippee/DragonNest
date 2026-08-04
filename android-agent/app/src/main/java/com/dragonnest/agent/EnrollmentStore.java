@@ -48,6 +48,14 @@ public final class EnrollmentStore {
         return new String(plaintext, StandardCharsets.UTF_8);
     }
 
+    public boolean hasCredential() {
+        try {
+            return !load().isBlank();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private SecretKey getOrCreateKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
         keyStore.load(null);

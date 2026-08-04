@@ -12,7 +12,7 @@ import grpc
 
 from ..classifier import RuleBasedTaskClassifier
 from ..dispatch import DeviceOfflineError, DispatchManager
-from ..enrollment import EnrollmentManager
+from ..enrollment import EnrollmentError, EnrollmentManager
 from ..models import (
     Device,
     ExecutionMetrics,
@@ -1239,6 +1239,17 @@ class BrainService(pb_grpc.BrainControlServicer):
         issued_credential = ""
         if self.config.dev_mode:
             credential = registration.enrollment_token
+            bootstrap_session = self.enrollment.session_for_bootstrap(credential)
+            profile_values: dict[str, object] | None = None
+            if (
+                bootstrap_session is not None
+                and not bootstrap_session.profile_id
+                and registration.HasField("personal_profile")
+            ):
+                try:
+                    profile_values = self._profile_values_from_registration(registration)
+                except ProfileError as exc:
+                    return f"personal profile is invalid: {exc}", ""
             if credential == self.config.enrollment_token:
                 pass
             elif self.enrollment.valid_device_credential(
@@ -1249,15 +1260,21 @@ class BrainService(pb_grpc.BrainControlServicer):
                 claim = self.enrollment.claim(credential, registration.device_id)
                 if claim is None:
                     return "invalid enrollment token or expired credential", ""
-                if claim.profile_id:
-                    try:
-                        self.profiles.associate_device(
-                            registration.device_id,
-                            claim.profile_id,
-                            claim.device_name or registration.display_name,
+                try:
+                    profile_id = claim.profile_id
+                    device_name = claim.device_name or registration.display_name
+                    if not profile_id and profile_values is not None:
+                        profile = self.profiles.create(**profile_values)
+                        profile_id = profile.profile_id
+                        self.enrollment.attach_profile(
+                            claim.session_id, profile_id, device_name
                         )
-                    except ProfileError as exc:
-                        return f"personal profile association failed: {exc}", ""
+                    if profile_id:
+                        self.profiles.associate_device(
+                            registration.device_id, profile_id, device_name
+                        )
+                except (EnrollmentError, ProfileError) as exc:
+                    return f"personal profile association failed: {exc}", ""
                 issued_credential = claim.device_credential
         if not self.config.dev_mode:
             if not peer_fingerprint:
@@ -1270,6 +1287,42 @@ class BrainService(pb_grpc.BrainControlServicer):
             if peer_fingerprint in self.revoked_certificate_fingerprints:
                 return "client certificate has been revoked", ""
         return "", issued_credential
+
+    def _profile_values_from_registration(
+        self, registration: pb.RegisterDevice
+    ) -> dict[str, object]:
+        profile = registration.personal_profile
+        values: dict[str, object] = {
+            "person_name": profile.person_name,
+            "preferred_mode": profile.preferred_mode or "auto",
+            "steering_vector_id": profile.steering_vector_id,
+            "steering_alpha": profile.steering_alpha,
+            "steering_positions": profile.steering_positions or "last",
+            "allow_remote_vector": profile.allow_remote_vector,
+            "notes": profile.notes,
+        }
+        vector_id = str(values["steering_vector_id"])
+        if vector_id:
+            if self.steering_registry is None:
+                raise ProfileError("Brain has no steering registry configured")
+            vectors = {
+                vector.vector_id: vector for vector in self.steering_registry.vectors()
+            }
+            vector = vectors.get(vector_id)
+            if vector is None:
+                raise ProfileError(f"unknown steering vector {vector_id}")
+            alpha = float(values["steering_alpha"])
+            positions = str(values["steering_positions"])
+            if not vector.alpha_min <= alpha <= vector.alpha_max:
+                raise ProfileError(
+                    f"steering alpha must be between {vector.alpha_min} and {vector.alpha_max}"
+                )
+            if positions not in vector.positions:
+                raise ProfileError(
+                    f"steering positions {positions!r} are not supported"
+                )
+        # ProfileStore performs the canonical string and numeric validation.
+        return values
 
     def _steering_for_profile(self, profile: PersonalProfile) -> SteeringSpec:
         if self.steering_registry is None:

@@ -45,7 +45,9 @@ def test_dashboard_serves_six_panel_ui_and_registry_api():
         ):
             assert panel in admin_page.text
         assert user_page.status_code == 200
-        assert "My Device" in user_page.text
+        assert "Personal AI" in user_page.text
+        assert "Answer style" in user_page.text
+        assert "Battery" not in user_page.text
         assert manifest.status_code == 200
         assert service_worker.status_code == 200
         assert {device["device_id"] for device in devices} == {
@@ -108,6 +110,31 @@ def test_dashboard_creates_qr_enrollment_without_exposing_secret():
         assert cancelled.json()["status"] == "CANCELLED"
         assert gone.status_code == 410
         assert profiles_after_cancel.json() == []
+
+    asyncio.run(scenario())
+
+
+def test_dashboard_creates_profileless_qr_for_client_owned_enrollment():
+    async def scenario() -> None:
+        service = BrainService()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=create_dashboard_app(service)),
+            base_url="http://test",
+        ) as client:
+            created = await client.post(
+                "/api/enrollment-sessions",
+                json={
+                    "brain_host": "192.168.1.20",
+                    "brain_port": 50051,
+                    "use_tls": False,
+                    "ttl_seconds": 60,
+                },
+            )
+            profiles = await client.get("/api/personal-profiles")
+
+        assert created.status_code == 200
+        assert created.json()["profile_id"] == ""
+        assert profiles.json() == []
 
     asyncio.run(scenario())
 

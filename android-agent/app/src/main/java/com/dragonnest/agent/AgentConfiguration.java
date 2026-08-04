@@ -49,6 +49,10 @@ public final class AgentConfiguration {
                 .apply();
     }
 
+    public void saveEnrollmentEndpoint(String host, int port, boolean tls) {
+        save(host, port, tls, displayName());
+    }
+
     public SimulationState simulation() {
         return new SimulationState(
                 optionalFloat("simulation_battery"),

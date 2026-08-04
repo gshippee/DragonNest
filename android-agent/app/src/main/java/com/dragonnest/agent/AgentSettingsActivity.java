@@ -8,182 +8,178 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.dragonnest.proto.SubmitTaskResponse;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/** The consumer app flow: connect a device, make it personal, then ask. */
 public final class AgentSettingsActivity extends Activity {
     private static final int CAMERA_PERMISSION_REQUEST = 101;
     private AgentConfiguration configuration;
     private EnrollmentStore enrollmentStore;
-    private EditText host;
-    private EditText port;
-    private EditText displayName;
-    private EditText enrollmentToken;
-    private EditText simulatedBattery;
-    private EditText simulatedThermal;
-    private EditText simulatedCpu;
-    private EditText simulatedAccelerator;
-    private EditText simulatedRtt;
-    private CheckBox tls;
-    private CheckBox simulatedOffline;
+    private UserProfileStore profileStore;
+    private final ExecutorService queryExecutor = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         configuration = new AgentConfiguration(this);
         enrollmentStore = new EnrollmentStore(this);
-        setContentView(buildContent());
+        profileStore = new UserProfileStore(this);
         requestNotificationPermission();
-    }
-
-    private ScrollView buildContent() {
-        int padding = (int) (20 * getResources().getDisplayMetrics().density);
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(padding, padding, padding, padding);
-
-        TextView title = new TextView(this);
-        title.setText("DragonNest Agent");
-        title.setTextSize(26);
-        form.addView(title, matchWidth());
-
-        TextView deviceId = new TextView(this);
-        deviceId.setText("Device ID: " + configuration.deviceId());
-        form.addView(deviceId, matchWidth());
-
-        TextView hardware = new TextView(this);
-        AndroidRuntimeCatalog runtimeCatalog = AndroidRuntimeCatalog.create(this);
-        var hardwareInfo = new AndroidHardwareInventory(this, runtimeCatalog).snapshot();
-        hardware.setText("Hardware: " + hardwareInfo.getModel()
-                + " · " + hardwareInfo.getSocModel()
-                + " · NPU " + hardwareInfo.getNpuStatus());
-        form.addView(hardware, matchWidth());
-
-        Button scan = new Button(this);
-        scan.setText("Scan enrollment QR");
-        scan.setOnClickListener(view -> startQrScan());
-        form.addView(scan, matchWidth());
-
-        host = field("Brain host", configuration.brainHost(), InputType.TYPE_CLASS_TEXT);
-        port = field(
-                "Brain gRPC port",
-                String.valueOf(configuration.brainPort()),
-                InputType.TYPE_CLASS_NUMBER);
-        displayName = field(
-                "Display name", configuration.displayName(), InputType.TYPE_CLASS_TEXT);
-        enrollmentToken = field(
-                "Manual enrollment token", loadEnrollmentToken(),
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        form.addView(host, matchWidth());
-        form.addView(port, matchWidth());
-        form.addView(displayName, matchWidth());
-        form.addView(enrollmentToken, matchWidth());
-
-        tls = new CheckBox(this);
-        tls.setText("Use TLS");
-        tls.setChecked(configuration.useTls());
-        form.addView(tls, matchWidth());
-
-        SimulationState simulation = configuration.simulation();
-        TextView simulationTitle = new TextView(this);
-        simulationTitle.setText("Simulation overrides (blank uses platform telemetry)");
-        form.addView(simulationTitle, matchWidth());
-        simulatedBattery = numericField("Battery percentage", simulation.batteryPercentage());
-        simulatedThermal = numericField("Thermal level 0..1", simulation.thermalLevel());
-        simulatedCpu = numericField("CPU utilization 0..1", simulation.cpuUtilization());
-        simulatedAccelerator = numericField(
-                "Accelerator utilization 0..1", simulation.acceleratorUtilization());
-        simulatedRtt = numericField("Network RTT ms", simulation.networkRttMs());
-        form.addView(simulatedBattery, matchWidth());
-        form.addView(simulatedThermal, matchWidth());
-        form.addView(simulatedCpu, matchWidth());
-        form.addView(simulatedAccelerator, matchWidth());
-        form.addView(simulatedRtt, matchWidth());
-        simulatedOffline = new CheckBox(this);
-        simulatedOffline.setText("Simulated offline");
-        simulatedOffline.setChecked(simulation.offline());
-        form.addView(simulatedOffline, matchWidth());
-
-        Button start = new Button(this);
-        start.setText("Save and start agent");
-        start.setOnClickListener(view -> saveAndStart());
-        form.addView(start, matchWidth());
-
-        Button stop = new Button(this);
-        stop.setText("Stop agent");
-        stop.setOnClickListener(view -> {
-            stopService(new Intent(this, AgentForegroundService.class));
-            Toast.makeText(this, "Agent stopped", Toast.LENGTH_SHORT).show();
-        });
-        form.addView(stop, matchWidth());
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(form);
-        return scroll;
-    }
-
-    private EditText field(String hint, String value, int inputType) {
-        EditText field = new EditText(this);
-        field.setHint(hint);
-        field.setText(value);
-        field.setInputType(inputType);
-        field.setSingleLine(true);
-        return field;
-    }
-
-    private EditText numericField(String hint, Float value) {
-        return field(
-                hint,
-                value == null ? "" : String.valueOf(value),
-                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-    }
-
-    private void saveAndStart() {
-        try {
-            int parsedPort = Integer.parseInt(port.getText().toString().trim());
-            if (parsedPort < 1 || parsedPort > 65535) {
-                throw new IllegalArgumentException("Port must be between 1 and 65535");
-            }
-            configuration.save(
-                    host.getText().toString(),
-                    parsedPort,
-                    tls.isChecked(),
-                    displayName.getText().toString());
-            String manualCredential = enrollmentToken.getText().toString().trim();
-            if (!manualCredential.isEmpty()) {
-                enrollmentStore.save(manualCredential);
-            }
-            configuration.saveSimulation(
-                    optionalFloat(simulatedBattery),
-                    boundedFloat(simulatedThermal, 0, 1),
-                    boundedFloat(simulatedCpu, 0, 1),
-                    boundedFloat(simulatedAccelerator, 0, 1),
-                    optionalFloat(simulatedRtt),
-                    simulatedOffline.isChecked());
-            Intent start = new Intent(this, AgentForegroundService.class);
-            start.setAction(AgentForegroundService.ACTION_RELOAD);
-            startForegroundService(start);
-            Toast.makeText(this, "Agent started", Toast.LENGTH_SHORT).show();
-        } catch (Exception failure) {
-            Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
+        if (enrollmentStore.hasCredential() && profileStore.load() != null) {
+            showQuery();
+        } else {
+            showEnrollment();
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        queryExecutor.shutdownNow();
+        super.onDestroy();
+    }
+
+    private void showEnrollment() {
+        LinearLayout content = page();
+        content.addView(title("DragonNest"));
+        content.addView(body("Connect this device to start using your personal AI."));
+
+        Button scan = action("Scan enrollment QR");
+        scan.setOnClickListener(view -> startQrScan());
+        content.addView(scan, matchWidth());
+        setContentView(scroll(content));
+    }
+
+    private void showProfile() {
+        UserProfile existing = profileStore.load();
+        LinearLayout content = page();
+        content.addView(title("Make it yours"));
+        content.addView(body("These choices stay with your DragonNest profile."));
+
+        EditText name = field("Your name", existing == null ? "" : existing.personName(),
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        content.addView(name, matchWidth());
+
+        content.addView(section("What matters most?"));
+        RadioGroup mode = choices(
+                new String[]{"Balanced", "Fast answers", "Keep it on this device", "Best quality"},
+                new String[]{"auto", "fast", "private", "quality"},
+                existing == null ? "auto" : existing.preferredMode());
+        content.addView(mode, matchWidth());
+
+        content.addView(section("Answer style"));
+        RadioGroup style = choices(
+                new String[]{"Balanced", "Concise", "Detailed"},
+                new String[]{UserProfile.STYLE_BALANCED, UserProfile.STYLE_CONCISE,
+                        UserProfile.STYLE_DETAILED},
+                existing == null ? UserProfile.STYLE_BALANCED : existing.responseStyle());
+        content.addView(style, matchWidth());
+
+        Button continueButton = action("Continue");
+        continueButton.setOnClickListener(view -> {
+            try {
+                UserProfile profile = new UserProfile(
+                        name.getText().toString(),
+                        selectedValue(mode),
+                        selectedValue(style));
+                profileStore.save(profile);
+                startAgent();
+                showQuery();
+            } catch (IllegalArgumentException failure) {
+                Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+        content.addView(continueButton, matchWidth());
+        setContentView(scroll(content));
+    }
+
+    private void showQuery() {
+        LinearLayout content = page();
+        UserProfile profile = profileStore.load();
+        content.addView(title("DragonNest"));
+        content.addView(body(profile == null
+                ? "What would you like help with?"
+                : "What would you like help with, " + profile.personName() + "?"));
+
+        EditText prompt = field("Ask anything", "", InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        prompt.setMinLines(4);
+        prompt.setGravity(android.view.Gravity.TOP);
+        content.addView(prompt, matchWidth());
+
+        TextView result = body("");
+        result.setVisibility(View.GONE);
+        Button send = action("Send");
+        send.setOnClickListener(view -> submitQuery(prompt, result, send));
+        content.addView(send, matchWidth());
+        content.addView(result, matchWidth());
+        setContentView(scroll(content));
+        startAgent();
+    }
+
+    private void submitQuery(EditText prompt, TextView result, Button send) {
+        String text = prompt.getText().toString().trim();
+        if (text.isEmpty()) {
+            Toast.makeText(this, "Enter a question first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        send.setEnabled(false);
+        result.setText("Thinking...");
+        result.setVisibility(View.VISIBLE);
+        queryExecutor.execute(() -> {
+            try {
+                SubmitTaskResponse response = new BrainTaskClient(configuration).submit(text);
+                runOnUiThread(() -> {
+                    result.setText(response.getSuccess()
+                            ? response.getOutputText()
+                            : friendlyError(response));
+                    send.setEnabled(true);
+                });
+            } catch (Exception failure) {
+                runOnUiThread(() -> {
+                    result.setText("DragonNest could not reach your workspace. Please try again.");
+                    send.setEnabled(true);
+                });
+            }
+        });
+    }
+
+    private static String friendlyError(SubmitTaskResponse response) {
+        if (response.getErrorCode().equals("NO_ELIGIBLE_FALLBACK")) {
+            return "Your device is getting ready. Please try again in a few seconds.";
+        }
+        if (response.getErrorCode().equals("STEERING_UNAVAILABLE")) {
+            return "That answer style is not available for the selected model yet.";
+        }
+        return "DragonNest could not complete that request. Please try again.";
+    }
+
+    private void startAgent() {
+        Intent start = new Intent(this, AgentForegroundService.class);
+        start.setAction(AgentForegroundService.ACTION_RELOAD);
+        startForegroundService(start);
     }
 
     private void startQrScan() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 && checkSelfPermission(Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(
-                    new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST);
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST);
             return;
         }
         launchQrScanner();
@@ -191,6 +187,7 @@ public final class AgentSettingsActivity extends Activity {
 
     private void launchQrScanner() {
         new IntentIntegrator(this)
+                .setCaptureActivity(EnrollmentCaptureActivity.class)
                 .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
                 .setPrompt("Scan DragonNest enrollment")
                 .setBeepEnabled(false)
@@ -200,8 +197,7 @@ public final class AgentSettingsActivity extends Activity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        IntentResult result = IntentIntegrator.parseActivityResult(
-                requestCode, resultCode, data);
+        IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
         if (result == null) {
             super.onActivityResult(requestCode, resultCode, data);
             return;
@@ -217,26 +213,22 @@ public final class AgentSettingsActivity extends Activity {
     }
 
     private void confirmEnrollment(EnrollmentPayload payload) {
-        String address = payload.brainHost() + ":" + payload.brainPort()
-                + (payload.useTls() ? " · TLS" : "");
         new AlertDialog.Builder(this)
-                .setTitle("Enroll with DragonNest")
-                .setMessage(address)
+                .setTitle("Connect this device")
+                .setMessage("This securely connects your device to DragonNest.")
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton("Enroll", (dialog, which) -> applyEnrollment(payload))
+                .setPositiveButton("Continue", (dialog, which) -> applyEnrollment(payload))
                 .show();
     }
 
     private void applyEnrollment(EnrollmentPayload payload) {
         try {
-            host.setText(payload.brainHost());
-            port.setText(String.valueOf(payload.brainPort()));
-            tls.setChecked(payload.useTls());
+            configuration.saveEnrollmentEndpoint(
+                    payload.brainHost(), payload.brainPort(), payload.useTls());
             enrollmentStore.save(payload.credential());
-            enrollmentToken.setText("");
-            saveAndStart();
+            showProfile();
         } catch (Exception failure) {
-            Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Could not save enrollment", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -251,29 +243,6 @@ public final class AgentSettingsActivity extends Activity {
         }
     }
 
-    private static Float optionalFloat(EditText field) {
-        String value = field.getText().toString().trim();
-        return value.isEmpty() ? null : Float.parseFloat(value);
-    }
-
-    private static Float boundedFloat(EditText field, float minimum, float maximum) {
-        Float value = optionalFloat(field);
-        if (value != null && (value < minimum || value > maximum)) {
-            throw new IllegalArgumentException(
-                    field.getHint() + " must be between " + minimum + " and " + maximum);
-        }
-        return value;
-    }
-
-    private String loadEnrollmentToken() {
-        try {
-            String stored = enrollmentStore.load();
-            return stored.isEmpty() ? "dev-token" : stored;
-        } catch (Exception failure) {
-            return "";
-        }
-    }
-
     private void requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -282,9 +251,82 @@ public final class AgentSettingsActivity extends Activity {
         }
     }
 
+    private LinearLayout page() {
+        int padding = (int) (20 * getResources().getDisplayMetrics().density);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(padding, padding, padding, padding);
+        return content;
+    }
+
+    private TextView title(String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(28);
+        view.setPadding(0, 0, 0, 12);
+        return view;
+    }
+
+    private TextView body(String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(17);
+        view.setPadding(0, 0, 0, 16);
+        return view;
+    }
+
+    private TextView section(String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(18);
+        view.setPadding(0, 16, 0, 4);
+        return view;
+    }
+
+    private EditText field(String hint, String value, int inputType) {
+        EditText view = new EditText(this);
+        view.setHint(hint);
+        view.setText(value);
+        view.setInputType(inputType);
+        view.setPadding(0, 8, 0, 8);
+        return view;
+    }
+
+    private RadioGroup choices(String[] labels, String[] values, String selected) {
+        RadioGroup group = new RadioGroup(this);
+        for (int index = 0; index < labels.length; index++) {
+            RadioButton button = new RadioButton(this);
+            button.setId(View.generateViewId());
+            button.setText(labels[index]);
+            button.setTag(values[index]);
+            button.setChecked(values[index].equals(selected));
+            group.addView(button, matchWidth());
+        }
+        return group;
+    }
+
+    private static String selectedValue(RadioGroup group) {
+        RadioButton selected = group.findViewById(group.getCheckedRadioButtonId());
+        if (selected == null) {
+            throw new IllegalArgumentException("Make a selection to continue");
+        }
+        return String.valueOf(selected.getTag());
+    }
+
+    private Button action(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        return button;
+    }
+
+    private ScrollView scroll(LinearLayout content) {
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        return scroll;
+    }
+
     private static ViewGroup.LayoutParams matchWidth() {
         return new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 }

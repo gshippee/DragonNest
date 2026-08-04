@@ -46,6 +46,19 @@ message RegisterDevice {
   repeated ModelCapability models = 8;
   string certificate_fingerprint = 9;
   HardwareInventory hardware = 10;
+  PersonalProfileRegistration personal_profile = 11;
+}
+
+// User-owned preferences collected by a client during initial enrollment.
+// The Brain persists these only while claiming a one-time enrollment credential.
+message PersonalProfileRegistration {
+  string person_name = 1;
+  string preferred_mode = 2;
+  string steering_vector_id = 3;
+  float steering_alpha = 4;
+  string steering_positions = 5;
+  bool allow_remote_vector = 6;
+  string notes = 7;
 }
 
 message HardwareInventory {
