@@ -76,8 +76,11 @@ Not implemented yet:
 
 - On-target smoke testing of the DragonNest runtime adapters.
 - On-target validation of real QNN layer boundaries over the live transport.
-- Android QNN/Genie executor integration with the vendor runtime libraries; the
-  current APK ships the required MVP mock executor.
+- Actual on-device QNN layer-pipeline execution on a Snapdragon target. The
+  Android Agent now has a direct QAIRT 2.48 Genie JNI bridge for verified S25
+  bundles, plus artifact validation and dynamic capability registration. A
+  matching licensed SDK, S25-targeted model bundle, and physical smoke test are
+  still required before it is a release claim.
 
 ## Repository Layout
 

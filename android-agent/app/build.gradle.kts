@@ -6,6 +6,10 @@ plugins {
     id("com.google.protobuf")
 }
 
+val qairtSdkRoot = providers.gradleProperty("qairtSdkRoot")
+    .orElse(providers.environmentVariable("DRAGONNEST_QAIRT_SDK_ROOT"))
+    .orNull
+
 android {
     namespace = "com.dragonnest.agent"
     compileSdk = 35
@@ -23,7 +27,36 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    // Genie context binaries are memory-mapped at runtime and can be several
+    // gigabytes. Compressing them wastes heap during packaging and blocks mmap.
+    androidResources {
+        noCompress += "bin"
+    }
+
+    // The open-source APK remains buildable without Qualcomm's SDK. A hardware
+    // build opts in explicitly and compiles the JNI bridge for physical arm64 devices.
+    if (!qairtSdkRoot.isNullOrBlank()) {
+        defaultConfig {
+            ndk {
+                abiFilters += "arm64-v8a"
+            }
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DQAIRT_SDK_ROOT=$qairtSdkRoot"
+                }
+            }
+        }
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+            }
+        }
+    }
 }
+
+android.sourceSets.getByName("main").jniLibs.srcDir("../vendor/jniLibs")
+android.sourceSets.getByName("main").assets.srcDir("../vendor/model-assets")
 
 val mainProto = (
     android.sourceSets.getByName("main") as ExtensionAware
@@ -63,6 +96,7 @@ dependencies {
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     compileOnly("org.apache.tomcat:annotations-api:6.0.53")
+    implementation(fileTree("../vendor/aars") { include("*.aar", "*.jar") })
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

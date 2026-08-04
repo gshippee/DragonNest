@@ -46,12 +46,13 @@ public final class AgentForegroundService extends Service {
     }
 
     private void startRuntime() {
-        AgentProfile profile = new AgentProfile(this, configuration);
+        AndroidRuntimeCatalog runtimeCatalog = AndroidRuntimeCatalog.create(this);
+        AgentProfile profile = new AgentProfile(this, configuration, runtimeCatalog);
         runtime = new AgentRuntime(
                 () -> new GrpcAgentConnection(
                         configuration,
                         profile,
-                        new MockAndroidTaskExecutor()),
+                        runtimeCatalog),
                 new EnrollmentStore(this),
                 telemetry);
         runtime.start();

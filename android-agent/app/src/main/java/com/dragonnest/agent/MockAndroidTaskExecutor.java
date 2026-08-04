@@ -10,12 +10,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 public final class MockAndroidTaskExecutor implements AndroidTaskExecutor {
+    public static final String MODEL_ID = "android-mock-v1";
+
     @Override
     public TaskExecutionResult execute(ExecuteTask command) {
         long start = System.nanoTime();
         String output = "[Android mock result from " + command.getModelId() + "] "
                 + command.getRequestText() + steeringSuffix(command.getSteering().getEnabled());
-        return TaskExecutionResult.success(output, elapsedMs(start));
+        return TaskExecutionResult.success(output, elapsedMs(start), ExecutionDetails.mock());
     }
 
     @Override
@@ -23,7 +25,7 @@ public final class MockAndroidTaskExecutor implements AndroidTaskExecutor {
         long start = System.nanoTime();
         String output = "[Android mock shard " + command.getShardId() + "] "
                 + command.getRequestText() + steeringSuffix(command.getSteering().getEnabled());
-        return TaskExecutionResult.success(output, elapsedMs(start));
+        return TaskExecutionResult.success(output, elapsedMs(start), ExecutionDetails.mock());
     }
 
     @Override
@@ -34,7 +36,8 @@ public final class MockAndroidTaskExecutor implements AndroidTaskExecutor {
                     ? command.getInputBoundary().getChecksum() : "none";
             return TaskExecutionResult.success(
                     "[Android mock pipeline result] boundary=" + checksum,
-                    elapsedMs(start));
+                    elapsedMs(start),
+                    ExecutionDetails.mock());
         }
         byte[] payload = (command.getTaskId() + ":" + command.getStageId()
                 + ":" + command.getModelId()).getBytes(StandardCharsets.UTF_8);
@@ -47,7 +50,8 @@ public final class MockAndroidTaskExecutor implements AndroidTaskExecutor {
                 .setData(ByteString.copyFrom(payload))
                 .setChecksum(checksum)
                 .build();
-        return TaskExecutionResult.boundary(boundary, elapsedMs(start));
+        return TaskExecutionResult.boundary(
+                boundary, elapsedMs(start), ExecutionDetails.mock());
     }
 
     private static String steeringSuffix(boolean enabled) {

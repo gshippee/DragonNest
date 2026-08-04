@@ -345,16 +345,25 @@ public final class GrpcAgentConnection implements AgentConnection {
     }
 
     private ExecutionMetrics metrics(String modelId, TaskExecutionResult result) {
-        return ExecutionMetrics.newBuilder()
-                .setModelId(modelId)
-                .setModelVersion("mock-v1")
-                .setRuntimeName("mock")
-                .setRuntimeVersion("dragon-nest-android-0.1.0")
-                .setAccelerator("cpu")
+        ExecutionDetails details = result.details() == null
+                ? new ExecutionDetails(modelId, "", "unknown", "", "", null, null)
+                : result.details();
+        ExecutionMetrics.Builder metrics = ExecutionMetrics.newBuilder()
+                .setModelId(details.modelId().isEmpty() ? modelId : details.modelId())
+                .setModelVersion(details.modelVersion())
+                .setRuntimeName(details.runtimeName())
+                .setRuntimeVersion(details.runtimeVersion())
+                .setAccelerator(details.accelerator())
                 .setExecutionLatencyMs((int) Math.min(result.latencyMs(), Integer.MAX_VALUE))
                 .setErrorCode(result.errorCode())
-                .setErrorMessage(result.errorMessage())
-                .build();
+                .setErrorMessage(result.errorMessage());
+        if (details.observedMemoryDeltaMb() != null) {
+            metrics.setObservedMemoryDeltaMb(details.observedMemoryDeltaMb());
+        }
+        if (details.observedThermalDelta() != null) {
+            metrics.setObservedThermalDelta(details.observedThermalDelta());
+        }
+        return metrics.build();
     }
 
     private static TaskExecutionResult executionFailure(Exception failure, long start) {
@@ -362,7 +371,8 @@ public final class GrpcAgentConnection implements AgentConnection {
         return TaskExecutionResult.failure(
                 "EXECUTION_FAILED",
                 String.valueOf(failure.getMessage()),
-                latency);
+                latency,
+                null);
     }
 
     private void send(DeviceToBrain message) {

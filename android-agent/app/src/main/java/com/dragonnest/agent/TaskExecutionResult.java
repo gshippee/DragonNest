@@ -8,16 +8,20 @@ public record TaskExecutionResult(
         String errorCode,
         String errorMessage,
         long latencyMs,
-        BoundaryTensor boundary) {
-    public static TaskExecutionResult success(String output, long latencyMs) {
-        return new TaskExecutionResult(true, output, "", "", latencyMs, null);
+        BoundaryTensor boundary,
+        ExecutionDetails details) {
+    public static TaskExecutionResult success(
+            String output, long latencyMs, ExecutionDetails details) {
+        return new TaskExecutionResult(true, output, "", "", latencyMs, null, details);
     }
 
-    public static TaskExecutionResult boundary(BoundaryTensor value, long latencyMs) {
-        return new TaskExecutionResult(true, "", "", "", latencyMs, value);
+    public static TaskExecutionResult boundary(
+            BoundaryTensor value, long latencyMs, ExecutionDetails details) {
+        return new TaskExecutionResult(true, "", "", "", latencyMs, value, details);
     }
 
-    public static TaskExecutionResult failure(String code, String message, long latencyMs) {
-        return new TaskExecutionResult(false, "", code, message, latencyMs, null);
+    public static TaskExecutionResult failure(
+            String code, String message, long latencyMs, ExecutionDetails details) {
+        return new TaskExecutionResult(false, "", code, message, latencyMs, null, details);
     }
 }

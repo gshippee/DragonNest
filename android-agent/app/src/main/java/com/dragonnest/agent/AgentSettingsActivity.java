@@ -61,9 +61,11 @@ public final class AgentSettingsActivity extends Activity {
         form.addView(deviceId, matchWidth());
 
         TextView hardware = new TextView(this);
-        var hardwareInfo = new AndroidHardwareInventory(this).snapshot();
+        AndroidRuntimeCatalog runtimeCatalog = AndroidRuntimeCatalog.create(this);
+        var hardwareInfo = new AndroidHardwareInventory(this, runtimeCatalog).snapshot();
         hardware.setText("Hardware: " + hardwareInfo.getModel()
-                + " · " + hardwareInfo.getSocModel());
+                + " · " + hardwareInfo.getSocModel()
+                + " · NPU " + hardwareInfo.getNpuStatus());
         form.addView(hardware, matchWidth());
 
         Button scan = new Button(this);

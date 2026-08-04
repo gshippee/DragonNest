@@ -38,9 +38,21 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     inventory = (sources / "AndroidHardwareInventory.java").read_text(
         encoding="utf-8"
     )
+    runtime_catalog = (sources / "AndroidRuntimeCatalog.java").read_text(
+        encoding="utf-8"
+    )
+    artifacts = (sources / "AndroidArtifactRegistry.java").read_text(
+        encoding="utf-8"
+    )
     executor = (sources / "MockAndroidTaskExecutor.java").read_text(
         encoding="utf-8"
     )
+    genie_bridge = (
+        sources / "vendor/GenieRuntimeBridge.java"
+    ).read_text(encoding="utf-8")
+    genie_jni = (
+        android_root / "app/src/main/cpp/genie_jni.cpp"
+    ).read_text(encoding="utf-8")
 
     assert "reconnectBackoffSeconds * 2" in runtime
     assert "sendShutdown" in runtime
@@ -58,7 +70,23 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "Scan enrollment QR" in settings
     assert "dragonnest.enrollment" in payload
     assert "Build.SOC_MODEL" in inventory
-    assert "setNpuStatus(\"not_probed\")" in inventory
+    assert "setNpuStatus(runtimeCatalog.npuStatus())" in inventory
+    assert "registry.isVerified(artifact)" in runtime_catalog
+    assert "new QnnAndroidTaskExecutor" in runtime_catalog
+    assert "new GenieAndroidTaskExecutor" in runtime_catalog
+    assert "Checksum mismatch" in artifacts
+    asset_installer = (sources / "AndroidModelAssetInstaller.java").read_text(
+        encoding="utf-8"
+    )
+    assert "ATOMIC_MOVE" in asset_installer
+    assert '".installed"' in asset_installer
+    assert "nativeProbe" in genie_bridge
+    assert "genie_config.json" in genie_bridge
+    assert "GenieDialog_query" in genie_jni
+    gradle = (android_root / "app/build.gradle.kts").read_text(encoding="utf-8")
+    assert 'jniLibs.srcDir("../vendor/jniLibs")' in gradle
+    assert 'assets.srcDir("../vendor/model-assets")' in gradle
+    assert 'noCompress += "bin"' in gradle
     assert "setHardware(hardwareInventory.snapshot())" in (
         sources / "AgentProfile.java"
     ).read_text(encoding="utf-8")

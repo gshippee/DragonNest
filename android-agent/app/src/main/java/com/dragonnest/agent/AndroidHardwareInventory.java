@@ -12,9 +12,11 @@ import java.util.Arrays;
 /** Collects static platform attributes without claiming a vendor runtime is installed. */
 public final class AndroidHardwareInventory {
     private final Context context;
+    private final AndroidRuntimeCatalog runtimeCatalog;
 
-    public AndroidHardwareInventory(Context context) {
+    public AndroidHardwareInventory(Context context, AndroidRuntimeCatalog runtimeCatalog) {
         this.context = context.getApplicationContext();
+        this.runtimeCatalog = runtimeCatalog;
     }
 
     public HardwareInventory snapshot() {
@@ -37,7 +39,9 @@ public final class AndroidHardwareInventory {
                 .setCpuCoreCount(Runtime.getRuntime().availableProcessors())
                 .setTotalStorageMb(data.getTotalBytes() / (1024L * 1024L))
                 .setAvailableStorageMb(data.getAvailableBytes() / (1024L * 1024L))
-                .setNpuStatus("not_probed")
+                .setNpuStatus(runtimeCatalog.npuStatus())
+                .setNpuName(runtimeCatalog.npuName())
+                .setQnnRuntimeVersion(runtimeCatalog.qnnRuntimeVersion())
                 .build();
     }
 }

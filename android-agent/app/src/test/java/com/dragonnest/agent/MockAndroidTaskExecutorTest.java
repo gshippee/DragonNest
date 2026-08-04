@@ -31,6 +31,8 @@ public final class MockAndroidTaskExecutorTest {
 
         assertTrue(single.success());
         assertTrue(single.outputText().contains("Android mock result"));
+        assertEquals("mock", single.details().runtimeName());
+        assertEquals("cpu", single.details().accelerator());
         assertTrue(shard.success());
         assertTrue(shard.outputText().contains("shard-1"));
     }

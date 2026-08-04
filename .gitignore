@@ -7,6 +7,7 @@ __pycache__/
 venv/
 .gradle/
 build/
+.cxx/
 dist/
 *.egg-info/
 
