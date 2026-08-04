@@ -514,6 +514,21 @@ For the MVP, use a generated UUID persisted in the agent config directory:
 
 Do not use MAC addresses or hardware serial numbers as the primary identity.
 
+### 7.2.1 Automatic Hardware Inventory
+
+Agents must register immutable or slow-changing device inventory separately
+from user-editable profile data and live telemetry. Android inventory includes
+manufacturer/model, Android/API version, SoC when exposed by the platform, CPU
+ABIs and core count, total/available storage, and QNN/NPU runtime probe status.
+The Agent must report `not_probed` or `unavailable` rather than infer NPU
+availability from a Snapdragon brand name. Battery, available memory, thermal,
+CPU/accelerator utilization, and RTT continue to arrive in heartbeats.
+
+The Brain should prefer the originating device for normal work only after it
+passes the same model, memory, health, and policy eligibility checks as every
+other executor. If local capacity is ineligible, routing falls back and records
+why the origin was skipped.
+
 ### 7.3 MVP Authentication
 
 Support two modes:
@@ -623,6 +638,20 @@ message RegisterDevice {
   string enrollment_token = 6;
   DeviceCapabilities capabilities = 7;
   string certificate_fingerprint = 8; // required outside dev mode
+  HardwareInventory hardware = 9;
+}
+
+message HardwareInventory {
+  string manufacturer = 1;
+  string model = 2;
+  string os_version = 3;
+  string soc_model = 4;
+  repeated string cpu_abis = 5;
+  uint32 cpu_core_count = 6;
+  uint64 total_storage_mb = 7;
+  uint64 available_storage_mb = 8;
+  string npu_status = 9; // available | unavailable | not_probed
+  string qnn_runtime_version = 10;
 }
 
 message DeviceCapabilities {

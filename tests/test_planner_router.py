@@ -69,6 +69,34 @@ def test_router_prefers_pc_for_reasoning():
     assert routed.tasks[0].selected_model_id == "large-reasoning-v1"
 
 
+def test_router_prefers_eligible_origin_even_when_remote_scores_higher():
+    request = "Compare both options and recommend one."
+    profile = RuleBasedTaskClassifier().classify(request)
+    plan = ExecutionPlanner().plan(request, profile, origin_device_id="phone-01")
+
+    routed, decision = DeterministicRouter().route(plan, profile, _devices())
+
+    assert decision.selected_device_id == "phone-01"
+    assert routed.tasks[0].selected_model_id == "small-chat-v1"
+    assert any("Origin preference selected phone-01" in reason for reason in decision.reasons)
+
+
+def test_router_falls_back_when_origin_lacks_eligible_memory():
+    request = "Compare both options and recommend one."
+    profile = RuleBasedTaskClassifier().classify(request)
+    plan = ExecutionPlanner().plan(request, profile, origin_device_id="phone-01")
+    phone, pc = _devices()
+    exhausted_phone = replace(
+        phone,
+        health=replace(phone.health, available_memory_mb=0),
+    )
+
+    _, decision = DeterministicRouter().route(plan, profile, [exhausted_phone, pc])
+
+    assert decision.selected_device_id == "pc-01"
+    assert any("Origin phone-01 has no eligible" in reason for reason in decision.reasons)
+
+
 def test_data_parallel_routes_all_shards():
     request = "Summarize sections, then give key points."
     profile = RuleBasedTaskClassifier().classify(request, preferred_mode="parallel")

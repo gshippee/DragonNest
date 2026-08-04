@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from dragon_nest.models import Device, HealthState, ModelCapability
+from dragon_nest.models import Device, HardwareInventory, HealthState, ModelCapability
 from dragon_nest.transport.conversion import (
     device_from_registration,
     registration_from_device,
@@ -35,6 +35,18 @@ def test_registration_round_trips_runtime_and_artifact_capabilities():
         total_memory_mb=8192,
         health=HealthState(available_memory_mb=4096),
         models=(capability,),
+        hardware=HardwareInventory(
+            manufacturer="Qualcomm",
+            model="Reference Phone",
+            soc_model="Snapdragon 8 Elite",
+            cpu_abis=("arm64-v8a",),
+            cpu_core_count=8,
+            total_storage_mb=256000,
+            available_storage_mb=128000,
+            npu_status="available",
+            npu_name="Hexagon",
+            qnn_runtime_version="QAIRT-2.48",
+        ),
     )
 
     registration = registration_from_device(device, "token", "agent-v1")
@@ -43,3 +55,4 @@ def test_registration_round_trips_runtime_and_artifact_capabilities():
     assert replace(
         restored.models[0], quality_score=capability.quality_score
     ) == capability
+    assert restored.hardware == device.hardware

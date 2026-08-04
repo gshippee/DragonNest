@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from .models import Device, HealthState, ModelCapability, ModelSegment
+from .models import Device, HardwareInventory, HealthState, ModelCapability, ModelSegment
 
 
 def load_devices(path: str | Path) -> list[Device]:
@@ -62,6 +62,7 @@ def load_devices(path: str | Path) -> list[Device]:
                 total_memory_mb=int(item["total_memory_mb"]),
                 health=HealthState(**item["health"]),
                 models=tuple(models),
+                hardware=HardwareInventory(**item.get("hardware", {})),
             )
         )
     return devices

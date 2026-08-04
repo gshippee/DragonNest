@@ -39,7 +39,12 @@ class DeterministicRouter:
         profile: TaskProfile,
         devices: list[Device],
     ) -> tuple[ExecutionPlan, RouteDecision]:
-        ranked = self._rank_models(profile, devices, plan.steering)
+        ranked = self._rank_models(
+            profile,
+            devices,
+            plan.steering,
+            origin_device_id=plan.origin_device_id,
+        )
         if not ranked:
             raise ValueError("no eligible device/model for task")
         score, device, model, reason = ranked[0]
@@ -54,6 +59,7 @@ class DeterministicRouter:
         reasons = (
             *plan.reasons,
             reason,
+            *self._origin_route_reason(plan.origin_device_id, device.device_id),
             f"Fallbacks: {', '.join(fallbacks) or 'none'}.",
         )
         return routed_plan, RouteDecision(
@@ -72,7 +78,11 @@ class DeterministicRouter:
         devices: list[Device],
     ) -> tuple[ExecutionPlan, RouteDecision]:
         ranked = self._rank_models(
-            profile, devices, plan.steering, require_data_parallel=True
+            profile,
+            devices,
+            plan.steering,
+            require_data_parallel=True,
+            origin_device_id=plan.origin_device_id,
         )
         if not ranked:
             raise ValueError("no eligible device/model for data-parallel task")
@@ -97,6 +107,10 @@ class DeterministicRouter:
                 f"{task.shard_id} -> {device.device_id}/{model.model_id}: {reason}"
             )
         first = routed_tasks[0]
+        if plan.origin_device_id and first.selected_device_id == plan.origin_device_id:
+            reasons.append(
+                f"Origin preference assigned {first.shard_id} to {plan.origin_device_id}."
+            )
         routed_plan = replace(plan, tasks=tuple(routed_tasks))
         return routed_plan, RouteDecision(
             execution_mode=ExecutionMode.DATA_PARALLEL,
@@ -227,6 +241,7 @@ class DeterministicRouter:
         devices: list[Device],
         steering: SteeringSpec,
         require_data_parallel: bool = False,
+        origin_device_id: str = "",
     ) -> list[tuple[float, Device, ModelCapability, str]]:
         ranked = []
         for device in devices:
@@ -258,8 +273,29 @@ class DeterministicRouter:
                     f"memory={device.health.available_memory_mb} MB; {steering_reason}"
                 )
                 ranked.append((score, device, model, reason))
-        ranked.sort(key=lambda item: (-item[0], item[1].device_id, item[2].model_id))
+        ranked.sort(
+            key=lambda item: (
+                item[1].device_id != origin_device_id,
+                -item[0],
+                item[1].device_id,
+                item[2].model_id,
+            )
+        )
         return ranked
+
+    @staticmethod
+    def _origin_route_reason(
+        origin_device_id: str, selected_device_id: str
+    ) -> tuple[str, ...]:
+        if not origin_device_id:
+            return ()
+        if selected_device_id == origin_device_id:
+            return (
+                f"Origin preference selected {origin_device_id}: compatible local capacity is available.",
+            )
+        return (
+            f"Origin {origin_device_id} has no eligible compatible local capacity; selected {selected_device_id}.",
+        )
 
     @staticmethod
     def _has_model_memory(device: Device, model: ModelCapability) -> bool:

@@ -11,10 +11,12 @@ import java.util.List;
 public final class AgentProfile {
     private final Context context;
     private final AgentConfiguration configuration;
+    private final AndroidHardwareInventory hardwareInventory;
 
     public AgentProfile(Context context, AgentConfiguration configuration) {
         this.context = context.getApplicationContext();
         this.configuration = configuration;
+        this.hardwareInventory = new AndroidHardwareInventory(this.context);
     }
 
     public RegisterDevice registration(String enrollmentCredential) {
@@ -56,6 +58,7 @@ public final class AgentProfile {
                 .setEnrollmentToken(enrollmentCredential)
                 .setTotalMemoryMb(memory.totalMem / (1024L * 1024L))
                 .addModels(mock)
+                .setHardware(hardwareInventory.snapshot())
                 .build();
     }
 

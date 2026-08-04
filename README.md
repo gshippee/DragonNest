@@ -248,6 +248,12 @@ profile in `local/dragonnest-state.sqlite3`. Tasks submitted with that device as
 their origin inherit the saved preference and steering policy unless profile
 steering is disabled or an explicit steering request is supplied.
 
+At registration, Android Agents also report automatic static inventory: device
+manufacturer/model, Android/API version, SoC where Android exposes it, CPU
+ABIs/core count, storage, and QNN/NPU probe status. Live memory, thermal, and
+load remain heartbeat telemetry. For normal tasks, the Brain now prefers an
+eligible origin device before routing to a more capable remote fallback.
+
 ## Product Threads
 
 DragonNest keeps three product threads under one roof:

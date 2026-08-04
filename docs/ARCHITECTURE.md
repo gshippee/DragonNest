@@ -58,6 +58,13 @@ the generated device ID and uses the saved device name in the registry. A task
 originating from that device inherits profile steering unless the request
 disables profile steering or supplies an explicit steering spec.
 
+For ordinary single-device work, the router treats an eligible origin device as
+the preferred executor. Eligibility still requires a compatible advertised
+model, sufficient available memory, and a routable health state. If that gate
+fails, the Brain selects the next best device and records the reason. Static
+hardware inventory arrives with registration; memory, thermal, utilization,
+and RTT remain live telemetry rather than profile fields.
+
 Agent heartbeats come from an injectable platform telemetry interface. The
 default source reports host battery, thermal, memory, and CPU data when
 available, uses explicit unknown values otherwise, measures gRPC heartbeat RTT,

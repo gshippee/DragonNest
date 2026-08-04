@@ -16,6 +16,8 @@ This module builds a runnable Android Device Agent APK. It includes:
 - best-effort graceful shutdown;
 - Android battery, charging, thermal, and memory telemetry with explicit unknown
   values for unsupported CPU and accelerator metrics;
+- automatic static hardware registration for model/SoC, Android version, ABIs,
+  CPU cores, storage, and QNN/NPU probe status;
 - settings for Brain address, enrollment token, TLS, and simulated offline,
   battery, thermal, CPU, accelerator, and RTT state.
 
@@ -70,6 +72,9 @@ certificate is trusted by Android.
 QR enrollment currently operates only in Brain development mode. It removes
 the need to type or distribute the shared token, but it is not a substitute for
 production client-certificate provisioning.
+
+The APK reports `npu_status=not_probed` until a QNN or Genie Android runtime is
+integrated. It does not claim HTP/NPU availability from device branding alone.
 
 The implementation was verified on an API 35 x86_64 emulator against the Python
 Brain: registration and live telemetry succeeded, a remote single task returned

@@ -45,6 +45,24 @@ message RegisterDevice {
   uint64 total_memory_mb = 7;
   repeated ModelCapability models = 8;
   string certificate_fingerprint = 9;
+  HardwareInventory hardware = 10;
+}
+
+message HardwareInventory {
+  string manufacturer = 1;
+  string model = 2;
+  string device = 3;
+  string os_version = 4;
+  uint32 api_level = 5;
+  string soc_manufacturer = 6;
+  string soc_model = 7;
+  repeated string cpu_abis = 8;
+  uint32 cpu_core_count = 9;
+  uint64 total_storage_mb = 10;
+  uint64 available_storage_mb = 11;
+  string npu_status = 12;          // available | unavailable | not_probed
+  string npu_name = 13;
+  string qnn_runtime_version = 14;
 }
 
 message ModelCapability {

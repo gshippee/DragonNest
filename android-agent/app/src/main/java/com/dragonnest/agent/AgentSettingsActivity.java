@@ -60,6 +60,12 @@ public final class AgentSettingsActivity extends Activity {
         deviceId.setText("Device ID: " + configuration.deviceId());
         form.addView(deviceId, matchWidth());
 
+        TextView hardware = new TextView(this);
+        var hardwareInfo = new AndroidHardwareInventory(this).snapshot();
+        hardware.setText("Hardware: " + hardwareInfo.getModel()
+                + " · " + hardwareInfo.getSocModel());
+        form.addView(hardware, matchWidth());
+
         Button scan = new Button(this);
         scan.setText("Scan enrollment QR");
         scan.setOnClickListener(view -> startQrScan());

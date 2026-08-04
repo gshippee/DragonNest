@@ -45,6 +45,24 @@ class HealthState:
 
 
 @dataclass(frozen=True)
+class HardwareInventory:
+    manufacturer: str = ""
+    model: str = ""
+    device: str = ""
+    os_version: str = ""
+    api_level: int = 0
+    soc_manufacturer: str = ""
+    soc_model: str = ""
+    cpu_abis: tuple[str, ...] = ()
+    cpu_core_count: int = 0
+    total_storage_mb: int = 0
+    available_storage_mb: int = 0
+    npu_status: str = "not_probed"
+    npu_name: str = ""
+    qnn_runtime_version: str = ""
+
+
+@dataclass(frozen=True)
 class ModelSegment:
     pipeline_id: str
     start_layer: int
@@ -88,6 +106,7 @@ class Device:
     total_memory_mb: int
     health: HealthState
     models: tuple[ModelCapability, ...]
+    hardware: HardwareInventory = field(default_factory=HardwareInventory)
 
 
 @dataclass(frozen=True)

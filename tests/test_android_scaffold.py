@@ -35,6 +35,9 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     connection = (sources / "GrpcAgentConnection.java").read_text(encoding="utf-8")
     settings = (sources / "AgentSettingsActivity.java").read_text(encoding="utf-8")
     payload = (sources / "EnrollmentPayload.java").read_text(encoding="utf-8")
+    inventory = (sources / "AndroidHardwareInventory.java").read_text(
+        encoding="utf-8"
+    )
     executor = (sources / "MockAndroidTaskExecutor.java").read_text(
         encoding="utf-8"
     )
@@ -54,3 +57,8 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "IntentIntegrator" in settings
     assert "Scan enrollment QR" in settings
     assert "dragonnest.enrollment" in payload
+    assert "Build.SOC_MODEL" in inventory
+    assert "setNpuStatus(\"not_probed\")" in inventory
+    assert "setHardware(hardwareInventory.snapshot())" in (
+        sources / "AgentProfile.java"
+    ).read_text(encoding="utf-8")

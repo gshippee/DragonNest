@@ -345,6 +345,7 @@ def _device_dict(service: BrainService, record) -> dict[str, Any]:
             }
             for model in device.models
         ],
+        "hardware": asdict(device.hardware),
         "active_tasks": active_task_ids,
         "simulated_constraint": record.simulated_constraint,
         "personal_profile": (

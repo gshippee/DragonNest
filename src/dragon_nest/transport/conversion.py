@@ -3,6 +3,7 @@ from __future__ import annotations
 from ..models import (
     Device,
     ExecutionMetrics,
+    HardwareInventory,
     HealthState,
     ModelCapability,
     ModelSegment,
@@ -62,6 +63,22 @@ def device_from_registration(message: pb.RegisterDevice) -> Device:
             reachable=True,
         ),
         models=tuple(models),
+        hardware=HardwareInventory(
+            manufacturer=message.hardware.manufacturer,
+            model=message.hardware.model,
+            device=message.hardware.device,
+            os_version=message.hardware.os_version,
+            api_level=message.hardware.api_level,
+            soc_manufacturer=message.hardware.soc_manufacturer,
+            soc_model=message.hardware.soc_model,
+            cpu_abis=tuple(message.hardware.cpu_abis),
+            cpu_core_count=message.hardware.cpu_core_count,
+            total_storage_mb=message.hardware.total_storage_mb,
+            available_storage_mb=message.hardware.available_storage_mb,
+            npu_status=message.hardware.npu_status or "not_probed",
+            npu_name=message.hardware.npu_name,
+            qnn_runtime_version=message.hardware.qnn_runtime_version,
+        ),
     )
 
 
@@ -118,6 +135,22 @@ def registration_from_device(
         total_memory_mb=device.total_memory_mb,
         models=models,
         certificate_fingerprint=certificate_fingerprint,
+        hardware=pb.HardwareInventory(
+            manufacturer=device.hardware.manufacturer,
+            model=device.hardware.model,
+            device=device.hardware.device,
+            os_version=device.hardware.os_version,
+            api_level=device.hardware.api_level,
+            soc_manufacturer=device.hardware.soc_manufacturer,
+            soc_model=device.hardware.soc_model,
+            cpu_abis=device.hardware.cpu_abis,
+            cpu_core_count=device.hardware.cpu_core_count,
+            total_storage_mb=device.hardware.total_storage_mb,
+            available_storage_mb=device.hardware.available_storage_mb,
+            npu_status=device.hardware.npu_status,
+            npu_name=device.hardware.npu_name,
+            qnn_runtime_version=device.hardware.qnn_runtime_version,
+        ),
     )
 
 

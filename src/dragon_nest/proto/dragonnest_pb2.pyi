@@ -41,7 +41,7 @@ class BrainToDevice(_message.Message):
     def __init__(self, registration_accepted: _Optional[_Union[RegistrationAccepted, _Mapping]] = ..., registration_rejected: _Optional[_Union[RegistrationRejected, _Mapping]] = ..., execute_task: _Optional[_Union[ExecuteTask, _Mapping]] = ..., cancel_task: _Optional[_Union[CancelTask, _Mapping]] = ..., heartbeat_ack: _Optional[_Union[HeartbeatAck, _Mapping]] = ..., execute_shard: _Optional[_Union[ExecuteShard, _Mapping]] = ..., execute_pipeline_stage: _Optional[_Union[ExecutePipelineStage, _Mapping]] = ...) -> None: ...
 
 class RegisterDevice(_message.Message):
-    __slots__ = ("device_id", "display_name", "device_type", "platform", "agent_version", "enrollment_token", "total_memory_mb", "models", "certificate_fingerprint")
+    __slots__ = ("device_id", "display_name", "device_type", "platform", "agent_version", "enrollment_token", "total_memory_mb", "models", "certificate_fingerprint", "hardware")
     DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
     DEVICE_TYPE_FIELD_NUMBER: _ClassVar[int]
@@ -51,6 +51,7 @@ class RegisterDevice(_message.Message):
     TOTAL_MEMORY_MB_FIELD_NUMBER: _ClassVar[int]
     MODELS_FIELD_NUMBER: _ClassVar[int]
     CERTIFICATE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    HARDWARE_FIELD_NUMBER: _ClassVar[int]
     device_id: str
     display_name: str
     device_type: str
@@ -60,7 +61,40 @@ class RegisterDevice(_message.Message):
     total_memory_mb: int
     models: _containers.RepeatedCompositeFieldContainer[ModelCapability]
     certificate_fingerprint: str
-    def __init__(self, device_id: _Optional[str] = ..., display_name: _Optional[str] = ..., device_type: _Optional[str] = ..., platform: _Optional[str] = ..., agent_version: _Optional[str] = ..., enrollment_token: _Optional[str] = ..., total_memory_mb: _Optional[int] = ..., models: _Optional[_Iterable[_Union[ModelCapability, _Mapping]]] = ..., certificate_fingerprint: _Optional[str] = ...) -> None: ...
+    hardware: HardwareInventory
+    def __init__(self, device_id: _Optional[str] = ..., display_name: _Optional[str] = ..., device_type: _Optional[str] = ..., platform: _Optional[str] = ..., agent_version: _Optional[str] = ..., enrollment_token: _Optional[str] = ..., total_memory_mb: _Optional[int] = ..., models: _Optional[_Iterable[_Union[ModelCapability, _Mapping]]] = ..., certificate_fingerprint: _Optional[str] = ..., hardware: _Optional[_Union[HardwareInventory, _Mapping]] = ...) -> None: ...
+
+class HardwareInventory(_message.Message):
+    __slots__ = ("manufacturer", "model", "device", "os_version", "api_level", "soc_manufacturer", "soc_model", "cpu_abis", "cpu_core_count", "total_storage_mb", "available_storage_mb", "npu_status", "npu_name", "qnn_runtime_version")
+    MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_FIELD_NUMBER: _ClassVar[int]
+    OS_VERSION_FIELD_NUMBER: _ClassVar[int]
+    API_LEVEL_FIELD_NUMBER: _ClassVar[int]
+    SOC_MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
+    SOC_MODEL_FIELD_NUMBER: _ClassVar[int]
+    CPU_ABIS_FIELD_NUMBER: _ClassVar[int]
+    CPU_CORE_COUNT_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_STORAGE_MB_FIELD_NUMBER: _ClassVar[int]
+    AVAILABLE_STORAGE_MB_FIELD_NUMBER: _ClassVar[int]
+    NPU_STATUS_FIELD_NUMBER: _ClassVar[int]
+    NPU_NAME_FIELD_NUMBER: _ClassVar[int]
+    QNN_RUNTIME_VERSION_FIELD_NUMBER: _ClassVar[int]
+    manufacturer: str
+    model: str
+    device: str
+    os_version: str
+    api_level: int
+    soc_manufacturer: str
+    soc_model: str
+    cpu_abis: _containers.RepeatedScalarFieldContainer[str]
+    cpu_core_count: int
+    total_storage_mb: int
+    available_storage_mb: int
+    npu_status: str
+    npu_name: str
+    qnn_runtime_version: str
+    def __init__(self, manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., device: _Optional[str] = ..., os_version: _Optional[str] = ..., api_level: _Optional[int] = ..., soc_manufacturer: _Optional[str] = ..., soc_model: _Optional[str] = ..., cpu_abis: _Optional[_Iterable[str]] = ..., cpu_core_count: _Optional[int] = ..., total_storage_mb: _Optional[int] = ..., available_storage_mb: _Optional[int] = ..., npu_status: _Optional[str] = ..., npu_name: _Optional[str] = ..., qnn_runtime_version: _Optional[str] = ...) -> None: ...
 
 class ModelCapability(_message.Message):
     __slots__ = ("model_id", "model_family", "role", "task_classes", "max_context_tokens", "warm", "quality_score", "steering_vector_ids", "supported_steering_layers", "segment", "model_version", "tokenizer_id", "precision", "boundary_format", "runtime_name", "runtime_version", "supported_accelerators", "min_memory_mb", "supports_steering", "supports_data_parallel", "supports_layer_pipeline")

@@ -43,10 +43,17 @@ function renderDevices() {
     const h = device.health;
     const models = device.models.map((model) => `<span class="chip">${esc(model.role)} / ${esc(model.model_id)}</span>`).join("");
     const personal = device.personal_profile;
+    const inventory = device.hardware || {};
+    const hardware = [
+      [inventory.manufacturer, inventory.model].filter(Boolean).join(" "),
+      inventory.soc_model,
+      inventory.cpu_core_count ? `${inventory.cpu_core_count} CPU cores` : "",
+      inventory.npu_status ? `NPU ${inventory.npu_status}` : ""
+    ].filter(Boolean).map((value) => `<span class="chip">${esc(value)}</span>`).join("");
     return `<article class="device-card ${statusClass(device.status)}">
       <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(device.platform)} · ${device.connected ? "stream connected" : "disconnected"}</p></div><div><span class="status ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-button simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button></div></div>
       <div class="metrics"><div class="metric"><span>Battery</span><strong>${h.battery_pct < 0 ? "Unknown" : `${decimal(h.battery_pct, 0)}%${h.charging ? " charging" : ""}`}</strong></div><div class="metric"><span>Thermal</span><strong>${decimal(h.thermal_level)}</strong></div><div class="metric"><span>Memory</span><strong>${h.available_memory_mb === 0 ? "Unknown" : fmt(h.available_memory_mb, " MB")}</strong></div><div class="metric"><span>Accelerator</span><strong>${h.accelerator_utilization < 0 ? "Unknown" : `${decimal(h.accelerator_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>Network RTT</span><strong>${h.network_rtt_ms < 0 ? "Unknown" : `${decimal(h.network_rtt_ms, 0)} ms`}</strong></div><div class="metric"><span>Active</span><strong>${device.active_tasks.length}</strong></div></div>
-      <div class="model-list">${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
+      <div class="model-list">${hardware}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
     </article>`;
   }).join("") : '<div class="empty">No registered devices</div>';
   document.querySelectorAll(".simulate").forEach((button) => button.addEventListener("click", () => openSimulation(button.dataset.device)));
