@@ -71,6 +71,8 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "EnrollmentCaptureActivity.scanIntent(this)" in settings
     assert "UserProfileStore" in settings
     assert "BrainTaskClient" in settings
+    assert "Change registration" in settings
+    assert "showDebug" in settings
     assert "EnrollmentCaptureActivity" in (
         android_root / "app/src/main/AndroidManifest.xml"
     ).read_text(encoding="utf-8")
@@ -81,6 +83,7 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "DecoratedBarcodeView" in capture
     assert "decodeSingle(new BarcodeCallback()" in capture
     assert ".setAction(SCAN_ACTION)" in capture
+    assert "CAMERA_PERMISSION_REQUEST" in capture
     assert "dragonnest.enrollment" in payload
     assert "Build.SOC_MODEL" in inventory
     assert "setNpuStatus(runtimeCatalog.npuStatus())" in inventory

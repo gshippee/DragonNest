@@ -13,6 +13,7 @@ public final class AgentRuntime {
     private final Supplier<AgentConnection> connectionFactory;
     private final EnrollmentStore enrollmentStore;
     private final AndroidTelemetry telemetry;
+    private final ClientDebugLog debugLog;
     private volatile AgentConnection connection;
     private volatile boolean stopping;
     private volatile ScheduledFuture<?> heartbeatFuture;
@@ -21,17 +22,21 @@ public final class AgentRuntime {
     public AgentRuntime(
             Supplier<AgentConnection> connectionFactory,
             EnrollmentStore enrollmentStore,
-            AndroidTelemetry telemetry) {
+            AndroidTelemetry telemetry,
+            ClientDebugLog debugLog) {
         this.connectionFactory = connectionFactory;
         this.enrollmentStore = enrollmentStore;
         this.telemetry = telemetry;
+        this.debugLog = debugLog;
     }
 
     public void start() {
+        debugLog.add("Agent runtime started");
         executor.execute(this::connect);
     }
 
     public void onNetworkChanged() {
+        debugLog.add("Network state changed");
         executor.execute(() -> {
             if (connection != null && connection.isConnected()) {
                 sendHeartbeat();
@@ -43,6 +48,7 @@ public final class AgentRuntime {
 
     public void stop() {
         stopping = true;
+        debugLog.add("Agent runtime stopping");
         executor.execute(() -> {
             if (connection != null) {
                 try {
@@ -63,6 +69,7 @@ public final class AgentRuntime {
         }
         AgentConnection next = null;
         try {
+            debugLog.add("Connecting to Brain");
             next = connectionFactory.get();
             String replacementCredential = next.connect(enrollmentStore.load());
             if (replacementCredential != null && !replacementCredential.isBlank()) {
@@ -70,8 +77,10 @@ public final class AgentRuntime {
             }
             connection = next;
             reconnectBackoffSeconds = 1;
+            debugLog.add("Brain registration accepted");
             sendHeartbeat();
         } catch (Exception failure) {
+            debugLog.add("Brain connection failed: " + failureSummary(failure));
             if (next != null) {
                 next.close();
             }
@@ -107,7 +116,14 @@ public final class AgentRuntime {
             return;
         }
         long delay = reconnectBackoffSeconds;
+        debugLog.add("Retrying Brain connection in " + delay + "s");
         reconnectBackoffSeconds = Math.min(reconnectBackoffSeconds * 2, MAX_BACKOFF_SECONDS);
         executor.schedule(this::connect, delay, TimeUnit.SECONDS);
+    }
+
+    private static String failureSummary(Exception failure) {
+        String detail = failure.getMessage();
+        return failure.getClass().getSimpleName()
+                + (detail == null || detail.isBlank() ? "" : ": " + detail);
     }
 }

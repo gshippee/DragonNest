@@ -30,4 +30,8 @@ public final class UserProfileStore {
                 .putString("response_style", profile.responseStyle())
                 .apply();
     }
+
+    public void clear() {
+        preferences.edit().clear().apply();
+    }
 }

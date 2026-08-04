@@ -56,6 +56,10 @@ public final class EnrollmentStore {
         }
     }
 
+    public void clear() {
+        preferences.edit().clear().apply();
+    }
+
     private SecretKey getOrCreateKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
         keyStore.load(null);

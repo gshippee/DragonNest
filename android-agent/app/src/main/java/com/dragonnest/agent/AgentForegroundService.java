@@ -16,6 +16,7 @@ public final class AgentForegroundService extends Service {
     private AgentRuntime runtime;
     private AgentConfiguration configuration;
     private AndroidTelemetry telemetry;
+    private ClientDebugLog debugLog;
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
 
@@ -25,6 +26,8 @@ public final class AgentForegroundService extends Service {
         startForeground(NOTIFICATION_ID, createNotification());
         configuration = new AgentConfiguration(this);
         telemetry = new AndroidTelemetry(this);
+        debugLog = new ClientDebugLog(this);
+        debugLog.add("Foreground service created");
 
         connectivityManager = getSystemService(ConnectivityManager.class);
         networkCallback = new ConnectivityManager.NetworkCallback() {
@@ -54,7 +57,8 @@ public final class AgentForegroundService extends Service {
                         profile,
                         runtimeCatalog),
                 new EnrollmentStore(this),
-                telemetry);
+                telemetry,
+                debugLog);
         runtime.start();
     }
 
@@ -68,10 +72,12 @@ public final class AgentForegroundService extends Service {
         }
         if (!new EnrollmentStore(this).hasCredential()
                 || new UserProfileStore(this).load() == null) {
+            debugLog.add("Agent not started: enrollment or profile is missing");
             stopSelf();
             return START_NOT_STICKY;
         }
         if (runtime == null) {
+            debugLog.add("Starting device agent");
             telemetry.setSimulation(configuration.simulation());
             startRuntime();
         }
@@ -85,6 +91,9 @@ public final class AgentForegroundService extends Service {
         }
         if (runtime != null) {
             runtime.stop();
+        }
+        if (debugLog != null) {
+            debugLog.add("Foreground service stopped");
         }
         super.onDestroy();
     }

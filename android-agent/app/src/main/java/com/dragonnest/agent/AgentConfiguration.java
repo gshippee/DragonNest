@@ -53,6 +53,14 @@ public final class AgentConfiguration {
         save(host, port, tls, displayName());
     }
 
+    public void clearEnrollmentEndpoint() {
+        preferences.edit()
+                .remove("brain_host")
+                .remove("brain_port")
+                .remove("use_tls")
+                .apply();
+    }
+
     public SimulationState simulation() {
         return new SimulationState(
                 optionalFloat("simulation_battery"),

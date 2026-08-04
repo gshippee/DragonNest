@@ -29,6 +29,7 @@ public final class AgentSettingsActivity extends Activity {
     private AgentConfiguration configuration;
     private EnrollmentStore enrollmentStore;
     private UserProfileStore profileStore;
+    private ClientDebugLog debugLog;
     private final ExecutorService queryExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -37,6 +38,8 @@ public final class AgentSettingsActivity extends Activity {
         configuration = new AgentConfiguration(this);
         enrollmentStore = new EnrollmentStore(this);
         profileStore = new UserProfileStore(this);
+        debugLog = new ClientDebugLog(this);
+        debugLog.add("DragonNest opened");
         if (enrollmentStore.hasCredential() && profileStore.load() != null) {
             showQuery();
         } else {
@@ -58,6 +61,9 @@ public final class AgentSettingsActivity extends Activity {
         Button scan = action("Scan enrollment QR");
         scan.setOnClickListener(view -> startQrScan());
         content.addView(scan, matchWidth());
+        Button debug = action("Debug");
+        debug.setOnClickListener(view -> showDebug());
+        content.addView(debug, matchWidth());
         setContentView(scroll(content));
     }
 
@@ -123,6 +129,12 @@ public final class AgentSettingsActivity extends Activity {
         Button send = action("Send");
         send.setOnClickListener(view -> submitQuery(prompt, result, send));
         content.addView(send, matchWidth());
+        Button changeRegistration = action("Change registration");
+        changeRegistration.setOnClickListener(view -> confirmRegistrationReset());
+        content.addView(changeRegistration, matchWidth());
+        Button debug = action("Debug");
+        debug.setOnClickListener(view -> showDebug());
+        content.addView(debug, matchWidth());
         content.addView(result, matchWidth());
         setContentView(scroll(content));
         startAgent();
@@ -135,6 +147,7 @@ public final class AgentSettingsActivity extends Activity {
             return;
         }
         send.setEnabled(false);
+        debugLog.add("Submitting a user query");
         result.setText("Thinking...");
         result.setVisibility(View.VISIBLE);
         queryExecutor.execute(() -> {
@@ -145,11 +158,14 @@ public final class AgentSettingsActivity extends Activity {
                             ? response.getOutputText()
                             : friendlyError(response));
                     send.setEnabled(true);
+                    debugLog.add(response.getSuccess()
+                            ? "Query completed" : "Query failed: " + response.getErrorCode());
                 });
             } catch (Exception failure) {
                 runOnUiThread(() -> {
                     result.setText("DragonNest could not reach your workspace. Please try again.");
                     send.setEnabled(true);
+                    debugLog.add("Query transport failed: " + failure.getClass().getSimpleName());
                 });
             }
         });
@@ -173,6 +189,7 @@ public final class AgentSettingsActivity extends Activity {
     }
 
     private void startQrScan() {
+        debugLog.add("Opening QR camera scanner");
         startActivityForResult(
                 EnrollmentCaptureActivity.scanIntent(this), QR_CAPTURE_REQUEST);
     }
@@ -184,12 +201,15 @@ public final class AgentSettingsActivity extends Activity {
             return;
         }
         if (resultCode != RESULT_OK || data == null) {
+            debugLog.add("QR scanner closed without a result");
             return;
         }
         try {
             confirmEnrollment(EnrollmentPayload.parse(
                     data.getStringExtra(EnrollmentCaptureActivity.EXTRA_SCAN_RESULT)));
+            debugLog.add("Enrollment QR read successfully");
         } catch (Exception failure) {
+            debugLog.add("Enrollment QR rejected: " + failure.getMessage());
             Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
@@ -208,8 +228,10 @@ public final class AgentSettingsActivity extends Activity {
             configuration.saveEnrollmentEndpoint(
                     payload.brainHost(), payload.brainPort(), payload.useTls());
             enrollmentStore.save(payload.credential());
+            debugLog.add("Enrollment saved locally; collecting profile");
             showProfile();
         } catch (Exception failure) {
+            debugLog.add("Enrollment could not be saved: " + failure.getClass().getSimpleName());
             Toast.makeText(this, "Could not save enrollment", Toast.LENGTH_LONG).show();
         }
     }
@@ -220,6 +242,52 @@ public final class AgentSettingsActivity extends Activity {
                 != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 100);
         }
+    }
+
+    private void confirmRegistrationReset() {
+        new AlertDialog.Builder(this)
+                .setTitle("Change registration")
+                .setMessage("This stops the device agent and clears this device's local enrollment and profile.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Reset", (dialog, which) -> resetRegistration())
+                .show();
+    }
+
+    private void resetRegistration() {
+        stopService(new Intent(this, AgentForegroundService.class));
+        enrollmentStore.clear();
+        profileStore.clear();
+        configuration.clearEnrollmentEndpoint();
+        debugLog.add("Local registration reset");
+        showEnrollment();
+    }
+
+    private void showDebug() {
+        LinearLayout content = page();
+        content.addView(title("Client debug"));
+        TextView events = new TextView(this);
+        events.setText(debugLog.read());
+        events.setTextSize(13);
+        content.addView(events, matchWidth());
+        Button refresh = action("Refresh");
+        refresh.setOnClickListener(view -> events.setText(debugLog.read()));
+        content.addView(refresh, matchWidth());
+        Button clear = action("Clear debug");
+        clear.setOnClickListener(view -> {
+            debugLog.clear();
+            events.setText(debugLog.read());
+        });
+        content.addView(clear, matchWidth());
+        Button back = action("Back");
+        back.setOnClickListener(view -> {
+            if (enrollmentStore.hasCredential() && profileStore.load() != null) {
+                showQuery();
+            } else {
+                showEnrollment();
+            }
+        });
+        content.addView(back, matchWidth());
+        setContentView(scroll(content));
     }
 
     private LinearLayout page() {
