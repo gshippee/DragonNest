@@ -12,10 +12,11 @@ vendor/
 ```
 
 The app includes a direct QAIRT 2.48 Genie JNI bridge. Build it with
-`DRAGONNEST_QAIRT_SDK_ROOT` set to the extracted SDK root, then use
-`scripts/prepare_android_genie_runtime.sh` to stage the required Android shared
-objects and a compiled bundle here. The optional AAR extension route remains
-available for a raw QNN bridge.
+`DRAGONNEST_QAIRT_SDK_ROOT` set to the extracted SDK root and
+`DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS=true` to opt in to bundling these
+vendor files, then use `scripts/prepare_android_genie_runtime.sh` to stage the
+required Android shared objects and a compiled bundle here. The optional AAR
+extension route remains available for a raw QNN bridge.
 
 An optional AAR may provide this public no-argument class:
 

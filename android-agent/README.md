@@ -30,6 +30,12 @@ authoritative for task and attempt state.
 
 ## QNN and Genie Runtime Builds
 
+`scripts/build_android.sh` with no extra environment variables builds the thin,
+open-source APK: no vendor runtime `.so` libraries and no model assets, even if
+`android-agent/vendor/` happens to be populated. Including the model and
+runtime is an explicit opt-in for hardware builds
+(`DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS=true`, see below).
+
 The base repository cannot include Qualcomm SDK libraries or model bundles. A
 real S25 build stages the matching SDK libraries and model bundle under
 `android-agent/vendor/` before Gradle runs:
@@ -54,6 +60,7 @@ scripts/prepare_android_genie_runtime.sh \
   --qairt-sdk /path/to/qairt/2.48.0.260626 \
   --bundle /path/to/qwen3_1_7b-geniex_qairt-w4a16-qualcomm_snapdragon_8_elite_for_galaxy
 DRAGONNEST_QAIRT_SDK_ROOT=/path/to/qairt/2.48.0.260626 \
+  DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS=true \
   scripts/build_android.sh
 ```
 

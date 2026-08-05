@@ -141,4 +141,4 @@ PY
 
 echo "Staged Genie model: $target_bundle"
 echo "Staged manifest: $model_root/manifest.json"
-echo "Build with: DRAGONNEST_QAIRT_SDK_ROOT=$sdk_root scripts/build_android.sh"
+echo "Build with: DRAGONNEST_QAIRT_SDK_ROOT=$sdk_root DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS=true scripts/build_android.sh"

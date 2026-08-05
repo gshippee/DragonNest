@@ -11,7 +11,7 @@ val qairtSdkRoot = providers.gradleProperty("qairtSdkRoot")
     .orElse(providers.environmentVariable("DRAGONNEST_QAIRT_SDK_ROOT"))
     .orNull
 val includeModelArtifacts = providers.gradleProperty("includeModelArtifacts")
-    .orElse("true")
+    .orElse("false")
     .map { it.toBoolean() }
     .get()
 

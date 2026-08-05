@@ -25,8 +25,8 @@ if [[ ! -d "$ANDROID_SDK_ROOT/platforms/android-35" ]]; then
 fi
 
 gradle_args=()
-if [[ "${DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS:-true}" == "false" ]]; then
-  gradle_args+=("-PincludeModelArtifacts=false")
+if [[ "${DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS:-false}" == "true" ]]; then
+  gradle_args+=("-PincludeModelArtifacts=true")
 fi
 
 cd "$repo_root/android-agent"
