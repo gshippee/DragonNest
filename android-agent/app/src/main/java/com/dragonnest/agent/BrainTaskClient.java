@@ -17,7 +17,11 @@ public final class BrainTaskClient {
         this.configuration = configuration;
     }
 
-    public SubmitTaskResponse submit(String prompt) {
+    public SubmitTaskResponse submit(
+            String prompt,
+            String personaId,
+            boolean useProfileContext,
+            boolean keepOnPhone) {
         OkHttpChannelBuilder builder = OkHttpChannelBuilder.forAddress(
                 configuration.brainHost(), configuration.brainPort());
         if (configuration.useTls()) {
@@ -31,10 +35,12 @@ public final class BrainTaskClient {
                     .withDeadlineAfter(90, TimeUnit.SECONDS)
                     .submitTask(SubmitTaskRequest.newBuilder()
                             .setRequestText(prompt.trim())
-                            .setPreferredMode("auto")
+                            .setPreferredMode(keepOnPhone ? "private" : "auto")
                             .setExecutionMode("auto")
                             .setOriginDeviceId(configuration.deviceId())
                             .setUseProfileSteering(true)
+                            .setPersonaId(personaId)
+                            .setUseProfileContext(useProfileContext)
                             .build());
         } finally {
             channel.shutdownNow();

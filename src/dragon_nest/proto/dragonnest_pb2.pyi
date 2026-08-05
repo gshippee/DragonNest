@@ -67,7 +67,7 @@ class RegisterDevice(_message.Message):
     def __init__(self, device_id: _Optional[str] = ..., display_name: _Optional[str] = ..., device_type: _Optional[str] = ..., platform: _Optional[str] = ..., agent_version: _Optional[str] = ..., enrollment_token: _Optional[str] = ..., total_memory_mb: _Optional[int] = ..., models: _Optional[_Iterable[_Union[ModelCapability, _Mapping]]] = ..., certificate_fingerprint: _Optional[str] = ..., hardware: _Optional[_Union[HardwareInventory, _Mapping]] = ..., personal_profile: _Optional[_Union[PersonalProfileRegistration, _Mapping]] = ...) -> None: ...
 
 class PersonalProfileRegistration(_message.Message):
-    __slots__ = ("person_name", "preferred_mode", "steering_vector_id", "steering_alpha", "steering_positions", "allow_remote_vector", "notes")
+    __slots__ = ("person_name", "preferred_mode", "steering_vector_id", "steering_alpha", "steering_positions", "allow_remote_vector", "notes", "persona_id")
     PERSON_NAME_FIELD_NUMBER: _ClassVar[int]
     PREFERRED_MODE_FIELD_NUMBER: _ClassVar[int]
     STEERING_VECTOR_ID_FIELD_NUMBER: _ClassVar[int]
@@ -75,6 +75,7 @@ class PersonalProfileRegistration(_message.Message):
     STEERING_POSITIONS_FIELD_NUMBER: _ClassVar[int]
     ALLOW_REMOTE_VECTOR_FIELD_NUMBER: _ClassVar[int]
     NOTES_FIELD_NUMBER: _ClassVar[int]
+    PERSONA_ID_FIELD_NUMBER: _ClassVar[int]
     person_name: str
     preferred_mode: str
     steering_vector_id: str
@@ -82,7 +83,8 @@ class PersonalProfileRegistration(_message.Message):
     steering_positions: str
     allow_remote_vector: bool
     notes: str
-    def __init__(self, person_name: _Optional[str] = ..., preferred_mode: _Optional[str] = ..., steering_vector_id: _Optional[str] = ..., steering_alpha: _Optional[float] = ..., steering_positions: _Optional[str] = ..., allow_remote_vector: _Optional[bool] = ..., notes: _Optional[str] = ...) -> None: ...
+    persona_id: str
+    def __init__(self, person_name: _Optional[str] = ..., preferred_mode: _Optional[str] = ..., steering_vector_id: _Optional[str] = ..., steering_alpha: _Optional[float] = ..., steering_positions: _Optional[str] = ..., allow_remote_vector: _Optional[bool] = ..., notes: _Optional[str] = ..., persona_id: _Optional[str] = ...) -> None: ...
 
 class HardwareInventory(_message.Message):
     __slots__ = ("manufacturer", "model", "device", "os_version", "api_level", "soc_manufacturer", "soc_model", "cpu_abis", "cpu_core_count", "total_storage_mb", "available_storage_mb", "npu_status", "npu_name", "qnn_runtime_version")
@@ -431,7 +433,7 @@ class HeartbeatAck(_message.Message):
     def __init__(self, brain_timestamp_ms: _Optional[int] = ...) -> None: ...
 
 class SubmitTaskRequest(_message.Message):
-    __slots__ = ("request_text", "preferred_mode", "execution_mode", "timeout_ms", "steering", "origin_device_id", "reducer", "use_profile_steering")
+    __slots__ = ("request_text", "preferred_mode", "execution_mode", "timeout_ms", "steering", "origin_device_id", "reducer", "use_profile_steering", "persona_id", "use_profile_context")
     REQUEST_TEXT_FIELD_NUMBER: _ClassVar[int]
     PREFERRED_MODE_FIELD_NUMBER: _ClassVar[int]
     EXECUTION_MODE_FIELD_NUMBER: _ClassVar[int]
@@ -440,6 +442,8 @@ class SubmitTaskRequest(_message.Message):
     ORIGIN_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     REDUCER_FIELD_NUMBER: _ClassVar[int]
     USE_PROFILE_STEERING_FIELD_NUMBER: _ClassVar[int]
+    PERSONA_ID_FIELD_NUMBER: _ClassVar[int]
+    USE_PROFILE_CONTEXT_FIELD_NUMBER: _ClassVar[int]
     request_text: str
     preferred_mode: str
     execution_mode: str
@@ -448,10 +452,12 @@ class SubmitTaskRequest(_message.Message):
     origin_device_id: str
     reducer: str
     use_profile_steering: bool
-    def __init__(self, request_text: _Optional[str] = ..., preferred_mode: _Optional[str] = ..., execution_mode: _Optional[str] = ..., timeout_ms: _Optional[int] = ..., steering: _Optional[_Union[SteeringSpec, _Mapping]] = ..., origin_device_id: _Optional[str] = ..., reducer: _Optional[str] = ..., use_profile_steering: _Optional[bool] = ...) -> None: ...
+    persona_id: str
+    use_profile_context: bool
+    def __init__(self, request_text: _Optional[str] = ..., preferred_mode: _Optional[str] = ..., execution_mode: _Optional[str] = ..., timeout_ms: _Optional[int] = ..., steering: _Optional[_Union[SteeringSpec, _Mapping]] = ..., origin_device_id: _Optional[str] = ..., reducer: _Optional[str] = ..., use_profile_steering: _Optional[bool] = ..., persona_id: _Optional[str] = ..., use_profile_context: _Optional[bool] = ...) -> None: ...
 
 class SubmitTaskResponse(_message.Message):
-    __slots__ = ("task_id", "state", "success", "output_text", "error_code", "error_message", "accepted_attempt_id", "device_id", "model_id", "route_reasons", "steering", "origin_device_id", "reducer")
+    __slots__ = ("task_id", "state", "success", "output_text", "error_code", "error_message", "accepted_attempt_id", "device_id", "model_id", "route_reasons", "steering", "origin_device_id", "reducer", "device_display_name")
     TASK_ID_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
@@ -465,6 +471,7 @@ class SubmitTaskResponse(_message.Message):
     STEERING_FIELD_NUMBER: _ClassVar[int]
     ORIGIN_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     REDUCER_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
     task_id: str
     state: str
     success: bool
@@ -478,7 +485,8 @@ class SubmitTaskResponse(_message.Message):
     steering: SteeringSpec
     origin_device_id: str
     reducer: str
-    def __init__(self, task_id: _Optional[str] = ..., state: _Optional[str] = ..., success: _Optional[bool] = ..., output_text: _Optional[str] = ..., error_code: _Optional[str] = ..., error_message: _Optional[str] = ..., accepted_attempt_id: _Optional[str] = ..., device_id: _Optional[str] = ..., model_id: _Optional[str] = ..., route_reasons: _Optional[_Iterable[str]] = ..., steering: _Optional[_Union[SteeringSpec, _Mapping]] = ..., origin_device_id: _Optional[str] = ..., reducer: _Optional[str] = ...) -> None: ...
+    device_display_name: str
+    def __init__(self, task_id: _Optional[str] = ..., state: _Optional[str] = ..., success: _Optional[bool] = ..., output_text: _Optional[str] = ..., error_code: _Optional[str] = ..., error_message: _Optional[str] = ..., accepted_attempt_id: _Optional[str] = ..., device_id: _Optional[str] = ..., model_id: _Optional[str] = ..., route_reasons: _Optional[_Iterable[str]] = ..., steering: _Optional[_Union[SteeringSpec, _Mapping]] = ..., origin_device_id: _Optional[str] = ..., reducer: _Optional[str] = ..., device_display_name: _Optional[str] = ...) -> None: ...
 
 class GetTaskRequest(_message.Message):
     __slots__ = ("task_id",)

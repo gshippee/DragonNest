@@ -32,6 +32,7 @@ public final class AgentRuntime {
 
     public void start() {
         debugLog.add("Agent runtime started");
+        AgentStatusRepository.update(AgentConnectionState.CONNECTING, "Connecting to DragonNest");
         executor.execute(this::connect);
     }
 
@@ -49,6 +50,7 @@ public final class AgentRuntime {
     public void stop() {
         stopping = true;
         debugLog.add("Agent runtime stopping");
+        AgentStatusRepository.update(AgentConnectionState.STOPPED, "Agent stopped");
         executor.execute(() -> {
             if (connection != null) {
                 try {
@@ -70,6 +72,7 @@ public final class AgentRuntime {
         AgentConnection next = null;
         try {
             debugLog.add("Connecting to Brain");
+            AgentStatusRepository.update(AgentConnectionState.CONNECTING, "Connecting to DragonNest");
             next = connectionFactory.get();
             String replacementCredential = next.connect(enrollmentStore.load());
             if (replacementCredential != null && !replacementCredential.isBlank()) {
@@ -78,9 +81,11 @@ public final class AgentRuntime {
             connection = next;
             reconnectBackoffSeconds = 1;
             debugLog.add("Brain registration accepted");
+            AgentStatusRepository.update(AgentConnectionState.CONNECTED, "Connected through DragonNest");
             sendHeartbeat();
         } catch (Exception failure) {
             debugLog.add("Brain connection failed: " + failureSummary(failure));
+            AgentStatusRepository.update(AgentConnectionState.RETRYING, failureSummary(failure));
             if (next != null) {
                 next.close();
             }
@@ -117,6 +122,9 @@ public final class AgentRuntime {
         }
         long delay = reconnectBackoffSeconds;
         debugLog.add("Retrying Brain connection in " + delay + "s");
+        AgentStatusRepository.update(
+                AgentConnectionState.RETRYING,
+                "Retrying in " + delay + "s");
         reconnectBackoffSeconds = Math.min(reconnectBackoffSeconds * 2, MAX_BACKOFF_SECONDS);
         executor.schedule(this::connect, delay, TimeUnit.SECONDS);
     }

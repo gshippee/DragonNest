@@ -46,6 +46,14 @@ from .conversion import (
 )
 
 
+PERSONA_STEERING: dict[str, float | None] = {
+    "balanced": None,
+    "concise": -2.0,
+    "detailed": 2.0,
+}
+PERSONA_VECTOR_ID = "concise-vs-verbose-layer-7"
+
+
 @dataclass(frozen=True)
 class BrainServiceConfig:
     brain_id: str = "dragon-nest-brain"
@@ -443,10 +451,20 @@ class BrainService(pb_grpc.BrainControlServicer):
             if request.HasField("use_profile_steering")
             else True
         )
+        persona_id = request.persona_id or (
+            personal_profile.persona_id if personal_profile is not None else "balanced"
+        )
+        if persona_id not in PERSONA_STEERING:
+            return pb.SubmitTaskResponse(
+                state="FAILED",
+                error_code="INVALID_PERSONA",
+                error_message=f"unsupported persona {persona_id!r}",
+            )
         profile_steering_reason = ""
         if (
             not steering.enabled
             and use_profile_steering
+            and not request.persona_id
             and personal_profile is not None
             and personal_profile.steering_vector_id
         ):
@@ -455,6 +473,22 @@ class BrainService(pb_grpc.BrainControlServicer):
                 f"Applied personal profile {personal_profile.person_name!r}: "
                 f"steering {steering.vector_id} at alpha {steering.alpha}."
             )
+        elif not steering.enabled and use_profile_steering:
+            try:
+                steering = self._steering_for_persona(persona_id)
+            except ProfileError as exc:
+                return pb.SubmitTaskResponse(
+                    state="FAILED",
+                    error_code="STEERING_UNAVAILABLE",
+                    error_message=str(exc),
+                    origin_device_id=request.origin_device_id,
+                    reducer=reducer,
+                )
+            if steering.enabled:
+                profile_steering_reason = (
+                    f"Applied persona {persona_id!r}: steering "
+                    f"{steering.vector_id} at alpha {steering.alpha}."
+                )
         if steering.enabled and self.steering_registry is None:
             return pb.SubmitTaskResponse(
                 state="FAILED",
@@ -513,18 +547,30 @@ class BrainService(pb_grpc.BrainControlServicer):
         self.task_profiles[plan.task_id] = profile
         self.execution_plans[plan.task_id] = routed
         timeout_ms = request.timeout_ms or self.config.default_task_timeout_ms
+        use_profile_context = (
+            request.use_profile_context
+            if request.HasField("use_profile_context")
+            else True
+        )
+        profile_context = (
+            personal_profile.notes
+            if use_profile_context and personal_profile is not None
+            else ""
+        )
         if plan.execution_mode == ExecutionMode.DATA_PARALLEL:
             return await self._submit_data_parallel(
                 request,
                 routed,
                 profile,
                 timeout_ms,
+                profile_context,
             )
         if plan.execution_mode == ExecutionMode.LAYER_PIPELINE:
             return await self._submit_layer_pipeline(
                 request,
                 routed,
                 timeout_ms,
+                profile_context,
             )
         candidate_ids = (
             decision.selected_device_id,
@@ -553,7 +599,9 @@ class BrainService(pb_grpc.BrainControlServicer):
                 pb.ExecuteTask(
                     task_id=task_id,
                     attempt_id=attempt_id,
-                    request_text=request.request_text,
+                    request_text=self._with_profile_context(
+                        request.request_text, profile_context
+                    ),
                     model_id=model_id,
                     timeout_ms=timeout_ms,
                     steering=steering_to_proto(routed.steering),
@@ -576,6 +624,7 @@ class BrainService(pb_grpc.BrainControlServicer):
         routed: ExecutionPlan,
         profile: TaskProfile,
         timeout_ms: int,
+        profile_context: str = "",
     ) -> pb.SubmitTaskResponse:
         parent = self.tasks.create(request.request_text, task_id=routed.task_id)
         if routed.reducer == ReducerMode.FIRST_SUCCESS:
@@ -585,6 +634,7 @@ class BrainService(pb_grpc.BrainControlServicer):
                 routed,
                 profile,
                 timeout_ms,
+                profile_context,
             )
 
         async def run_shard(shard: PlannedTask):
@@ -607,7 +657,9 @@ class BrainService(pb_grpc.BrainControlServicer):
                     fallback_plan = ExecutionPlan(
                         task_id=parent.task_id,
                         execution_mode=ExecutionMode.DATA_PARALLEL,
-                        request_text=shard.request_text,
+                        request_text=self._with_profile_context(
+                            shard.request_text, profile_context
+                        ),
                         tasks=(
                             replace(
                                 shard,
@@ -629,7 +681,9 @@ class BrainService(pb_grpc.BrainControlServicer):
                         task_id=parent.task_id,
                         attempt_id=attempt_id,
                         shard_id=shard.shard_id,
-                        request_text=shard.request_text,
+                        request_text=self._with_profile_context(
+                            shard.request_text, profile_context
+                        ),
                         model_id=model_id,
                         timeout_ms=timeout_ms,
                         steering=steering_to_proto(routed.steering),
@@ -711,6 +765,7 @@ class BrainService(pb_grpc.BrainControlServicer):
         routed: ExecutionPlan,
         profile: TaskProfile,
         timeout_ms: int,
+        profile_context: str = "",
     ) -> pb.SubmitTaskResponse:
         shard = routed.tasks[0]
         candidate_ids = tuple(
@@ -769,7 +824,9 @@ class BrainService(pb_grpc.BrainControlServicer):
                         task_id=parent.task_id,
                         attempt_id=replica_attempt_id,
                         shard_id=shard.shard_id,
-                        request_text=request.request_text,
+                        request_text=self._with_profile_context(
+                            request.request_text, profile_context
+                        ),
                         model_id=replica_model_id,
                         timeout_ms=timeout_ms,
                         steering=steering_to_proto(routed.steering),
@@ -895,6 +952,7 @@ class BrainService(pb_grpc.BrainControlServicer):
         request: pb.SubmitTaskRequest,
         routed: ExecutionPlan,
         timeout_ms: int,
+        profile_context: str = "",
     ) -> pb.SubmitTaskResponse:
         parent = self.tasks.create(request.request_text, task_id=routed.task_id)
         boundary: pb.BoundaryTensor | None = None
@@ -925,7 +983,9 @@ class BrainService(pb_grpc.BrainControlServicer):
                         attempt_id=attempt_id,
                         stage_id=current_stage.stage_id,
                         stage_index=current_stage.stage_index,
-                        request_text=request.request_text,
+                        request_text=self._with_profile_context(
+                            request.request_text, profile_context
+                        ),
                         model_id=model_id,
                         input_boundary=input_boundary,
                         final_stage=final_stage,
@@ -1241,15 +1301,12 @@ class BrainService(pb_grpc.BrainControlServicer):
             credential = registration.enrollment_token
             bootstrap_session = self.enrollment.session_for_bootstrap(credential)
             profile_values: dict[str, object] | None = None
-            if (
-                bootstrap_session is not None
-                and not bootstrap_session.profile_id
-                and registration.HasField("personal_profile")
-            ):
+            if registration.HasField("personal_profile"):
                 try:
                     profile_values = self._profile_values_from_registration(registration)
                 except ProfileError as exc:
                     return f"personal profile is invalid: {exc}", ""
+            claim = None
             if credential == self.config.enrollment_token:
                 pass
             elif self.enrollment.valid_device_credential(
@@ -1260,22 +1317,38 @@ class BrainService(pb_grpc.BrainControlServicer):
                 claim = self.enrollment.claim(credential, registration.device_id)
                 if claim is None:
                     return "invalid enrollment token or expired credential", ""
-                try:
+                issued_credential = claim.device_credential
+            try:
+                association = self.profiles.association_for_device(
+                    registration.device_id
+                )
+                profile_id = association.profile_id if association else ""
+                if claim is not None and claim.profile_id:
                     profile_id = claim.profile_id
-                    device_name = claim.device_name or registration.display_name
-                    if not profile_id and profile_values is not None:
-                        profile = self.profiles.create(**profile_values)
-                        profile_id = profile.profile_id
+                device_name = (
+                    (claim.device_name if claim is not None else "")
+                    or (association.device_name if association is not None else "")
+                    or registration.display_name
+                )
+                if profile_values is not None:
+                    if profile_id:
+                        self.profiles.update(profile_id, **profile_values)
+                    else:
+                        profile_id = self.profiles.create(**profile_values).profile_id
+                if profile_id:
+                    self.profiles.associate_device(
+                        registration.device_id, profile_id, device_name
+                    )
+                    if (
+                        claim is not None
+                        and bootstrap_session is not None
+                        and not bootstrap_session.profile_id
+                    ):
                         self.enrollment.attach_profile(
                             claim.session_id, profile_id, device_name
                         )
-                    if profile_id:
-                        self.profiles.associate_device(
-                            registration.device_id, profile_id, device_name
-                        )
-                except (EnrollmentError, ProfileError) as exc:
-                    return f"personal profile association failed: {exc}", ""
-                issued_credential = claim.device_credential
+            except (EnrollmentError, ProfileError) as exc:
+                return f"personal profile association failed: {exc}", ""
         if not self.config.dev_mode:
             if not peer_fingerprint:
                 return (
@@ -1286,6 +1359,26 @@ class BrainService(pb_grpc.BrainControlServicer):
                 return "reported certificate fingerprint does not match TLS peer", ""
             if peer_fingerprint in self.revoked_certificate_fingerprints:
                 return "client certificate has been revoked", ""
+            if registration.HasField("personal_profile"):
+                try:
+                    values = self._profile_values_from_registration(registration)
+                    association = self.profiles.association_for_device(
+                        registration.device_id
+                    )
+                    if association is None:
+                        profile_id = self.profiles.create(**values).profile_id
+                    else:
+                        profile_id = association.profile_id
+                        self.profiles.update(profile_id, **values)
+                    self.profiles.associate_device(
+                        registration.device_id,
+                        profile_id,
+                        association.device_name
+                        if association is not None
+                        else registration.display_name,
+                    )
+                except ProfileError as exc:
+                    return f"personal profile association failed: {exc}", ""
         return "", issued_credential
 
     def _profile_values_from_registration(
@@ -1300,7 +1393,21 @@ class BrainService(pb_grpc.BrainControlServicer):
             "steering_positions": profile.steering_positions or "last",
             "allow_remote_vector": profile.allow_remote_vector,
             "notes": profile.notes,
+            "persona_id": profile.persona_id or self._persona_from_steering(
+                profile.steering_vector_id, profile.steering_alpha
+            ),
         }
+        persona_id = str(values["persona_id"])
+        if persona_id not in PERSONA_STEERING:
+            raise ProfileError(f"unsupported persona {persona_id!r}")
+        persona_alpha = PERSONA_STEERING[persona_id]
+        if persona_alpha is None:
+            values["steering_vector_id"] = ""
+            values["steering_alpha"] = 0.0
+        else:
+            values["steering_vector_id"] = PERSONA_VECTOR_ID
+            values["steering_alpha"] = persona_alpha
+            values["steering_positions"] = "last"
         vector_id = str(values["steering_vector_id"])
         if vector_id:
             if self.steering_registry is None:
@@ -1336,6 +1443,33 @@ class BrainService(pb_grpc.BrainControlServicer):
                 default.allow_remote_vector and profile.allow_remote_vector
             ),
         )
+
+    def _steering_for_persona(self, persona_id: str) -> SteeringSpec:
+        alpha = PERSONA_STEERING[persona_id]
+        if alpha is None:
+            return SteeringSpec()
+        if self.steering_registry is None:
+            raise ProfileError(f"Persona {persona_id!r} requires steering")
+        try:
+            default = self.steering_registry.default_spec(PERSONA_VECTOR_ID)
+        except KeyError as exc:
+            raise ProfileError(
+                f"Persona {persona_id!r} is not available on this Brain"
+            ) from exc
+        return replace(default, alpha=alpha, positions="last")
+
+    @staticmethod
+    def _persona_from_steering(vector_id: str, alpha: float) -> str:
+        if not vector_id or alpha == 0:
+            return "balanced"
+        return "concise" if alpha < 0 else "detailed"
+
+    @staticmethod
+    def _with_profile_context(request_text: str, profile_context: str) -> str:
+        context = profile_context.strip()
+        if not context:
+            return request_text
+        return f"About the user:\n{context}\n\nRequest:\n{request_text}"
 
     @staticmethod
     def _device_exclusion_reason(record) -> str:
@@ -1387,6 +1521,12 @@ class BrainService(pb_grpc.BrainControlServicer):
         result = task.result if isinstance(task.result, TaskResult) else None
         model_id = self._attempt_models.get(task.accepted_attempt_id, "")
         plan = self.execution_plans.get(task.task_id)
+        device_display_name = ""
+        if result and result.device_id and result.device_id != "brain":
+            with contextlib.suppress(KeyError):
+                device_display_name = self.registry.get(
+                    result.device_id
+                ).device.display_name
         return pb.SubmitTaskResponse(
             task_id=task.task_id,
             state=task.state.value,
@@ -1404,6 +1544,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             ),
             origin_device_id=plan.origin_device_id if plan else "",
             reducer=plan.reducer if plan else "",
+            device_display_name=device_display_name,
         )
 
 

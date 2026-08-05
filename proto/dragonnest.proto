@@ -59,6 +59,7 @@ message PersonalProfileRegistration {
   string steering_positions = 5;
   bool allow_remote_vector = 6;
   string notes = 7;
+  string persona_id = 8;
 }
 
 message HardwareInventory {
@@ -261,6 +262,8 @@ message SubmitTaskRequest {
   string origin_device_id = 6;
   string reducer = 7;
   optional bool use_profile_steering = 8;
+  string persona_id = 9;
+  optional bool use_profile_context = 10;
 }
 
 message SubmitTaskResponse {
@@ -277,6 +280,7 @@ message SubmitTaskResponse {
   SteeringSpec steering = 11;
   string origin_device_id = 12;
   string reducer = 13;
+  string device_display_name = 14;
 }
 
 message GetTaskRequest {

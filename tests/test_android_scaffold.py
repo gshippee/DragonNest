@@ -33,7 +33,9 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     )
     enrollment = (sources / "EnrollmentStore.java").read_text(encoding="utf-8")
     connection = (sources / "GrpcAgentConnection.java").read_text(encoding="utf-8")
-    settings = (sources / "AgentSettingsActivity.java").read_text(encoding="utf-8")
+    settings = (sources / "AgentSettingsActivity.kt").read_text(encoding="utf-8")
+    app = (sources / "PersonaCareApp.kt").read_text(encoding="utf-8")
+    view_model = (sources / "PersonaCareViewModel.kt").read_text(encoding="utf-8")
     payload = (sources / "EnrollmentPayload.java").read_text(encoding="utf-8")
     inventory = (sources / "AndroidHardwareInventory.java").read_text(
         encoding="utf-8"
@@ -68,13 +70,14 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "Opening gRPC stream to" in connection
     assert "RegistrationAccepted" in connection
     assert "Android mock result" in executor
-    assert "QR_CAPTURE_REQUEST" in settings
-    assert "Scan enrollment QR" in settings
-    assert "EnrollmentCaptureActivity.scanIntent(this)" in settings
-    assert "UserProfileStore" in settings
-    assert "BrainTaskClient" in settings
-    assert "Change registration" in settings
-    assert "showDebug" in settings
+    assert "PersonaCareApp(viewModel)" in settings
+    assert "Scan enrollment QR" in app
+    assert "EnrollmentCaptureActivity.scanIntent" in app
+    assert "About you and your preferences" in app
+    assert "Keep on phone" in app
+    assert "Ran on" in app
+    assert "UserProfileStore" in view_model
+    assert "BrainTaskClient" in view_model
     assert "EnrollmentCaptureActivity" in (
         android_root / "app/src/main/AndroidManifest.xml"
     ).read_text(encoding="utf-8")
@@ -105,6 +108,7 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert 'jniLibs.srcDir("../vendor/jniLibs")' in gradle
     assert 'assets.srcDir("../vendor/model-assets")' in gradle
     assert "includeModelArtifacts" in gradle
+    assert "compose = true" in gradle
     assert 'noCompress += "bin"' in gradle
     assert "setHardware(hardwareInventory.snapshot())" in (
         sources / "AgentProfile.java"

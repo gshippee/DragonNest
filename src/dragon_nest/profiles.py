@@ -23,6 +23,7 @@ class PersonalProfile:
     steering_positions: str
     allow_remote_vector: bool
     notes: str
+    persona_id: str
     created_at: float
     updated_at: float
 
@@ -60,6 +61,7 @@ class ProfileStore:
                     steering_positions TEXT NOT NULL,
                     allow_remote_vector INTEGER NOT NULL,
                     notes TEXT NOT NULL,
+                    persona_id TEXT NOT NULL DEFAULT 'balanced',
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
                 );
@@ -71,6 +73,28 @@ class ProfileStore:
                 );
                 """
             )
+            columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(personal_profiles)"
+                ).fetchall()
+            }
+            if "persona_id" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE personal_profiles "
+                    "ADD COLUMN persona_id TEXT NOT NULL DEFAULT 'balanced'"
+                )
+                self._connection.execute(
+                    """
+                    UPDATE personal_profiles
+                    SET persona_id = CASE
+                        WHEN steering_vector_id = '' THEN 'balanced'
+                        WHEN steering_alpha < 0 THEN 'concise'
+                        WHEN steering_alpha > 0 THEN 'detailed'
+                        ELSE 'balanced'
+                    END
+                    """
+                )
 
     def create(
         self,
@@ -82,6 +106,7 @@ class ProfileStore:
         steering_positions: str = "last",
         allow_remote_vector: bool = False,
         notes: str = "",
+        persona_id: str = "",
     ) -> PersonalProfile:
         values = _validated_values(
             person_name=person_name,
@@ -91,13 +116,18 @@ class ProfileStore:
             steering_positions=steering_positions,
             allow_remote_vector=allow_remote_vector,
             notes=notes,
+            persona_id=persona_id,
         )
         now = time.time()
         profile_id = str(uuid.uuid4())
         with self._lock, self._connection:
             self._connection.execute(
                 """
-                INSERT INTO personal_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO personal_profiles (
+                    profile_id, person_name, preferred_mode, steering_vector_id,
+                    steering_alpha, steering_positions, allow_remote_vector,
+                    notes, persona_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     profile_id,
@@ -124,6 +154,7 @@ class ProfileStore:
                 "allow_remote_vector", current.allow_remote_vector
             ),
             notes=changes.get("notes", current.notes),
+            persona_id=changes.get("persona_id", current.persona_id),
         )
         with self._lock, self._connection:
             self._connection.execute(
@@ -131,7 +162,7 @@ class ProfileStore:
                 UPDATE personal_profiles
                 SET person_name=?, preferred_mode=?, steering_vector_id=?,
                     steering_alpha=?, steering_positions=?, allow_remote_vector=?,
-                    notes=?, updated_at=?
+                    notes=?, persona_id=?, updated_at=?
                 WHERE profile_id=?
                 """,
                 (*values, time.time(), profile_id),
@@ -220,7 +251,8 @@ def _validated_values(
     steering_positions: str,
     allow_remote_vector: bool,
     notes: str,
-) -> tuple[str, str, str, float, str, int, str]:
+    persona_id: str,
+) -> tuple[str, str, str, float, str, int, str, str]:
     name = person_name.strip()
     mode = preferred_mode.strip()
     positions = steering_positions.strip()
@@ -232,6 +264,15 @@ def _validated_values(
         raise ProfileError("steering_alpha must be finite")
     if positions not in {"last", "all"}:
         raise ProfileError("steering_positions is invalid")
+    persona = persona_id.strip()
+    if not persona:
+        persona = (
+            "balanced"
+            if not steering_vector_id.strip() or steering_alpha == 0
+            else ("concise" if steering_alpha < 0 else "detailed")
+        )
+    if persona not in {"balanced", "concise", "detailed"}:
+        raise ProfileError("persona_id is invalid")
     return (
         name,
         mode,
@@ -240,6 +281,7 @@ def _validated_values(
         positions,
         int(allow_remote_vector),
         notes.strip()[:500],
+        persona,
     )
 
 
@@ -253,6 +295,7 @@ def _profile(row: sqlite3.Row) -> PersonalProfile:
         steering_positions=row["steering_positions"],
         allow_remote_vector=bool(row["allow_remote_vector"]),
         notes=row["notes"],
+        persona_id=row["persona_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

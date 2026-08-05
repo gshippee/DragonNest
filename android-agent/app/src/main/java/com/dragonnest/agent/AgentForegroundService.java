@@ -111,8 +111,8 @@ public final class AgentForegroundService extends Service {
                 "DragonNest",
                 NotificationManager.IMPORTANCE_LOW));
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("DragonNest is ready")
-                .setContentText("Your device is available when needed")
+                .setContentTitle("PersonaCare is ready")
+                .setContentText("Connected through DragonNest")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setOngoing(true)
                 .build();

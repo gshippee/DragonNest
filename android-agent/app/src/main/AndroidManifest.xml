@@ -10,8 +10,8 @@
 
     <application
         android:allowBackup="false"
-        android:label="DragonNest"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.PersonaCare"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".AgentSettingsActivity"

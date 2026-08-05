@@ -34,7 +34,7 @@ public final class AgentProfile {
                 .setDisplayName(configuration.displayName())
                 .setDeviceType("phone")
                 .setPlatform("android")
-                .setAgentVersion("0.1.1")
+                .setAgentVersion("0.2.0")
                 .setEnrollmentToken(enrollmentCredential)
                 .setTotalMemoryMb(memory.totalMem / (1024L * 1024L))
                 .addAllModels(runtimeCatalog.capabilities())
