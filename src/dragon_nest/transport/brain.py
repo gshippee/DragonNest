@@ -1383,7 +1383,20 @@ class BrainService(pb_grpc.BrainControlServicer):
             elif self.enrollment.valid_device_credential(
                 registration.device_id, credential
             ):
-                pass
+                if registration.HasField("personal_profile"):
+                    association = self.profiles.association_for_device(
+                        registration.device_id
+                    )
+                    if association is not None:
+                        try:
+                            update_values = self._profile_values_from_registration(
+                                registration
+                            )
+                            self.profiles.update(
+                                association.profile_id, **update_values
+                            )
+                        except ProfileError as exc:
+                            return f"personal profile is invalid: {exc}", ""
             else:
                 claim = self.enrollment.claim(credential, registration.device_id)
                 if claim is None:

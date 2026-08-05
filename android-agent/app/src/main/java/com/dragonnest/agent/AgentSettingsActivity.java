@@ -68,10 +68,20 @@ public final class AgentSettingsActivity extends Activity {
     }
 
     private void showProfile() {
+        renderProfileForm(false);
+    }
+
+    private void showSettings() {
+        renderProfileForm(true);
+    }
+
+    private void renderProfileForm(boolean editing) {
         UserProfile existing = profileStore.load();
         LinearLayout content = page();
-        content.addView(title("Make it yours"));
-        content.addView(body("These choices stay with your DragonNest profile."));
+        content.addView(title(editing ? "Settings" : "Make it yours"));
+        content.addView(body(editing
+                ? "Update how DragonNest talks to you. Changes apply right away."
+                : "These choices stay with your DragonNest profile."));
 
         EditText name = field("Your name", existing == null ? "" : existing.personName(),
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
@@ -92,7 +102,7 @@ public final class AgentSettingsActivity extends Activity {
                 existing == null ? UserProfile.STYLE_BALANCED : existing.responseStyle());
         content.addView(style, matchWidth());
 
-        Button continueButton = action("Continue");
+        Button continueButton = action(editing ? "Save" : "Continue");
         continueButton.setOnClickListener(view -> {
             try {
                 UserProfile profile = new UserProfile(
@@ -101,12 +111,20 @@ public final class AgentSettingsActivity extends Activity {
                         selectedValue(style));
                 profileStore.save(profile);
                 startAgent();
+                if (editing) {
+                    Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show();
+                }
                 showQuery();
             } catch (IllegalArgumentException failure) {
                 Toast.makeText(this, failure.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
         content.addView(continueButton, matchWidth());
+        if (editing) {
+            Button cancel = action("Cancel");
+            cancel.setOnClickListener(view -> showQuery());
+            content.addView(cancel, matchWidth());
+        }
         setContentView(scroll(content));
     }
 
@@ -129,6 +147,9 @@ public final class AgentSettingsActivity extends Activity {
         Button send = action("Send");
         send.setOnClickListener(view -> submitQuery(prompt, result, send));
         content.addView(send, matchWidth());
+        Button settings = action("Settings");
+        settings.setOnClickListener(view -> showSettings());
+        content.addView(settings, matchWidth());
         Button changeRegistration = action("Change registration");
         changeRegistration.setOnClickListener(view -> confirmRegistrationReset());
         content.addView(changeRegistration, matchWidth());
