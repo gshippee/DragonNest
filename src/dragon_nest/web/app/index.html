@@ -66,6 +66,13 @@
       <div class="card-head"><h2 id="result-title">Response</h2><span id="result-state" class="status-pill neutral">Waiting</span></div>
       <pre id="result-output" class="result-output">No response yet.</pre>
     </section>
+
+    <section id="endpoint-card" class="card" aria-labelledby="endpoint-title">
+      <div class="card-head">
+        <div><h2 id="endpoint-title">Add a server to the network</h2><p class="card-subtitle">Register any HTTP endpoint API server, or another local device, so DragonNest can route requests to it.</p></div>
+      </div>
+      <button id="add-endpoint" class="btn-secondary" type="button"><i data-lucide="server"></i><span>Add HTTP endpoint</span></button>
+    </section>
   </main>
 
   <dialog id="enrollment-dialog">
@@ -77,6 +84,29 @@
         <span id="enrollment-expiry" class="count"></span>
       </div>
       <div class="dialog-actions"><button id="enrollment-cancel" type="button" class="btn-secondary">Cancel</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="endpoint-dialog">
+    <form id="endpoint-form">
+      <div class="dialog-head"><h2>Add HTTP Endpoint Device</h2><button id="endpoint-close" class="icon-btn" type="button" aria-label="Close"><i data-lucide="x"></i></button></div>
+      <label class="field">Device ID<input id="endpoint-device-id" type="text" maxlength="200" required></label>
+      <label class="field">Display name<input id="endpoint-display-name" type="text" maxlength="120" placeholder="Auto-filled if left blank"></label>
+      <div class="control-grid">
+        <label class="field">Endpoint URL<input id="endpoint-base-url" type="url" placeholder="https://host:port" maxlength="500" required></label>
+        <label class="field">API token<input id="endpoint-api-key" type="password" maxlength="500" autocomplete="off" placeholder="Optional bearer token"></label>
+        <button id="endpoint-fetch" class="btn-secondary" type="button"><i data-lucide="refresh-cw"></i><span>Fetch details</span></button>
+      </div>
+      <label class="check-row"><input id="endpoint-auto-discover" type="checkbox" checked>Auto-discover models from this endpoint (GET /info)</label>
+      <div id="endpoint-manual-fields" class="control-grid" hidden>
+        <label class="field">Model ID<input id="endpoint-model-id" type="text" maxlength="200" value="endpoint-model"></label>
+        <label class="field">Model family<input id="endpoint-model-family" type="text" maxlength="120" value="endpoint"></label>
+        <label class="field">Role<input id="endpoint-model-role" type="text" maxlength="60" value="general"></label>
+        <label class="field">Task classes<input id="endpoint-task-classes" type="text" value="chat_qa" placeholder="comma-separated"></label>
+        <label class="field">Max context tokens<input id="endpoint-max-context" type="number" min="0" value="4096"></label>
+      </div>
+      <label class="field">Total memory (MB)<input id="endpoint-total-memory" type="number" min="0" value="0" placeholder="Auto"></label>
+      <div class="dialog-actions"><button id="endpoint-cancel" type="button" class="btn-secondary">Cancel</button><button id="endpoint-submit" type="submit" class="btn-primary"><i data-lucide="plug"></i><span>Register</span></button></div>
     </form>
   </dialog>
 

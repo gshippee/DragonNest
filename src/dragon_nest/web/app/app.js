@@ -134,6 +134,89 @@ function forgetDevice() {
   toast("You can connect another device now.");
 }
 
+function openEndpointDialog() {
+  $("endpoint-device-id").value = "";
+  $("endpoint-display-name").value = "";
+  $("endpoint-base-url").value = "";
+  $("endpoint-api-key").value = "";
+  $("endpoint-model-id").value = "endpoint-model";
+  $("endpoint-model-family").value = "endpoint";
+  $("endpoint-model-role").value = "general";
+  $("endpoint-task-classes").value = "chat_qa";
+  $("endpoint-max-context").value = "4096";
+  $("endpoint-total-memory").value = "0";
+  $("endpoint-auto-discover").checked = true;
+  $("endpoint-submit").disabled = false;
+  toggleEndpointMode();
+  $("endpoint-dialog").showModal();
+}
+
+function toggleEndpointMode() {
+  $("endpoint-manual-fields").hidden = $("endpoint-auto-discover").checked;
+}
+
+function applyDiscoveredInfo(info) {
+  if (info.display_name && !$("endpoint-display-name").value.trim()) $("endpoint-display-name").value = info.display_name;
+  if (info.total_memory_mb) $("endpoint-total-memory").value = info.total_memory_mb;
+  const models = info.models || [];
+  if (models.length) {
+    const first = models[0];
+    $("endpoint-model-id").value = first.model_id || "";
+    $("endpoint-model-family").value = first.model_family || "";
+    $("endpoint-model-role").value = first.role || "";
+    $("endpoint-task-classes").value = (first.task_classes || []).join(", ");
+    $("endpoint-max-context").value = first.max_context_tokens || 0;
+  }
+  toast(models.length
+    ? `Found ${models.length} model${models.length === 1 ? "" : "s"}: ${models.map((m) => m.model_id).join(", ")}`
+    : "Endpoint reachable, but reported no models via /info.");
+}
+
+async function fetchEndpointDetails() {
+  const baseUrl = $("endpoint-base-url").value.trim();
+  if (!baseUrl) { toast("Enter an endpoint URL first"); return; }
+  const button = $("endpoint-fetch"); button.disabled = true;
+  try {
+    const info = await api("/api/rest-devices/discover", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: baseUrl, api_key: $("endpoint-api-key").value }),
+    });
+    applyDiscoveredInfo(info);
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
+}
+
+async function registerEndpoint(event) {
+  event.preventDefault();
+  const button = $("endpoint-submit"); button.disabled = true;
+  const deviceId = $("endpoint-device-id").value.trim();
+  const autoDiscover = $("endpoint-auto-discover").checked;
+  try {
+    await api("/api/rest-devices", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        device_id: deviceId,
+        display_name: $("endpoint-display-name").value.trim(),
+        base_url: $("endpoint-base-url").value.trim(),
+        api_key: $("endpoint-api-key").value,
+        total_memory_mb: Number($("endpoint-total-memory").value) || 0,
+        models: autoDiscover ? [] : [{
+          model_id: $("endpoint-model-id").value.trim(),
+          model_family: $("endpoint-model-family").value.trim(),
+          role: $("endpoint-model-role").value.trim(),
+          task_classes: $("endpoint-task-classes").value.split(",").map((item) => item.trim()).filter(Boolean),
+          max_context_tokens: Number($("endpoint-max-context").value) || 0,
+          warm: true,
+          quality_score: 0.6,
+        }],
+      }),
+    });
+    $("endpoint-dialog").close();
+    toast(`Endpoint ${deviceId} registered`);
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
+}
+
 function openEnrollment() {
   resetEnrollment();
   $("enrollment-dialog").showModal();
@@ -213,6 +296,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("add-device").addEventListener("click", openEnrollment);
   $("enrollment-close").addEventListener("click", closeEnrollment);
   $("enrollment-cancel").addEventListener("click", closeEnrollment);
+  $("add-endpoint").addEventListener("click", openEndpointDialog);
+  $("endpoint-form").addEventListener("submit", registerEndpoint);
+  $("endpoint-close").addEventListener("click", () => $("endpoint-dialog").close());
+  $("endpoint-cancel").addEventListener("click", () => $("endpoint-dialog").close());
+  $("endpoint-fetch").addEventListener("click", fetchEndpointDetails);
+  $("endpoint-auto-discover").addEventListener("change", toggleEndpointMode);
   $("forget-device").addEventListener("click", forgetDevice);
   $("profile-form").addEventListener("submit", saveProfile);
   $("task-form").addEventListener("submit", submitTask);

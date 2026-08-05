@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115",
   "grpcio>=1.83",
+  "httpx>=0.28",
   "numpy>=1.26",
   "protobuf>=7.35.1",
   "pydantic>=2.7",
@@ -22,7 +23,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "grpcio-tools>=1.83",
-  "httpx>=0.28",
   "pytest>=8.0",
 ]
 

@@ -40,13 +40,15 @@ function renderDevices() {
       inventory.cpu_core_count ? `${inventory.cpu_core_count} CPU cores` : "",
       inventory.npu_status ? `NPU ${inventory.npu_status}` : ""
     ].filter(Boolean).map((value) => `<span class="chip">${esc(value)}</span>`).join("");
+    const isHttpEndpoint = device.transport === "http_endpoint";
     return `<article class="device-card ${statusClass(device.status)}">
-      <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(device.platform)} · ${device.connected ? "stream connected" : "disconnected"}</p></div><div><span class="status-pill ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-btn simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button></div></div>
+      <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(device.platform)} · ${device.connected ? "stream connected" : "disconnected"}</p></div><div><span class="status-pill ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-btn simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button>${isHttpEndpoint ? ` <button class="icon-btn remove-endpoint" data-device="${esc(device.device_id)}" title="Remove endpoint" aria-label="Remove ${esc(device.display_name)}"><i data-lucide="trash-2"></i></button>` : ""}</div></div>
       <div class="metrics"><div class="metric"><span>Battery</span><strong>${h.battery_pct < 0 ? "Unknown" : `${decimal(h.battery_pct, 0)}%${h.charging ? " charging" : ""}`}</strong></div><div class="metric"><span>Thermal</span><strong>${decimal(h.thermal_level)}</strong></div><div class="metric"><span>Memory</span><strong>${h.available_memory_mb === 0 ? "Unknown" : fmt(h.available_memory_mb, " MB")}</strong></div><div class="metric"><span>Accelerator</span><strong>${h.accelerator_utilization < 0 ? "Unknown" : `${decimal(h.accelerator_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>Network RTT</span><strong>${h.network_rtt_ms < 0 ? "Unknown" : `${decimal(h.network_rtt_ms, 0)} ms`}</strong></div><div class="metric"><span>Active</span><strong>${device.active_tasks.length}</strong></div></div>
-      <div class="model-list">${hardware}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
+      <div class="model-list">${isHttpEndpoint ? `<span class="chip">HTTP endpoint · ${esc(device.base_url)}</span>` : ""}${hardware}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
     </article>`;
   }).join("") : '<div class="empty">No registered devices</div>';
   document.querySelectorAll(".simulate").forEach((button) => button.addEventListener("click", () => openSimulation(button.dataset.device)));
+  document.querySelectorAll(".remove-endpoint").forEach((button) => button.addEventListener("click", () => removeEndpoint(button.dataset.device)));
 }
 
 function renderTaskSelect() {
@@ -126,6 +128,95 @@ function updateSimulationOutputs() { $("sim-thermal-value").value = $("sim-therm
 async function applySimulation(event) {
   event.preventDefault();
   try { await api(`/api/devices/${encodeURIComponent($("simulation-device").value)}/simulate`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ thermal_level: Number($("sim-thermal").value), accelerator_utilization: Number($("sim-load").value), network_rtt_ms: Number($("sim-rtt").value), offline: $("sim-offline").checked }) }); $("simulation-dialog").close(); await refresh(); }
+  catch (error) { toast(error.message); }
+}
+
+function openEndpointDialog() {
+  $("endpoint-device-id").value = "";
+  $("endpoint-display-name").value = "";
+  $("endpoint-base-url").value = "";
+  $("endpoint-api-key").value = "";
+  $("endpoint-model-id").value = "endpoint-model";
+  $("endpoint-model-family").value = "endpoint";
+  $("endpoint-model-role").value = "general";
+  $("endpoint-task-classes").value = "chat_qa";
+  $("endpoint-max-context").value = "4096";
+  $("endpoint-total-memory").value = "0";
+  $("endpoint-auto-discover").checked = true;
+  $("endpoint-submit").disabled = false;
+  toggleEndpointMode();
+  $("endpoint-dialog").showModal();
+}
+
+function toggleEndpointMode() {
+  $("endpoint-manual-fields").hidden = $("endpoint-auto-discover").checked;
+}
+
+function applyDiscoveredInfo(info) {
+  if (info.display_name && !$("endpoint-display-name").value.trim()) $("endpoint-display-name").value = info.display_name;
+  if (info.total_memory_mb) $("endpoint-total-memory").value = info.total_memory_mb;
+  const models = info.models || [];
+  if (models.length) {
+    const first = models[0];
+    $("endpoint-model-id").value = first.model_id || "";
+    $("endpoint-model-family").value = first.model_family || "";
+    $("endpoint-model-role").value = first.role || "";
+    $("endpoint-task-classes").value = (first.task_classes || []).join(", ");
+    $("endpoint-max-context").value = first.max_context_tokens || 0;
+  }
+  toast(models.length
+    ? `Found ${models.length} model${models.length === 1 ? "" : "s"}: ${models.map((m) => m.model_id).join(", ")}`
+    : "Endpoint reachable, but reported no models via /info.");
+}
+
+async function fetchEndpointDetails() {
+  const baseUrl = $("endpoint-base-url").value.trim();
+  if (!baseUrl) { toast("Enter an endpoint URL first"); return; }
+  const button = $("endpoint-fetch"); button.disabled = true;
+  try {
+    const info = await api("/api/rest-devices/discover", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ base_url: baseUrl, api_key: $("endpoint-api-key").value }),
+    });
+    applyDiscoveredInfo(info);
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
+}
+
+async function registerEndpoint(event) {
+  event.preventDefault();
+  const button = $("endpoint-submit"); button.disabled = true;
+  const deviceId = $("endpoint-device-id").value.trim();
+  const autoDiscover = $("endpoint-auto-discover").checked;
+  try {
+    await api("/api/rest-devices", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        device_id: deviceId,
+        display_name: $("endpoint-display-name").value.trim(),
+        base_url: $("endpoint-base-url").value.trim(),
+        api_key: $("endpoint-api-key").value,
+        total_memory_mb: Number($("endpoint-total-memory").value) || 0,
+        models: autoDiscover ? [] : [{
+          model_id: $("endpoint-model-id").value.trim(),
+          model_family: $("endpoint-model-family").value.trim(),
+          role: $("endpoint-model-role").value.trim(),
+          task_classes: $("endpoint-task-classes").value.split(",").map((item) => item.trim()).filter(Boolean),
+          max_context_tokens: Number($("endpoint-max-context").value) || 0,
+          warm: true,
+          quality_score: 0.6
+        }]
+      })
+    });
+    $("endpoint-dialog").close();
+    toast(`Endpoint ${deviceId} registered`);
+    await refresh();
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
+}
+
+async function removeEndpoint(deviceId) {
+  try { await api(`/api/rest-devices/${encodeURIComponent(deviceId)}`, {method: "DELETE"}); toast(`Endpoint ${deviceId} removed`); await refresh(); }
   catch (error) { toast(error.message); }
 }
 
@@ -218,6 +309,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("sim-thermal").addEventListener("input", updateSimulationOutputs);
   $("sim-load").addEventListener("input", updateSimulationOutputs);
   $("add-device").addEventListener("click", openEnrollment);
+  $("add-endpoint").addEventListener("click", openEndpointDialog);
+  $("endpoint-form").addEventListener("submit", registerEndpoint);
+  $("endpoint-close").addEventListener("click", () => $("endpoint-dialog").close());
+  $("endpoint-cancel").addEventListener("click", () => $("endpoint-dialog").close());
+  $("endpoint-fetch").addEventListener("click", fetchEndpointDetails);
+  $("endpoint-auto-discover").addEventListener("change", toggleEndpointMode);
   $("enrollment-form").addEventListener("submit", createEnrollment);
   $("enrollment-close").addEventListener("click", closeEnrollment);
   $("enrollment-cancel").addEventListener("click", closeEnrollment);
