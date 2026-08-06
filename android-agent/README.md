@@ -1,6 +1,8 @@
-# DragonNest Android Agent
+# PersonaCare Android Client / DragonNest Agent
 
-This module builds a runnable Android Device Agent APK. It includes:
+This module is the integrated PersonaCare Android client. It builds one APK
+containing the PersonaCare Compose UI and the long-lived DragonNest Device
+Agent/runtime layer. It includes:
 
 - a `START_STICKY` foreground service and boot receiver;
 - a persistent bidirectional gRPC connection generated from

@@ -269,6 +269,12 @@ admin bearer token.
 
 ## Android APK
 
+`android-agent` is the in-repository **PersonaCare Android client package**.
+The PersonaCare Compose UI and the DragonNest foreground Agent/gRPC runtime are
+two layers of the same APK; it is not a separate competing client. The older
+adjacent PersonaCare repository is source/provenance for pipelines and runtime
+experiments, while this package is the integrated DragonNest Android client.
+
 With JDK 17 and Android SDK 35 available, build and test the Android Agent:
 
 ```bash

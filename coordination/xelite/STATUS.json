@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "state": "waiting_for_xelite",
+  "updated_at_utc": null,
+  "source_branch": "codex/hardware-runtime-audit",
+  "response_branch": "codex/xelite-response",
+  "commit": null,
+  "host": {
+    "manufacturer": null,
+    "model": null,
+    "soc": null,
+    "os": null,
+    "abi": null
+  },
+  "runtime": {
+    "name": null,
+    "version": null,
+    "accelerator": null,
+    "compatibility_key": "windows-arm64-x1e-v73-qairt-2.48"
+  },
+  "artifact": {
+    "artifact_id": "qwen3-4b-w4a16-xelite-v73-qairt248",
+    "validation_passed": null,
+    "installed": null,
+    "warm": null
+  },
+  "execution": {
+    "success": null,
+    "latency_ms": null,
+    "output_sha256": null,
+    "available_memory_mb_before": null,
+    "available_memory_mb_after": null,
+    "thermal_before": null,
+    "thermal_after": null
+  },
+  "proof": {
+    "local_path": "%TEMP%\\dragonnest-xelite-proof.json",
+    "sha256": null,
+    "committed_to_git": false
+  },
+  "tests": {
+    "python": null
+  },
+  "commands_attempted": [],
+  "blockers": [],
+  "next_command": null,
+  "notes": "Do not include secrets, proprietary files, or verbose logs."
+}

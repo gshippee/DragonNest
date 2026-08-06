@@ -20,7 +20,8 @@ QNN transcript, checksummed contexts, AI Hub job records, vector metadata, a
 baked-profile release, QAIRT 2.45.41 Android tooling, and current GenieX source.
 Proprietary SDK/model files remain outside this repository.
 
-The thin Android Agent was rebuilt locally after this audit's protocol changes:
+The thin PersonaCare Android client/Agent APK was rebuilt locally after this
+audit's protocol changes:
 Android unit tests and `assembleDebug` passed. The 19,445,377-byte debug APK has
 SHA-256 `c31fc0a219227d468ec9f6f8baa42434cbf0e8d41f9450cfdf8d445b4ea38821`.
 It intentionally contains no vendor runtime or model, so this is **verified
@@ -112,10 +113,10 @@ Concrete answers:
    retain the secret-free proof JSON. This uses the current DragonNest
    `ExecutionPlan -> HardwareRuntimeAdapter -> GenieExecutor` path.
 2. **S25:** stage the smaller Qwen3-0.6B base bundle (and then concise baked
-   bundle) with matching licensed runtime files, build the hardware APK, install,
-   connect to the existing Brain, and submit a task. Do not start with the 1.7B
-   split proof because it does not yet implement the DragonNest JNI generation
-   contract.
+   bundle) with matching licensed runtime files, build the integrated PersonaCare
+   hardware APK, install, connect its embedded Agent to the existing Brain, and
+   submit a task. Do not start with the 1.7B split proof because it does not yet
+   implement the DragonNest JNI generation contract.
 
 ## Current blockers
 
