@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import glob
 import os
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
@@ -61,6 +62,8 @@ class SimulatedTelemetry:
 
 
 def _available_memory_mb() -> int:
+    if sys.platform == "win32":
+        return _windows_available_memory_mb()
     try:
         for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
             if line.startswith("MemAvailable:"):
@@ -68,6 +71,57 @@ def _available_memory_mb() -> int:
     except (OSError, ValueError, IndexError):
         pass
     return 0
+
+
+def _windows_available_memory_mb() -> int:
+    import ctypes
+
+    class MemoryStatusEx(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", ctypes.c_uint32),
+            ("dwMemoryLoad", ctypes.c_uint32),
+            ("ullTotalPhys", ctypes.c_uint64),
+            ("ullAvailPhys", ctypes.c_uint64),
+            ("ullTotalPageFile", ctypes.c_uint64),
+            ("ullAvailPageFile", ctypes.c_uint64),
+            ("ullTotalVirtual", ctypes.c_uint64),
+            ("ullAvailVirtual", ctypes.c_uint64),
+            ("ullAvailExtendedVirtual", ctypes.c_uint64),
+        ]
+
+    status = MemoryStatusEx()
+    status.dwLength = ctypes.sizeof(MemoryStatusEx)
+    try:
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return int(status.ullAvailPhys // (1024 * 1024))
+    except OSError:
+        pass
+    return 0
+
+
+def _windows_battery_state() -> tuple[float, bool]:
+    import ctypes
+
+    class SystemPowerStatus(ctypes.Structure):
+        _fields_ = [
+            ("ACLineStatus", ctypes.c_ubyte),
+            ("BatteryFlag", ctypes.c_ubyte),
+            ("BatteryLifePercent", ctypes.c_ubyte),
+            ("SystemStatusFlag", ctypes.c_ubyte),
+            ("BatteryLifeTime", ctypes.c_uint32),
+            ("BatteryFullLifeTime", ctypes.c_uint32),
+        ]
+
+    status = SystemPowerStatus()
+    try:
+        if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
+            return -1, False
+    except OSError:
+        return -1, False
+    percentage = float(status.BatteryLifePercent)
+    if percentage > 100:  # 255 means unknown
+        return -1, status.ACLineStatus == 1
+    return percentage, status.ACLineStatus == 1
 
 
 def _cpu_utilization() -> float:
@@ -92,6 +146,8 @@ def _thermal_level() -> float:
 
 
 def _battery_state() -> tuple[float, bool]:
+    if sys.platform == "win32":
+        return _windows_battery_state()
     for directory in glob.glob("/sys/class/power_supply/BAT*"):
         try:
             percentage = float(

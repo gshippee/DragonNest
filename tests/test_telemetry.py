@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,16 @@ def test_system_telemetry_uses_unknown_for_unavailable_accelerator():
     assert snapshot.health.available_memory_mb >= 0
     assert snapshot.health.battery_pct >= -1
     assert snapshot.warm_model_ids
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only telemetry probe")
+def test_system_telemetry_reports_real_memory_on_windows():
+    device = load_devices(ROOT / "configs/dev-fabric.yaml")[0]
+    snapshot = SystemTelemetry(device).sample()
+
+    # Without a native probe the sampler reports 0 ("unknown") and the router
+    # would exclude every model on the Snapdragon X Elite laptop.
+    assert snapshot.health.available_memory_mb > 0
 
 
 def test_simulated_telemetry_overrides_platform_sample():
