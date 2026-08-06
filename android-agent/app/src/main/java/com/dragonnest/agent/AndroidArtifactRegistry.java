@@ -146,6 +146,18 @@ public final class AndroidArtifactRegistry {
         if (supportsSteering && vectors.isEmpty()) {
             throw new IllegalArgumentException("Steering model must declare steering_vector_ids");
         }
+        String steeringMode = item.optString(
+                "steering_mode", supportsSteering ? "runtime_vector" : "none");
+        String behaviorProfileId = item.optString("behavior_profile_id", "");
+        if (supportsSteering != steeringMode.equals("runtime_vector")) {
+            throw new IllegalArgumentException(
+                    "supports_steering is reserved for runtime_vector: " + modelId);
+        }
+        if ((steeringMode.equals("baked_profile") || steeringMode.equals("prompt_profile"))
+                && behaviorProfileId.isBlank()) {
+            throw new IllegalArgumentException(
+                    steeringMode + " requires behavior_profile_id: " + modelId);
+        }
         AndroidModelSegment segment = parseSegment(item.optJSONObject("split_boundary"));
         boolean supportsPipeline = item.optBoolean("supports_layer_pipeline", segment != null);
         if (supportsPipeline != (segment != null)) {
@@ -174,6 +186,10 @@ public final class AndroidArtifactRegistry {
                 layers,
                 segment,
                 item.optString("runtime_version", "unknown"),
+                item.optString("artifact_id", modelId),
+                steeringMode,
+                behaviorProfileId,
+                item.optString("target_compatibility_class", ""),
                 item.optJSONObject("runtime_options") == null
                         ? "{}" : item.optJSONObject("runtime_options").toString());
     }

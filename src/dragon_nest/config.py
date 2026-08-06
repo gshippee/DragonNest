@@ -51,6 +51,14 @@ def load_devices(path: str | Path) -> list[Device]:
                     supports_layer_pipeline=bool(
                         model.get("supports_layer_pipeline", segment is not None)
                     ),
+                    artifact_id=str(model.get("artifact_id", "")),
+                    steering_modes=tuple(model.get("steering_modes", ["none"])),
+                    behavior_profile_ids=tuple(
+                        model.get("behavior_profile_ids", [])
+                    ),
+                    target_compatibility_class=str(
+                        model.get("target_compatibility_class", "")
+                    ),
                 )
             )
         devices.append(

@@ -7,6 +7,7 @@ from pathlib import Path
 from dragon_nest.artifacts import ArtifactRegistry
 from dragon_nest.config import load_device
 from dragon_nest.telemetry import SimulatedTelemetry, SystemTelemetry
+from dragon_nest.runtime.hardware_adapter import AdapterTelemetry, HardwareRuntimeAdapter
 from dragon_nest.transport.agent import AgentClientConfig, DeviceAgent
 
 
@@ -26,6 +27,18 @@ async def run(args) -> None:
     }
     if any(value is not None for value in simulation.values()):
         telemetry = SimulatedTelemetry(telemetry, **simulation)
+    adapter = None
+    if artifacts is not None and args.compatibility_key:
+        adapter = HardwareRuntimeAdapter(
+            artifacts,
+            compatibility_key=args.compatibility_key,
+            runtime_name=args.runtime_name,
+            runtime_version=args.runtime_version,
+            accelerator_available=args.accelerator_available,
+            telemetry=telemetry,
+            artifact_store=args.artifact_store,
+        )
+        telemetry = AdapterTelemetry(adapter)
     agent = DeviceAgent(
         device,
         AgentClientConfig(
@@ -36,6 +49,7 @@ async def run(args) -> None:
             tls_client_key_path=str(args.tls_key or ""),
         ),
         artifacts=artifacts,
+        executor=adapter,
         telemetry=telemetry,
     )
     print(f"Starting {args.device_id}; connecting to {args.brain}")
@@ -63,6 +77,22 @@ def main() -> None:
     parser.add_argument("--simulate-battery", type=float)
     parser.add_argument("--simulate-load", type=float)
     parser.add_argument("--simulate-rtt", type=float)
+    parser.add_argument(
+        "--compatibility-key",
+        help="exact target class, for example windows-arm64-x1e-v73-qairt-2.48",
+    )
+    parser.add_argument("--runtime-name", default="genie")
+    parser.add_argument("--runtime-version", default="unknown")
+    parser.add_argument(
+        "--accelerator-available",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--artifact-store",
+        type=Path,
+        default=Path.home() / ".dragonnest" / "artifacts",
+    )
     parser.set_defaults(artifact_manifest=Path("configs/model-artifacts.yaml"))
     args = parser.parse_args()
     try:

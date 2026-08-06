@@ -340,6 +340,13 @@ This repo should not blindly vendor the two source repos. Use them as follows:
 
 ## Hardware Runtime Configuration
 
+The evidence-classified device/runtime audit, benchmark record, and steering
+provenance are in [docs/HARDWARE_AUDIT.md](docs/HARDWARE_AUDIT.md),
+[docs/HARDWARE_BENCHMARKS.md](docs/HARDWARE_BENCHMARKS.md), and
+[docs/STEERING_VECTOR_PROVENANCE.md](docs/STEERING_VECTOR_PROVENANCE.md).
+`configs/hardware-fabric.yaml` is the real-hardware inventory; the mock-focused
+`configs/dev-fabric.yaml` remains unchanged for development and tests.
+
 The manifest at `configs/model-artifacts.yaml` describes the validated
 PersonaCare Genie bundle and split-compute QNN artifacts. Set the referenced
 paths and checksums before starting an Agent:
@@ -356,6 +363,11 @@ python scripts/hash_artifact.py $env:QWEN3_SPLIT_PART_A_QNN
 python scripts/hash_artifact.py $env:QWEN3_SPLIT_PART_B_QNN
 python scripts/check_artifacts.py
 ```
+
+On physical hardware, `scripts/probe_hardware.py` wraps the existing
+`ExecutionPlan`/executor path and writes a secret-free JSON proof. It reports an
+artifact as warm only when a persistent runtime context is actually retained;
+the current Genie CLI is correctly reported as installed but cold.
 
 An Agent must advertise only artifacts reported as `READY`. The checked-in
 manifest does not imply that the external model binaries are present.

@@ -1,6 +1,7 @@
 package com.dragonnest.agent;
 
 import android.content.Context;
+import android.os.Build;
 import android.util.Log;
 
 import com.dragonnest.proto.ExecutePipelineStage;
@@ -69,6 +70,11 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
                 Log.w(TAG, "Ignoring model with missing or invalid checksum: " + artifact.modelId());
                 continue;
             }
+            if (!isDeviceCompatible(artifact)) {
+                Log.w(TAG, "Ignoring target-incompatible model " + artifact.modelId()
+                        + " for " + Build.SOC_MODEL);
+                continue;
+            }
             AndroidRuntimeBridge bridge = bridges.computeIfAbsent(
                     artifact.runtime(), RuntimeBridgeLoader::load);
             if (bridge == null || !bridge.isAvailable(context, artifact)) {
@@ -81,7 +87,8 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
                     : new GenieAndroidTaskExecutor(context, artifact, bridge);
             executors.put(artifact.modelId(), executor);
             capabilities.add(artifact.capability());
-            warm.add(artifact.modelId());
+            // The current bridges create a runtime per request and do not retain
+            // a model context.  Advertise installed, but never claim it is warm.
             if (usesNpu(artifact)) {
                 npuAvailable = true;
                 availableNpuName = "Qualcomm " + artifact.supportedAccelerators().get(0).toUpperCase();
@@ -148,6 +155,18 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
                         || accelerator.equalsIgnoreCase("npu"));
     }
 
+    private static boolean isDeviceCompatible(AndroidModelArtifact artifact) {
+        String target = artifact.targetCompatibilityClass().toLowerCase();
+        if (target.isBlank()) {
+            return true;
+        }
+        String abi = Build.SUPPORTED_ABIS.length == 0
+                ? "unknown" : Build.SUPPORTED_ABIS[0].toLowerCase();
+        String soc = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? Build.SOC_MODEL.toLowerCase() : "unknown-soc";
+        return target.startsWith("android-" + abi + "-" + soc);
+    }
+
     private static ModelCapability mockCapability() {
         return ModelCapability.newBuilder()
                 .setModelId(MockAndroidTaskExecutor.MODEL_ID)
@@ -174,6 +193,8 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
                 .addSupportedSteeringLayers(7)
                 .setSupportsSteering(true)
                 .setSupportsDataParallel(true)
+                .setArtifactId(MockAndroidTaskExecutor.MODEL_ID)
+                .addSteeringModes("runtime_vector")
                 .build();
     }
 }

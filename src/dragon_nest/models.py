@@ -31,6 +31,20 @@ class RuntimeName(StrEnum):
     QNN = "qnn"
 
 
+class SteeringMode(StrEnum):
+    """How a deployment realizes a behavior profile.
+
+    ``supports_steering`` remains the routing flag for *dynamic activation*
+    steering.  A baked or prompt profile is intentionally not equivalent to
+    that flag.
+    """
+
+    RUNTIME_VECTOR = "runtime_vector"
+    BAKED_PROFILE = "baked_profile"
+    PROMPT_PROFILE = "prompt_profile"
+    NONE = "none"
+
+
 @dataclass(frozen=True)
 class HealthState:
     battery_pct: float = -1
@@ -60,6 +74,7 @@ class HardwareInventory:
     npu_status: str = "not_probed"
     npu_name: str = ""
     qnn_runtime_version: str = ""
+    compatibility_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -95,6 +110,10 @@ class ModelCapability:
     supports_steering: bool = False
     supports_data_parallel: bool = True
     supports_layer_pipeline: bool = False
+    artifact_id: str = ""
+    steering_modes: tuple[str, ...] = (SteeringMode.NONE.value,)
+    behavior_profile_ids: tuple[str, ...] = ()
+    target_compatibility_class: str = ""
 
 
 @dataclass(frozen=True)
@@ -133,6 +152,8 @@ class SteeringSpec:
     alpha: float = 0.0
     positions: str = "last"
     allow_remote_vector: bool = False
+    mode: str = SteeringMode.RUNTIME_VECTOR.value
+    behavior_profile_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -245,3 +266,6 @@ class ExecutionMetrics:
     error_message: str = ""
     observed_memory_delta_mb: int | None = None
     observed_thermal_delta: float | None = None
+    artifact_load_time_ms: int | None = None
+    prefill_tokens_per_second: float | None = None
+    decode_tokens_per_second: float | None = None

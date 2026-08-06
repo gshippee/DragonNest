@@ -61,8 +61,8 @@ class DeviceAgent:
     ):
         self.config = config or AgentClientConfig()
         self.artifacts = artifacts
-        self.device = self._available_device(device)
         self.executor = executor or ExecutorDispatcher(artifacts)
+        self.device = self._available_device(device)
         self.telemetry = telemetry or SystemTelemetry(self.device)
         self.registered = asyncio.Event()
         self._stop = asyncio.Event()
@@ -581,6 +581,21 @@ class DeviceAgent:
                 ),
             )
         models = []
+        adapter_capabilities = (
+            self.executor.capabilities()
+            if hasattr(self.executor, "capabilities")
+            else None
+        )
+        installed_ids = (
+            set(adapter_capabilities.installed_artifact_ids)
+            if adapter_capabilities is not None
+            else None
+        )
+        warm_ids = (
+            set(adapter_capabilities.warm_artifact_ids)
+            if adapter_capabilities is not None
+            else set()
+        )
         for model in device.models:
             try:
                 self.artifacts.get(model.model_id)
@@ -589,9 +604,16 @@ class DeviceAgent:
                 continue
             if self.artifacts.is_available(model.model_id):
                 artifact = self.artifacts.get(model.model_id)
+                if installed_ids is not None and artifact.artifact_id not in installed_ids:
+                    continue
                 models.append(
                     replace(
                         model,
+                        warm=(
+                            artifact.artifact_id in warm_ids
+                            if installed_ids is not None
+                            else model.warm
+                        ),
                         model_version=artifact.model_version,
                         tokenizer_id=artifact.tokenizer_id,
                         precision=artifact.precision,
@@ -605,6 +627,16 @@ class DeviceAgent:
                         supports_steering=artifact.supports_steering,
                         supports_data_parallel=artifact.supports_data_parallel,
                         supports_layer_pipeline=artifact.supports_layer_pipeline,
+                        artifact_id=artifact.artifact_id,
+                        steering_modes=(artifact.steering_mode.value,),
+                        behavior_profile_ids=(
+                            (artifact.behavior_profile_id,)
+                            if artifact.behavior_profile_id
+                            else ()
+                        ),
+                        target_compatibility_class=(
+                            artifact.target_compatibility_class
+                        ),
                         boundary_format=(
                             artifact.split_boundary.boundary_format
                             if artifact.split_boundary

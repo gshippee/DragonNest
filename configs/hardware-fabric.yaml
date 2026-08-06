@@ -1,0 +1,87 @@
+devices:
+  - device_id: phone-01
+    display_name: Samsung Galaxy S25 Ultra
+    device_type: phone
+    platform: android
+    total_memory_mb: 12288
+    health:
+      battery_pct: -1
+      charging: false
+      thermal_level: -1
+      cpu_utilization: -1
+      accelerator_utilization: -1
+      available_memory_mb: 0
+      network_rtt_ms: -1
+      reachable: true
+    hardware:
+      manufacturer: Samsung
+      model: SM-S938U1
+      device: unverified
+      os_version: "15"
+      soc_manufacturer: Qualcomm
+      soc_model: SM8750
+      cpu_abis: [arm64-v8a]
+      npu_status: available
+      npu_name: Hexagon v79 HTP
+      qnn_runtime_version: 2.45.41.260507231357
+      compatibility_key: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+    models:
+      - model_id: qwen3-0.6b-s25-base
+        artifact_id: qwen3-0.6b-w4a16-sm8750-base-qairt245
+        model_family: qwen3
+        role: small_chat
+        task_classes: [chat_qa, summarization, translation_rewrite]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.70
+        steering_modes: [none]
+        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+      - model_id: qwen3-0.6b-s25-concise
+        artifact_id: qwen3-0.6b-w4a16-sm8750-concise-l7-am4-qairt245
+        model_family: qwen3
+        role: small_chat
+        task_classes: [chat_qa, summarization, translation_rewrite]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.70
+        steering_modes: [baked_profile]
+        behavior_profile_ids: [concise-l7-alpha-m4]
+        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+
+  - device_id: pc-01
+    display_name: Snapdragon X Elite Laptop
+    device_type: pc
+    platform: windows
+    total_memory_mb: 0
+    health:
+      battery_pct: -1
+      charging: false
+      thermal_level: -1
+      cpu_utilization: -1
+      accelerator_utilization: -1
+      available_memory_mb: 0
+      network_rtt_ms: -1
+      reachable: true
+    hardware:
+      manufacturer: unverified
+      model: unverified
+      device: unverified
+      os_version: Windows 11
+      soc_manufacturer: Qualcomm
+      soc_model: Snapdragon X Elite exact SKU unverified
+      cpu_abis: [arm64]
+      npu_status: not_probed
+      npu_name: Hexagon v73 expected
+      qnn_runtime_version: unverified
+      compatibility_key: windows-arm64-x1e-v73-qairt-2.48
+    models:
+      - model_id: qwen3-4b-genie
+        artifact_id: qwen3-4b-w4a16-xelite-v73-qairt248
+        model_family: qwen3
+        role: large_reasoning
+        task_classes: [chat_qa, summarization, reasoning_analysis, code_assistance]
+        max_context_tokens: 4096
+        warm: false
+        quality_score: 0.85
+        steering_modes: [none]
+        target_compatibility_class: windows-arm64-x1e-v73-qairt-2.48

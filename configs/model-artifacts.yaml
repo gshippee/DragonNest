@@ -1,17 +1,41 @@
 models:
   - model_id: qwen3-4b-genie
+    artifact_id: qwen3-4b-w4a16-xelite-v73-qairt248
     model_version: qwen3-4b-w4a16-snapdragon-x-elite
+    base_model: Qwen/Qwen3-4B
+    base_model_revision: unverified
     runtime: genie
+    artifact_format: genie_bundle
     artifact_path: ${GENIE_DIR}
     checksum: ${QWEN3_4B_GENIE_SHA256_TREE}
     tokenizer_id: Qwen/Qwen3-4B
+    tokenizer_fingerprint: unverified
     precision: w4a16
+    quantization: w4a16
+    steering_mode: none
+    behavior_profile_id: ""
+    vector_id: ""
+    target_compatibility_class: windows-arm64-x1e-v73-qairt-2.48
     supported_accelerators: [htp]
     min_memory_mb: 4096
     max_context_tokens: 4096
     supports_steering: false
     supports_data_parallel: true
     supports_layer_pipeline: false
+    size_bytes: null
+    context_profile:
+      max_context_tokens: 4096
+      prompt_sequence_lengths: unverified
+    input_tensor_schema:
+      - {name: prompt_text, dtype: utf8, shape: [dynamic]}
+    output_tensor_schema:
+      - {name: response_text, dtype: utf8, shape: [dynamic]}
+    build_provenance:
+      source: validated PersonaCare Genie bundle path
+      command: external Qualcomm export; exact command unverified
+    ai_hub: {}
+    measured_hardware_results: []
+    verification_status: unverified
     runtime_options:
       backend: htp
       runtime_version: QAIRT-2.48
@@ -19,10 +43,128 @@ models:
       config: genie_config.json
       timeout_sec: 180
       system_prompt: You are a helpful AI assistant.
+      persistent_load_supported: false
+
+  - model_id: qwen3-0.6b-s25-base
+    artifact_id: qwen3-0.6b-w4a16-sm8750-base-qairt245
+    model_version: c1899de289a04d12100db370d81485cdf75e47ca
+    base_model: Qwen/Qwen3-0.6B
+    base_model_revision: c1899de289a04d12100db370d81485cdf75e47ca
+    runtime: genie
+    artifact_format: geniex_qairt_bundle
+    artifact_path: ${QWEN3_0_6B_S25_BASE_DIR}
+    checksum: ${QWEN3_0_6B_S25_BASE_SHA256_TREE}
+    tokenizer_id: Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca
+    tokenizer_fingerprint: unverified
+    precision: w4a16
+    quantization: w4a16
+    steering_mode: none
+    behavior_profile_id: ""
+    vector_id: ""
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+    supported_accelerators: [htp]
+    min_memory_mb: 2048
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: true
+    supports_layer_pipeline: false
+    size_bytes: null
+    context_profile: {context_tokens: 512, prefill_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      - {name: prompt_text, dtype: utf8, shape: [dynamic]}
+    output_tensor_schema:
+      - {name: response_text, dtype: utf8, shape: [dynamic]}
+    build_provenance:
+      source: PersonaCare/android_static_steering release static-steering-v1
+      release_zip_sha256: 2854ef411208b1315855584b223e32627922c8bb5b192ce88d7ee13010d5c8fe
+      release_zip_size_bytes: 629468676
+    ai_hub:
+      target: Samsung Galaxy S25 (Family)
+      compile_job_ids: []
+      link_job_ids: []
+    measured_hardware_results: []
+    verification_status: verified through Qualcomm AI Hub
+    runtime_options:
+      backend: htp
+      runtime_version: QAIRT-2.45 / GenieX-0.3.5
+      config: genie_config.json
+      timeout_sec: 180
+      persistent_load_supported: false
+
+  - model_id: qwen3-0.6b-s25-concise
+    artifact_id: qwen3-0.6b-w4a16-sm8750-concise-l7-am4-qairt245
+    model_version: c1899de289a04d12100db370d81485cdf75e47ca
+    base_model: Qwen/Qwen3-0.6B
+    base_model_revision: c1899de289a04d12100db370d81485cdf75e47ca
+    runtime: genie
+    artifact_format: geniex_qairt_bundle
+    artifact_path: ${QWEN3_0_6B_S25_CONCISE_DIR}
+    checksum: ${QWEN3_0_6B_S25_CONCISE_SHA256_TREE}
+    tokenizer_id: Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca
+    tokenizer_fingerprint: unverified
+    precision: w4a16
+    quantization: w4a16
+    steering_mode: baked_profile
+    behavior_profile_id: concise-l7-alpha-m4
+    vector_id: concise-vs-verbose-layer-7
+    vector_calibration:
+      layer: 7
+      alpha: -4.0
+      normalization: l2_at_injection
+      vector_sha256: 7d69ff39a248a6e7df11d5fe2b533addfc19f84da75c4869a088eef8a2c32b2c
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+    supported_accelerators: [htp]
+    min_memory_mb: 2048
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: true
+    supports_layer_pipeline: false
+    size_bytes: null
+    context_profile: {context_tokens: 512, prefill_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      - {name: prompt_text, dtype: utf8, shape: [dynamic]}
+    output_tensor_schema:
+      - {name: response_text, dtype: utf8, shape: [dynamic]}
+    build_provenance:
+      source: PersonaCare/android_static_steering release static-steering-v1
+      source_onnx_sha256: fc390cb9f1a26a36d6e079ce5ceb83c51ba0379cd2a6a2713b0245f8bf7439e2
+      release_zip_sha256: e932381129d5d93514d6cefadff7e4bfe55dd6cf23532c183e17cfc13937a183
+      release_zip_size_bytes: 629447381
+    ai_hub:
+      target: Samsung Galaxy S25 (Family)
+      compile_job_ids: []
+      link_job_ids: []
+    measured_hardware_results: []
+    verification_status: verified through Qualcomm AI Hub
+    runtime_options:
+      backend: htp
+      runtime_version: QAIRT-2.45 / GenieX-0.3.5
+      config: genie_config.json
+      timeout_sec: 180
+      persistent_load_supported: false
 
   - model_id: qwen3-0.6b-part-a
+    artifact_id: qwen3-0.6b-fp16-split14-stage0-sm8750-v79-qairt245
     model_version: c1899de289a04d12100db370d81485cdf75e47ca
     runtime: qnn
+    base_model: Qwen/Qwen3-0.6B
+    base_model_revision: c1899de289a04d12100db370d81485cdf75e47ca
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    artifact_format: qnn_context_binary
+    quantization: fp16
+    context_profile: {sequence_length: 32}
+    input_tensor_schema:
+      - {name: input_ids, dtype: int32, shape: [1, 32]}
+    output_tensor_schema:
+      - {name: hidden, dtype: float32, shape: [1, 32, 1024]}
+    size_bytes: null
+    build_provenance: {source: PersonaCare-Steering-Research split export}
+    ai_hub: {target: Snapdragon 8 Elite QRD}
+    measured_hardware_results:
+      - {device: SM-S938U1, context_load_ms: 206.7, npu_execute_ms: 37.0, evidence: verified on physical hardware}
+    verification_status: verified on physical hardware
     artifact_path: ${QWEN3_SPLIT_PART_A_QNN}
     checksum: ${QWEN3_SPLIT_PART_A_SHA256}
     tokenizer_id: Qwen/Qwen3-0.6B
@@ -54,8 +196,30 @@ models:
           dtype: float32
 
   - model_id: qwen3-0.6b-part-b
+    artifact_id: qwen3-0.6b-fp16-split14-stage1-xelite-v73-qairt245
     model_version: c1899de289a04d12100db370d81485cdf75e47ca
     runtime: qnn
+    base_model: Qwen/Qwen3-0.6B
+    base_model_revision: c1899de289a04d12100db370d81485cdf75e47ca
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+    artifact_format: qnn_context_binary
+    quantization: fp16
+    context_profile: {sequence_length: 32}
+    input_tensor_schema:
+      - {name: hidden, dtype: float32, shape: [1, 32, 1024]}
+    output_tensor_schema:
+      - {name: logits, dtype: float32, shape: [1, 32, 151936]}
+    size_bytes: null
+    build_provenance: {source: PersonaCare-Steering-Research split export}
+    ai_hub:
+      target: Snapdragon X Elite CRD
+      linked_model_id: mmxge01yq
+      link_job_id: jpv79knzp
+    measured_hardware_results:
+      - {device: Snapdragon X Elite CRD, inference_us: 131, peak_memory_bytes: 14467072, evidence: verified through Qualcomm AI Hub}
+    verification_status: verified through Qualcomm AI Hub
     artifact_path: ${QWEN3_SPLIT_PART_B_QNN}
     checksum: ${QWEN3_SPLIT_PART_B_SHA256}
     tokenizer_id: Qwen/Qwen3-0.6B

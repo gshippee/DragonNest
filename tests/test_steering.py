@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from dragon_nest.models import ModelCapability
+from dragon_nest.models import ModelCapability, SteeringSpec
 from dragon_nest.steering import SteeringRegistry
 
 
@@ -144,4 +144,37 @@ def test_steering_validation_rejects_bad_alpha():
     ok, reason = registry.validate(spec, model)
     assert not ok
     assert "outside range" in reason
+
+
+def test_baked_profile_routes_only_to_matching_artifact():
+    registry = SteeringRegistry.from_yaml(ROOT / "configs/steering-vectors.yaml")
+    spec = SteeringSpec(
+        enabled=True,
+        mode="baked_profile",
+        behavior_profile_id="concise-l7-alpha-m4",
+    )
+    baked = ModelCapability(
+        model_id="qwen3-0.6b-s25-concise",
+        model_family="qwen3",
+        role="small_chat",
+        task_classes=("chat_qa",),
+        max_context_tokens=512,
+        warm=False,
+        quality_score=0.7,
+        steering_modes=("baked_profile",),
+        behavior_profile_ids=("concise-l7-alpha-m4",),
+    )
+    base = baked.__class__(
+        **{
+            **baked.__dict__,
+            "model_id": "qwen3-0.6b-s25-base",
+            "steering_modes": ("none",),
+            "behavior_profile_ids": (),
+        }
+    )
+
+    assert registry.validate(spec, baked)[0]
+    ok, reason = registry.validate(spec, base)
+    assert not ok
+    assert "does not advertise baked_profile" in reason
 
