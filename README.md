@@ -70,6 +70,19 @@ Implemented in this scaffold:
   graceful shutdown, settings UI, and simulation controls.
 - FastAPI dashboard/API with health, simulations, task submission, steering,
   route traces, progress, results, and live events.
+- Behavior-aware deployment scheduler: behavior profiles with explicit
+  steering realizations (runtime vector / baked profile / prompt profile /
+  none) and fallback policies, an artifact catalog with per-device deployment
+  states, feasibility filtering with projected-memory fits, an explainable
+  deterministic cost model, a provisioning state machine behind a mock AI Hub
+  adapter, and dashboard panels for candidates, rejections, and provisioning.
+  See [docs/BEHAVIOR_SCHEDULER.md](docs/BEHAVIOR_SCHEDULER.md).
+- Native Windows memory/battery telemetry probes for Snapdragon X Elite
+  laptops.
+- Deterministic demo fleet (X Elite laptop + Galaxy S25 Ultra) and scenario
+  runner covering warm preference, behavior locality, thermal reroute, memory
+  rejection, steering fallback, disconnect recovery, and provisioning. See
+  [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md).
 - Unit and integration tests for routing, runtimes, disconnects, and recovery.
 
 Not implemented yet:
@@ -134,6 +147,7 @@ cd DragonNest
 .venv/bin/python scripts/demo_mock.py
 .venv/bin/python scripts/demo_recovery.py
 .venv/bin/python scripts/demo_grpc.py
+.venv/bin/python scripts/demo_scenarios.py
 .venv/bin/python scripts/check_artifacts.py
 ```
 
