@@ -47,11 +47,15 @@ def test_vector_records_carry_lifecycle_metadata():
 
 def test_runtime_compatible_enforces_validation_boundaries():
     registry = SteeringRegistry.from_yaml(ROOT / "configs/steering-vectors.yaml")
+    revision = next(
+        v for v in registry.vectors()
+        if v.vector_id == "concise-vs-verbose-layer-7"
+    ).model_revision
 
     ok, _ = registry.runtime_compatible(
         "concise-vs-verbose-layer-7",
         model_family="qwen3",
-        model_revision="demo",
+        model_revision=revision,
         runtime="genie",
         quantization="w4a16",
         injection_layer=7,
@@ -61,7 +65,7 @@ def test_runtime_compatible_enforces_validation_boundaries():
     ok, reason = registry.runtime_compatible(
         "concise-vs-verbose-layer-7",
         model_family="qwen3",
-        model_revision="demo",
+        model_revision=revision,
         runtime="qnn",
         quantization="w4a16",
         injection_layer=7,
@@ -72,7 +76,7 @@ def test_runtime_compatible_enforces_validation_boundaries():
     ok, reason = registry.runtime_compatible(
         "concise-vs-verbose-layer-7",
         model_family="qwen3",
-        model_revision="demo",
+        model_revision=revision,
         runtime="genie",
         quantization="int4-unknown",
         injection_layer=7,
@@ -83,7 +87,7 @@ def test_runtime_compatible_enforces_validation_boundaries():
     ok, reason = registry.runtime_compatible(
         "concise-vs-verbose-layer-7",
         model_family="llama",
-        model_revision="demo",
+        model_revision=revision,
         runtime="genie",
         quantization="w4a16",
         injection_layer=7,
@@ -94,7 +98,7 @@ def test_runtime_compatible_enforces_validation_boundaries():
     ok, reason = registry.runtime_compatible(
         "concise-vs-verbose-layer-7",
         model_family="qwen3",
-        model_revision="demo",
+        model_revision=revision,
         runtime="genie",
         quantization="w4a16",
         injection_layer=3,
