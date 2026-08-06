@@ -6,9 +6,10 @@ telemetry, and the Brain routes behavior-aware requests to concrete
 executable deployments — visibly, with explanations, fallbacks, and
 provisioning.
 
-Everything below runs with **no Qualcomm SDKs** (mock executors). The same
-control plane drives real hardware once the adapters in
-`docs/HARDWARE_CONTRACT.md` are implemented.
+The smoke run and simulated agents below need **no Qualcomm SDKs**. They
+exercise the real Brain/control-plane code with mock executors. The separate
+X Elite Genie command uses the hardware manifest and only advertises a model
+after its local bundle passes path and checksum validation.
 
 ## 0. One-time setup (Windows PowerShell)
 
@@ -37,11 +38,32 @@ Terminal 1 — the Brain (gRPC on 50051, dashboard on 8080):
 .venv\Scripts\python.exe scripts\run_brain.py
 ```
 
-Terminal 2 — the Snapdragon X Elite laptop agent:
+Terminal 2 — simulated/control-plane X Elite agent:
 
 ```powershell
 .venv\Scripts\python.exe scripts\run_agent.py --device-id x-elite-01 --fabric configs\demo-fleet.yaml
 ```
+
+This command registers the deterministic `demo-fleet.yaml` X Elite device and
+runs its portable mock artifacts. It does **not** claim Genie or NPU execution.
+
+For the real X Elite Genie agent, first set `GENIE_DIR` and
+`QWEN3_4B_GENIE_SHA256_TREE` as described in `README.md` under "Hardware
+Runtime Configuration", then run:
+
+```powershell
+.venv\Scripts\python.exe scripts\run_agent.py `
+  --device-id pc-01 `
+  --fabric configs\hardware-fabric.yaml `
+  --artifact-manifest configs/model-artifacts.yaml `
+  --compatibility-key windows-arm64-x1e-v73-qairt-2.48 `
+  --runtime-name genie `
+  --runtime-version QAIRT-2.48 `
+  --accelerator-available
+```
+
+That command uses `HardwareRuntimeAdapter` and advertises
+`ModelCapability.model_id=qwen3-4b-genie` only when the real bundle validates.
 
 Terminal 3 — the Galaxy S25 Ultra agent (simulated locally; on the real
 phone install the Android Agent APK and point it at the Brain's LAN address):

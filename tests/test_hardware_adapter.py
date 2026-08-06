@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from dragon_nest.artifacts import ArtifactRegistry
+from dragon_nest.artifacts import ArtifactRegistry, calculate_checksum
+from dragon_nest.config import load_device
+from dragon_nest.deployments import ArtifactCatalog
 from dragon_nest.models import (
     ExecutionMode,
     ExecutionPlan,
@@ -19,6 +21,10 @@ from dragon_nest.runtime.hardware_adapter import (
     RuntimeSteeringUnavailableError,
 )
 from dragon_nest.telemetry import TelemetrySnapshot
+from dragon_nest.transport.agent import DeviceAgent
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class _Telemetry:
@@ -117,6 +123,45 @@ def test_adapter_reports_installed_but_not_warm_for_cli_runtime(tmp_path: Path):
     assert capabilities.installed_artifact_ids == ("artifact-v1",)
     assert capabilities.warm_artifact_ids == ()
     assert capabilities.supported_steering_modes == ("none",)
+
+
+def test_real_xelite_advertised_model_id_resolves_to_brain_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    bundle = tmp_path / "xelite-genie"
+    bundle.mkdir()
+    (bundle / "genie-t2t-run.exe").write_bytes(b"runner")
+    (bundle / "genie_config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("GENIE_DIR", str(bundle))
+    monkeypatch.setenv("QWEN3_4B_GENIE_SHA256_TREE", calculate_checksum(bundle))
+
+    artifacts = ArtifactRegistry.from_yaml(ROOT / "configs/model-artifacts.yaml")
+    adapter = HardwareRuntimeAdapter(
+        artifacts,
+        compatibility_key="windows-arm64-x1e-v73-qairt-2.48",
+        runtime_name="genie",
+        runtime_version="QAIRT-2.48",
+        accelerator_available=True,
+        telemetry=_Telemetry(),
+        artifact_store=tmp_path / "store",
+        dispatcher=_Dispatcher(),
+    )
+    device = load_device(ROOT / "configs/hardware-fabric.yaml", "pc-01")
+    advertised = DeviceAgent(
+        device,
+        artifacts=artifacts,
+        executor=adapter,
+        telemetry=_Telemetry(),
+    ).device.models
+    capability = next(
+        model for model in advertised if model.model_id == "qwen3-4b-genie"
+    )
+    catalog = ArtifactCatalog.from_yaml(ROOT / "configs/artifact-catalog.yaml")
+    catalog_artifact = catalog.get(capability.model_id)
+
+    assert capability.artifact_id == "qwen3-4b-w4a16-xelite-v73-qairt248"
+    assert catalog_artifact.artifact_id == capability.model_id
+    assert catalog_artifact.runtime == "genie"
 
 
 def test_adapter_delegates_existing_execution_plan(tmp_path: Path):

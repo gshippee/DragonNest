@@ -312,6 +312,29 @@ def test_missing_medical_safe_deployment_reports_behavior_unavailable(
     assert not any(c.feasible for c in plan.candidates)
 
 
+def test_unvalidated_hardware_artifact_cannot_be_scheduled(scheduler, catalog):
+    phone = _phone([_capability("qwen3-4b-qnn-s25", warm=True)])
+    plan = _plan(
+        scheduler,
+        catalog,
+        [phone],
+        RequestSpec(base_model_family="qwen3"),
+    )
+
+    unsupported = next(
+        candidate
+        for candidate in plan.candidates
+        if candidate.artifact.artifact_id == "qwen3-4b-qnn-s25"
+    )
+    assert unsupported.artifact.readiness == "unvalidated"
+    assert not unsupported.feasible
+    assert any(
+        "has not been built/validated" in reason
+        for reason in unsupported.rejection_reasons
+    )
+    assert plan.chosen is None
+
+
 def test_never_silently_switches_behavior_profile(scheduler, catalog):
     laptop = _laptop(
         [
@@ -421,6 +444,8 @@ def test_prompt_fallback_is_labeled_not_activation_steering(scheduler, catalog):
     )
 
     assert plan.chosen.realization_mode == "prompt_profile"
+    assert plan.chosen.artifact.steering_realization == "none"
     assert not plan.steering.enabled
+    assert plan.steering.vector_id == ""
     assert plan.prompt_prefix
     assert any("not activation steering" in line for line in plan.explanation)

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from dragon_nest.artifacts import ArtifactRegistry
+from dragon_nest.config import load_device
 from dragon_nest.deployments import (
     ArtifactCatalog,
     ArtifactState,
@@ -75,6 +77,33 @@ def test_catalog_finds_baked_artifacts_by_profile(catalog):
     # family-assistant only has a provisioning *target*, not a built artifact
     family = catalog.baked_for("family-assistant", "mock")
     assert [artifact.readiness for artifact in family] == ["unvalidated"]
+
+
+def test_real_s25_capability_ids_resolve_to_catalog(catalog):
+    manifest = ArtifactRegistry.from_yaml(ROOT / "configs/model-artifacts.yaml")
+    phone = load_device(ROOT / "configs/hardware-fabric.yaml", "phone-01")
+    capability_ids = {model.model_id for model in phone.models}
+
+    assert {
+        "qwen3-0.6b-s25-base",
+        "qwen3-0.6b-s25-concise",
+    }.issubset(capability_ids)
+    for model_id in capability_ids & {
+        "qwen3-0.6b-s25-base",
+        "qwen3-0.6b-s25-concise",
+    }:
+        catalog_artifact = catalog.get(model_id)
+        runtime_artifact = manifest.get(model_id)
+        assert catalog_artifact.model_version == runtime_artifact.model_version
+        assert catalog_artifact.runtime == runtime_artifact.runtime.value
+
+
+def test_real_s25_concise_artifact_is_a_baked_profile(catalog):
+    concise = catalog.get("qwen3-0.6b-s25-concise")
+
+    assert concise.steering_realization == "baked_profile"
+    assert concise.behavior_profile_id == "concise"
+    assert concise.vector_id == "concise-vs-verbose-layer-7"
 
 
 def test_compatibility_class_mapping():

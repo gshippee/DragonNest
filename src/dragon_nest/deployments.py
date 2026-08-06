@@ -46,6 +46,7 @@ class ArtifactSpec:
     model_version: str
     behavior_profile_id: str = ""  # non-empty => statically baked behavior
     steering_realization: str = "none"  # how behavior is realized IN the artifact
+    vector_id: str = ""  # source vector for a baked/runtime realization
     compatibility_classes: tuple[str, ...] = ("mock",)
     runtime: str = "mock"
     runtime_version: str = ""
@@ -102,6 +103,7 @@ class ArtifactCatalog:
                 model_version=str(item.get("model_version", "")),
                 behavior_profile_id=str(item.get("behavior_profile_id", "")),
                 steering_realization=str(item.get("steering_realization", "none")),
+                vector_id=str(item.get("vector_id", "")),
                 compatibility_classes=tuple(
                     item.get("compatibility_classes", ["mock"])
                 ),

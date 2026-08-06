@@ -2,7 +2,7 @@
 
 You are the physical-device executor for DragonNest's X Elite milestone. Work
 only in this repository and on the attached Snapdragon X Elite laptop. The
-upstream coordination branch is `codex/hardware-runtime-audit`.
+upstream coordination ref is `origin/main`.
 
 ## Safety and evidence rules
 
@@ -23,8 +23,8 @@ upstream coordination branch is `codex/hardware-runtime-audit`.
 From PowerShell in a clean checkout:
 
 ```powershell
-git fetch origin codex/hardware-runtime-audit
-git switch -C codex/xelite-response origin/codex/hardware-runtime-audit
+git fetch origin main
+git switch -C codex/xelite-response origin/main
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\python.exe -m pytest -q

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "state": "waiting_for_xelite",
   "updated_at_utc": null,
-  "source_branch": "codex/hardware-runtime-audit",
+  "source_branch": "origin/main",
   "response_branch": "codex/xelite-response",
   "commit": null,
   "host": {
