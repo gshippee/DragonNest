@@ -38,9 +38,11 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.SettingsEthernet
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,6 +55,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -347,7 +350,12 @@ private fun ChatScreen(
     }
     var useProfile by rememberSaveable { mutableStateOf(true) }
     var keepOnPhone by rememberSaveable { mutableStateOf(false) }
+    var showDemoControls by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    if (showDemoControls) {
+        DemoControlsDialog(viewModel = viewModel, onDismiss = { showDemoControls = false })
+    }
 
     LaunchedEffect(chat.messages.size, chat.sending) {
         val count = chat.messages.size + if (chat.sending) 1 else 0
@@ -366,6 +374,9 @@ private fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showDemoControls = true }) {
+                        Icon(Icons.Outlined.Memory, "Demo controls")
+                    }
                     IconButton(onClick = onEditProfile) {
                         Icon(Icons.Outlined.Edit, "Edit profile")
                     }
@@ -432,6 +443,63 @@ private fun ChatScreen(
             }
         }
     }
+}
+
+@Composable
+private fun DemoControlsDialog(viewModel: PersonaCareViewModel, onDismiss: () -> Unit) {
+    val totalMemoryMb = remember { viewModel.totalMemoryMb() }
+    var simulating by rememberSaveable {
+        mutableStateOf(viewModel.currentSimulatedMemoryMb() != null)
+    }
+    var memoryMb by rememberSaveable {
+        mutableStateOf(viewModel.currentSimulatedMemoryMb() ?: totalMemoryMb)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Demo controls") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Override the RAM this device reports to DragonNest, to demo the " +
+                        "scheduler moving a task to another device under memory pressure.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Simulate low RAM", fontWeight = FontWeight.Medium)
+                    Switch(
+                        checked = simulating,
+                        onCheckedChange = { checked ->
+                            simulating = checked
+                            viewModel.setSimulatedMemoryMb(if (checked) memoryMb else null)
+                        },
+                    )
+                }
+                if (simulating) {
+                    Text(
+                        "Simulated available RAM: $memoryMb MB",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Slider(
+                        value = memoryMb.toFloat(),
+                        onValueChange = {
+                            memoryMb = it.toLong()
+                            viewModel.setSimulatedMemoryMb(memoryMb)
+                        },
+                        valueRange = 0f..totalMemoryMb.toFloat(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        },
+    )
 }
 
 @Composable

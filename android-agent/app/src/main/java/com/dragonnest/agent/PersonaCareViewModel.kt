@@ -1,5 +1,6 @@
 package com.dragonnest.agent
 
+import android.app.ActivityManager
 import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
@@ -133,6 +134,23 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
                 sending = false,
             )
         }
+    }
+
+    fun totalMemoryMb(): Long {
+        val manager = getApplication<Application>().getSystemService(ActivityManager::class.java)
+        val info = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(info)
+        return info.totalMem / (1024L * 1024L)
+    }
+
+    fun currentSimulatedMemoryMb(): Long? = configuration.simulatedMemoryMb()
+
+    fun setSimulatedMemoryMb(memoryMb: Long?) {
+        configuration.saveSimulatedMemoryMb(memoryMb)
+        val update = Intent(getApplication(), AgentForegroundService::class.java).apply {
+            action = AgentForegroundService.ACTION_UPDATE_SIMULATION
+        }
+        getApplication<Application>().startForegroundService(update)
     }
 
     fun clearLocalRegistration() {
