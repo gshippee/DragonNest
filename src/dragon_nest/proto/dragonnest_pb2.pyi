@@ -87,7 +87,7 @@ class PersonalProfileRegistration(_message.Message):
     def __init__(self, person_name: _Optional[str] = ..., preferred_mode: _Optional[str] = ..., steering_vector_id: _Optional[str] = ..., steering_alpha: _Optional[float] = ..., steering_positions: _Optional[str] = ..., allow_remote_vector: _Optional[bool] = ..., notes: _Optional[str] = ..., persona_id: _Optional[str] = ...) -> None: ...
 
 class HardwareInventory(_message.Message):
-    __slots__ = ("manufacturer", "model", "device", "os_version", "api_level", "soc_manufacturer", "soc_model", "cpu_abis", "cpu_core_count", "total_storage_mb", "available_storage_mb", "npu_status", "npu_name", "qnn_runtime_version")
+    __slots__ = ("manufacturer", "model", "device", "os_version", "api_level", "soc_manufacturer", "soc_model", "cpu_abis", "cpu_core_count", "total_storage_mb", "available_storage_mb", "npu_status", "npu_name", "qnn_runtime_version", "compatibility_key")
     MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
     MODEL_FIELD_NUMBER: _ClassVar[int]
     DEVICE_FIELD_NUMBER: _ClassVar[int]
@@ -102,6 +102,7 @@ class HardwareInventory(_message.Message):
     NPU_STATUS_FIELD_NUMBER: _ClassVar[int]
     NPU_NAME_FIELD_NUMBER: _ClassVar[int]
     QNN_RUNTIME_VERSION_FIELD_NUMBER: _ClassVar[int]
+    COMPATIBILITY_KEY_FIELD_NUMBER: _ClassVar[int]
     manufacturer: str
     model: str
     device: str
@@ -116,10 +117,11 @@ class HardwareInventory(_message.Message):
     npu_status: str
     npu_name: str
     qnn_runtime_version: str
-    def __init__(self, manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., device: _Optional[str] = ..., os_version: _Optional[str] = ..., api_level: _Optional[int] = ..., soc_manufacturer: _Optional[str] = ..., soc_model: _Optional[str] = ..., cpu_abis: _Optional[_Iterable[str]] = ..., cpu_core_count: _Optional[int] = ..., total_storage_mb: _Optional[int] = ..., available_storage_mb: _Optional[int] = ..., npu_status: _Optional[str] = ..., npu_name: _Optional[str] = ..., qnn_runtime_version: _Optional[str] = ...) -> None: ...
+    compatibility_key: str
+    def __init__(self, manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., device: _Optional[str] = ..., os_version: _Optional[str] = ..., api_level: _Optional[int] = ..., soc_manufacturer: _Optional[str] = ..., soc_model: _Optional[str] = ..., cpu_abis: _Optional[_Iterable[str]] = ..., cpu_core_count: _Optional[int] = ..., total_storage_mb: _Optional[int] = ..., available_storage_mb: _Optional[int] = ..., npu_status: _Optional[str] = ..., npu_name: _Optional[str] = ..., qnn_runtime_version: _Optional[str] = ..., compatibility_key: _Optional[str] = ...) -> None: ...
 
 class ModelCapability(_message.Message):
-    __slots__ = ("model_id", "model_family", "role", "task_classes", "max_context_tokens", "warm", "quality_score", "steering_vector_ids", "supported_steering_layers", "segment", "model_version", "tokenizer_id", "precision", "boundary_format", "runtime_name", "runtime_version", "supported_accelerators", "min_memory_mb", "supports_steering", "supports_data_parallel", "supports_layer_pipeline")
+    __slots__ = ("model_id", "model_family", "role", "task_classes", "max_context_tokens", "warm", "quality_score", "steering_vector_ids", "supported_steering_layers", "segment", "model_version", "tokenizer_id", "precision", "boundary_format", "runtime_name", "runtime_version", "supported_accelerators", "min_memory_mb", "supports_steering", "supports_data_parallel", "supports_layer_pipeline", "artifact_id", "steering_modes", "behavior_profile_ids", "target_compatibility_class")
     MODEL_ID_FIELD_NUMBER: _ClassVar[int]
     MODEL_FAMILY_FIELD_NUMBER: _ClassVar[int]
     ROLE_FIELD_NUMBER: _ClassVar[int]
@@ -141,6 +143,10 @@ class ModelCapability(_message.Message):
     SUPPORTS_STEERING_FIELD_NUMBER: _ClassVar[int]
     SUPPORTS_DATA_PARALLEL_FIELD_NUMBER: _ClassVar[int]
     SUPPORTS_LAYER_PIPELINE_FIELD_NUMBER: _ClassVar[int]
+    ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    STEERING_MODES_FIELD_NUMBER: _ClassVar[int]
+    BEHAVIOR_PROFILE_IDS_FIELD_NUMBER: _ClassVar[int]
+    TARGET_COMPATIBILITY_CLASS_FIELD_NUMBER: _ClassVar[int]
     model_id: str
     model_family: str
     role: str
@@ -162,7 +168,11 @@ class ModelCapability(_message.Message):
     supports_steering: bool
     supports_data_parallel: bool
     supports_layer_pipeline: bool
-    def __init__(self, model_id: _Optional[str] = ..., model_family: _Optional[str] = ..., role: _Optional[str] = ..., task_classes: _Optional[_Iterable[str]] = ..., max_context_tokens: _Optional[int] = ..., warm: _Optional[bool] = ..., quality_score: _Optional[float] = ..., steering_vector_ids: _Optional[_Iterable[str]] = ..., supported_steering_layers: _Optional[_Iterable[int]] = ..., segment: _Optional[_Union[ModelSegment, _Mapping]] = ..., model_version: _Optional[str] = ..., tokenizer_id: _Optional[str] = ..., precision: _Optional[str] = ..., boundary_format: _Optional[str] = ..., runtime_name: _Optional[str] = ..., runtime_version: _Optional[str] = ..., supported_accelerators: _Optional[_Iterable[str]] = ..., min_memory_mb: _Optional[int] = ..., supports_steering: _Optional[bool] = ..., supports_data_parallel: _Optional[bool] = ..., supports_layer_pipeline: _Optional[bool] = ...) -> None: ...
+    artifact_id: str
+    steering_modes: _containers.RepeatedScalarFieldContainer[str]
+    behavior_profile_ids: _containers.RepeatedScalarFieldContainer[str]
+    target_compatibility_class: str
+    def __init__(self, model_id: _Optional[str] = ..., model_family: _Optional[str] = ..., role: _Optional[str] = ..., task_classes: _Optional[_Iterable[str]] = ..., max_context_tokens: _Optional[int] = ..., warm: _Optional[bool] = ..., quality_score: _Optional[float] = ..., steering_vector_ids: _Optional[_Iterable[str]] = ..., supported_steering_layers: _Optional[_Iterable[int]] = ..., segment: _Optional[_Union[ModelSegment, _Mapping]] = ..., model_version: _Optional[str] = ..., tokenizer_id: _Optional[str] = ..., precision: _Optional[str] = ..., boundary_format: _Optional[str] = ..., runtime_name: _Optional[str] = ..., runtime_version: _Optional[str] = ..., supported_accelerators: _Optional[_Iterable[str]] = ..., min_memory_mb: _Optional[int] = ..., supports_steering: _Optional[bool] = ..., supports_data_parallel: _Optional[bool] = ..., supports_layer_pipeline: _Optional[bool] = ..., artifact_id: _Optional[str] = ..., steering_modes: _Optional[_Iterable[str]] = ..., behavior_profile_ids: _Optional[_Iterable[str]] = ..., target_compatibility_class: _Optional[str] = ...) -> None: ...
 
 class ModelSegment(_message.Message):
     __slots__ = ("pipeline_id", "start_layer", "end_layer", "total_layers", "includes_embedding", "includes_lm_head")
@@ -349,7 +359,7 @@ class PipelineStageResult(_message.Message):
     def __init__(self, task_id: _Optional[str] = ..., attempt_id: _Optional[str] = ..., stage_id: _Optional[str] = ..., device_id: _Optional[str] = ..., success: _Optional[bool] = ..., output_boundary: _Optional[_Union[BoundaryTensor, _Mapping]] = ..., output_text: _Optional[str] = ..., error_code: _Optional[str] = ..., error_message: _Optional[str] = ..., metrics: _Optional[_Union[ExecutionMetrics, _Mapping]] = ...) -> None: ...
 
 class ExecutionMetrics(_message.Message):
-    __slots__ = ("model_id", "model_version", "runtime_name", "runtime_version", "accelerator", "execution_latency_ms", "error_code", "error_message", "observed_memory_delta_mb", "observed_thermal_delta")
+    __slots__ = ("model_id", "model_version", "runtime_name", "runtime_version", "accelerator", "execution_latency_ms", "error_code", "error_message", "observed_memory_delta_mb", "observed_thermal_delta", "artifact_load_time_ms", "prefill_tokens_per_second", "decode_tokens_per_second")
     MODEL_ID_FIELD_NUMBER: _ClassVar[int]
     MODEL_VERSION_FIELD_NUMBER: _ClassVar[int]
     RUNTIME_NAME_FIELD_NUMBER: _ClassVar[int]
@@ -360,6 +370,9 @@ class ExecutionMetrics(_message.Message):
     ERROR_MESSAGE_FIELD_NUMBER: _ClassVar[int]
     OBSERVED_MEMORY_DELTA_MB_FIELD_NUMBER: _ClassVar[int]
     OBSERVED_THERMAL_DELTA_FIELD_NUMBER: _ClassVar[int]
+    ARTIFACT_LOAD_TIME_MS_FIELD_NUMBER: _ClassVar[int]
+    PREFILL_TOKENS_PER_SECOND_FIELD_NUMBER: _ClassVar[int]
+    DECODE_TOKENS_PER_SECOND_FIELD_NUMBER: _ClassVar[int]
     model_id: str
     model_version: str
     runtime_name: str
@@ -370,10 +383,13 @@ class ExecutionMetrics(_message.Message):
     error_message: str
     observed_memory_delta_mb: int
     observed_thermal_delta: float
-    def __init__(self, model_id: _Optional[str] = ..., model_version: _Optional[str] = ..., runtime_name: _Optional[str] = ..., runtime_version: _Optional[str] = ..., accelerator: _Optional[str] = ..., execution_latency_ms: _Optional[int] = ..., error_code: _Optional[str] = ..., error_message: _Optional[str] = ..., observed_memory_delta_mb: _Optional[int] = ..., observed_thermal_delta: _Optional[float] = ...) -> None: ...
+    artifact_load_time_ms: int
+    prefill_tokens_per_second: float
+    decode_tokens_per_second: float
+    def __init__(self, model_id: _Optional[str] = ..., model_version: _Optional[str] = ..., runtime_name: _Optional[str] = ..., runtime_version: _Optional[str] = ..., accelerator: _Optional[str] = ..., execution_latency_ms: _Optional[int] = ..., error_code: _Optional[str] = ..., error_message: _Optional[str] = ..., observed_memory_delta_mb: _Optional[int] = ..., observed_thermal_delta: _Optional[float] = ..., artifact_load_time_ms: _Optional[int] = ..., prefill_tokens_per_second: _Optional[float] = ..., decode_tokens_per_second: _Optional[float] = ...) -> None: ...
 
 class SteeringSpec(_message.Message):
-    __slots__ = ("enabled", "vector_id", "model_family", "target_layer", "alpha", "positions", "allow_remote_vector")
+    __slots__ = ("enabled", "vector_id", "model_family", "target_layer", "alpha", "positions", "allow_remote_vector", "mode", "behavior_profile_id")
     ENABLED_FIELD_NUMBER: _ClassVar[int]
     VECTOR_ID_FIELD_NUMBER: _ClassVar[int]
     MODEL_FAMILY_FIELD_NUMBER: _ClassVar[int]
@@ -381,6 +397,8 @@ class SteeringSpec(_message.Message):
     ALPHA_FIELD_NUMBER: _ClassVar[int]
     POSITIONS_FIELD_NUMBER: _ClassVar[int]
     ALLOW_REMOTE_VECTOR_FIELD_NUMBER: _ClassVar[int]
+    MODE_FIELD_NUMBER: _ClassVar[int]
+    BEHAVIOR_PROFILE_ID_FIELD_NUMBER: _ClassVar[int]
     enabled: bool
     vector_id: str
     model_family: str
@@ -388,7 +406,9 @@ class SteeringSpec(_message.Message):
     alpha: float
     positions: str
     allow_remote_vector: bool
-    def __init__(self, enabled: _Optional[bool] = ..., vector_id: _Optional[str] = ..., model_family: _Optional[str] = ..., target_layer: _Optional[int] = ..., alpha: _Optional[float] = ..., positions: _Optional[str] = ..., allow_remote_vector: _Optional[bool] = ...) -> None: ...
+    mode: str
+    behavior_profile_id: str
+    def __init__(self, enabled: _Optional[bool] = ..., vector_id: _Optional[str] = ..., model_family: _Optional[str] = ..., target_layer: _Optional[int] = ..., alpha: _Optional[float] = ..., positions: _Optional[str] = ..., allow_remote_vector: _Optional[bool] = ..., mode: _Optional[str] = ..., behavior_profile_id: _Optional[str] = ...) -> None: ...
 
 class ShutdownEvent(_message.Message):
     __slots__ = ("device_id", "reason", "simulated")

@@ -49,6 +49,10 @@ def device_from_registration(message: pb.RegisterDevice) -> Device:
                 supports_steering=model.supports_steering,
                 supports_data_parallel=model.supports_data_parallel,
                 supports_layer_pipeline=model.supports_layer_pipeline,
+                artifact_id=model.artifact_id,
+                steering_modes=tuple(model.steering_modes),
+                behavior_profile_ids=tuple(model.behavior_profile_ids),
+                target_compatibility_class=model.target_compatibility_class,
             )
         )
     return Device(
@@ -78,6 +82,7 @@ def device_from_registration(message: pb.RegisterDevice) -> Device:
             npu_status=message.hardware.npu_status or "not_probed",
             npu_name=message.hardware.npu_name,
             qnn_runtime_version=message.hardware.qnn_runtime_version,
+            compatibility_key=message.hardware.compatibility_key,
         ),
     )
 
@@ -123,6 +128,10 @@ def registration_from_device(
                 supports_steering=model.supports_steering,
                 supports_data_parallel=model.supports_data_parallel,
                 supports_layer_pipeline=model.supports_layer_pipeline,
+                artifact_id=model.artifact_id,
+                steering_modes=model.steering_modes,
+                behavior_profile_ids=model.behavior_profile_ids,
+                target_compatibility_class=model.target_compatibility_class,
             )
         )
     return pb.RegisterDevice(
@@ -150,6 +159,7 @@ def registration_from_device(
             npu_status=device.hardware.npu_status,
             npu_name=device.hardware.npu_name,
             qnn_runtime_version=device.hardware.qnn_runtime_version,
+            compatibility_key=device.hardware.compatibility_key,
         ),
     )
 
@@ -197,6 +207,9 @@ def task_result_from_proto(message: pb.TaskResult) -> TaskResult:
             error_message=message.metrics.error_message,
             observed_memory_delta_mb=message.metrics.observed_memory_delta_mb,
             observed_thermal_delta=message.metrics.observed_thermal_delta,
+            artifact_load_time_ms=message.metrics.artifact_load_time_ms,
+            prefill_tokens_per_second=message.metrics.prefill_tokens_per_second,
+            decode_tokens_per_second=message.metrics.decode_tokens_per_second,
         )
     return TaskResult(
         task_id=message.task_id,
@@ -225,6 +238,9 @@ def task_result_to_proto(result: TaskResult) -> pb.TaskResult:
             error_message=result.metrics.error_message,
             observed_memory_delta_mb=result.metrics.observed_memory_delta_mb or 0,
             observed_thermal_delta=result.metrics.observed_thermal_delta or 0,
+            artifact_load_time_ms=result.metrics.artifact_load_time_ms or 0,
+            prefill_tokens_per_second=result.metrics.prefill_tokens_per_second or 0,
+            decode_tokens_per_second=result.metrics.decode_tokens_per_second or 0,
         )
     return pb.TaskResult(
         task_id=result.task_id,
@@ -292,6 +308,8 @@ def steering_from_proto(message: pb.SteeringSpec) -> SteeringSpec:
         alpha=message.alpha,
         positions=message.positions or "last",
         allow_remote_vector=message.allow_remote_vector,
+        mode=message.mode or "runtime_vector",
+        behavior_profile_id=message.behavior_profile_id,
     )
 
 
@@ -304,4 +322,6 @@ def steering_to_proto(spec: SteeringSpec) -> pb.SteeringSpec:
         alpha=spec.alpha,
         positions=spec.positions,
         allow_remote_vector=spec.allow_remote_vector,
+        mode=spec.mode,
+        behavior_profile_id=spec.behavior_profile_id,
     )

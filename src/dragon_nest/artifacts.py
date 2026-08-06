@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from .models import RuntimeName
+from .models import RuntimeName, SteeringMode
 
 
 class ArtifactError(ValueError):
@@ -54,6 +54,25 @@ class ModelArtifact:
     supports_layer_pipeline: bool
     split_boundary: SplitBoundary | None = None
     runtime_options: Mapping[str, Any] = field(default_factory=dict)
+    artifact_id: str = ""
+    base_model: str = ""
+    base_model_revision: str = ""
+    tokenizer_fingerprint: str = ""
+    steering_mode: SteeringMode = SteeringMode.NONE
+    behavior_profile_id: str = ""
+    vector_id: str = ""
+    vector_calibration: Mapping[str, Any] = field(default_factory=dict)
+    target_compatibility_class: str = ""
+    artifact_format: str = ""
+    quantization: str = ""
+    context_profile: Mapping[str, Any] = field(default_factory=dict)
+    input_tensor_schema: tuple[Mapping[str, Any], ...] = ()
+    output_tensor_schema: tuple[Mapping[str, Any], ...] = ()
+    size_bytes: int | None = None
+    build_provenance: Mapping[str, Any] = field(default_factory=dict)
+    ai_hub: Mapping[str, Any] = field(default_factory=dict)
+    measured_hardware_results: tuple[Mapping[str, Any], ...] = ()
+    verification_status: str = "unverified"
 
 
 _UNEXPANDED_ENV = re.compile(r"\$(?:\{[^}]+\}|[A-Za-z_][A-Za-z0-9_]*)")
@@ -82,6 +101,15 @@ class ArtifactRegistry:
             try:
                 split_raw = item.get("split_boundary")
                 split = SplitBoundary(**split_raw) if split_raw else None
+                supports_steering = bool(item["supports_steering"])
+                steering_mode = SteeringMode(
+                    item.get(
+                        "steering_mode",
+                        SteeringMode.RUNTIME_VECTOR.value
+                        if supports_steering
+                        else SteeringMode.NONE.value,
+                    )
+                )
                 artifact = ModelArtifact(
                     model_id=str(item["model_id"]),
                     model_version=str(item["model_version"]),
@@ -93,11 +121,42 @@ class ArtifactRegistry:
                     supported_accelerators=tuple(item["supported_accelerators"]),
                     min_memory_mb=int(item["min_memory_mb"]),
                     max_context_tokens=int(item["max_context_tokens"]),
-                    supports_steering=bool(item["supports_steering"]),
+                    supports_steering=supports_steering,
                     supports_data_parallel=bool(item["supports_data_parallel"]),
                     supports_layer_pipeline=bool(item["supports_layer_pipeline"]),
                     split_boundary=split,
                     runtime_options=dict(item.get("runtime_options", {})),
+                    artifact_id=str(item.get("artifact_id", item["model_id"])),
+                    base_model=str(item.get("base_model", item["tokenizer_id"])),
+                    base_model_revision=str(
+                        item.get("base_model_revision", item["model_version"])
+                    ),
+                    tokenizer_fingerprint=str(item.get("tokenizer_fingerprint", "")),
+                    steering_mode=steering_mode,
+                    behavior_profile_id=str(item.get("behavior_profile_id", "")),
+                    vector_id=str(item.get("vector_id", "")),
+                    vector_calibration=dict(item.get("vector_calibration", {})),
+                    target_compatibility_class=str(
+                        item.get("target_compatibility_class", "")
+                    ),
+                    artifact_format=str(item.get("artifact_format", "")),
+                    quantization=str(item.get("quantization", item["precision"])),
+                    context_profile=dict(item.get("context_profile", {})),
+                    input_tensor_schema=tuple(item.get("input_tensor_schema", ())),
+                    output_tensor_schema=tuple(item.get("output_tensor_schema", ())),
+                    size_bytes=(
+                        int(item["size_bytes"])
+                        if item.get("size_bytes") is not None
+                        else None
+                    ),
+                    build_provenance=dict(item.get("build_provenance", {})),
+                    ai_hub=dict(item.get("ai_hub", {})),
+                    measured_hardware_results=tuple(
+                        item.get("measured_hardware_results", ())
+                    ),
+                    verification_status=str(
+                        item.get("verification_status", "unverified")
+                    ),
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 raise ArtifactError(
@@ -105,6 +164,11 @@ class ArtifactRegistry:
                 ) from exc
             if artifact.model_id in artifacts:
                 raise ArtifactError(f"duplicate model_id {artifact.model_id}")
+            if any(
+                existing.artifact_id == artifact.artifact_id
+                for existing in artifacts.values()
+            ):
+                raise ArtifactError(f"duplicate artifact_id {artifact.artifact_id}")
             cls._validate_metadata(artifact)
             artifacts[artifact.model_id] = artifact
         return cls(artifacts, manifest_path.parent)
@@ -120,6 +184,34 @@ class ArtifactRegistry:
         if not artifact.supported_accelerators:
             raise ArtifactError(
                 f"{artifact.model_id}: supported_accelerators cannot be empty"
+            )
+        if not artifact.artifact_id:
+            raise ArtifactError(f"{artifact.model_id}: artifact_id must be non-empty")
+        if artifact.size_bytes is not None and artifact.size_bytes < 0:
+            raise ArtifactError(f"{artifact.model_id}: size_bytes cannot be negative")
+        if (
+            artifact.steering_mode == SteeringMode.RUNTIME_VECTOR
+            and not artifact.supports_steering
+        ):
+            raise ArtifactError(
+                f"{artifact.model_id}: runtime_vector requires supports_steering=true"
+            )
+        if (
+            artifact.steering_mode != SteeringMode.RUNTIME_VECTOR
+            and artifact.supports_steering
+        ):
+            raise ArtifactError(
+                f"{artifact.model_id}: supports_steering is reserved for runtime_vector"
+            )
+        if (
+            artifact.steering_mode in {
+                SteeringMode.BAKED_PROFILE,
+                SteeringMode.PROMPT_PROFILE,
+            }
+            and not artifact.behavior_profile_id
+        ):
+            raise ArtifactError(
+                f"{artifact.model_id}: {artifact.steering_mode.value} requires behavior_profile_id"
             )
         split = artifact.split_boundary
         if split:

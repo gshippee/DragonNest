@@ -77,6 +77,7 @@ message HardwareInventory {
   string npu_status = 12;          // available | unavailable | not_probed
   string npu_name = 13;
   string qnn_runtime_version = 14;
+  string compatibility_key = 15;
 }
 
 message ModelCapability {
@@ -101,6 +102,10 @@ message ModelCapability {
   bool supports_steering = 19;
   bool supports_data_parallel = 20;
   bool supports_layer_pipeline = 21;
+  string artifact_id = 22;
+  repeated string steering_modes = 23;
+  repeated string behavior_profile_ids = 24;
+  string target_compatibility_class = 25;
 }
 
 message ModelSegment {
@@ -215,6 +220,9 @@ message ExecutionMetrics {
   string error_message = 8;
   int64 observed_memory_delta_mb = 9;
   float observed_thermal_delta = 10;
+  int64 artifact_load_time_ms = 11;
+  float prefill_tokens_per_second = 12;
+  float decode_tokens_per_second = 13;
 }
 
 message SteeringSpec {
@@ -225,6 +233,8 @@ message SteeringSpec {
   float alpha = 5;
   string positions = 6;
   bool allow_remote_vector = 7;
+  string mode = 8;
+  string behavior_profile_id = 9;
 }
 
 message ShutdownEvent {

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from .models import ModelCapability, SteeringSpec, SteeringVector
+from .models import ModelCapability, SteeringMode, SteeringSpec, SteeringVector
 
 
 class SteeringRegistry:
@@ -52,6 +52,30 @@ class SteeringRegistry:
     def validate(self, spec: SteeringSpec, model: ModelCapability) -> tuple[bool, str]:
         if not spec.enabled:
             return True, "steering disabled"
+        try:
+            mode = SteeringMode(spec.mode or SteeringMode.RUNTIME_VECTOR.value)
+        except ValueError:
+            return False, f"unknown steering mode {spec.mode}"
+        if mode in {SteeringMode.BAKED_PROFILE, SteeringMode.PROMPT_PROFILE}:
+            if mode.value not in model.steering_modes:
+                return False, f"model {model.model_id} does not advertise {mode.value}"
+            if not spec.behavior_profile_id:
+                return False, f"{mode.value} requires behavior_profile_id"
+            if spec.behavior_profile_id not in model.behavior_profile_ids:
+                return (
+                    False,
+                    f"model {model.model_id} does not advertise profile "
+                    f"{spec.behavior_profile_id}",
+                )
+            return (
+                True,
+                f"{mode.value} profile {spec.behavior_profile_id} compatible with "
+                f"{model.model_id}",
+            )
+        if mode == SteeringMode.NONE:
+            return False, "enabled steering request cannot use mode none"
+        if not model.supports_steering and not model.steering_vector_ids:
+            return False, f"model {model.model_id} has no runtime_vector input"
         vector = self._vectors.get(spec.vector_id)
         if vector is None:
             return False, f"unknown steering vector {spec.vector_id}"

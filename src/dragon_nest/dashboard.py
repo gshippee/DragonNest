@@ -42,6 +42,8 @@ class SteeringRequest(BaseModel):
     alpha: float = 0
     positions: str = "last"
     allow_remote_vector: bool = False
+    mode: str = "runtime_vector"
+    behavior_profile_id: str = ""
 
 
 class TaskSubmission(BaseModel):
@@ -119,6 +121,10 @@ class ModelCapabilityPayload(BaseModel):
     supports_steering: bool = False
     supports_data_parallel: bool = True
     supports_layer_pipeline: bool = False
+    artifact_id: str = ""
+    steering_modes: list[str] = Field(default_factory=lambda: ["none"])
+    behavior_profile_ids: list[str] = Field(default_factory=list)
+    target_compatibility_class: str = ""
 
 
 class HardwareInventoryPayload(BaseModel):
@@ -138,6 +144,7 @@ class HardwareInventoryPayload(BaseModel):
     npu_status: str = "not_probed"
     npu_name: str = ""
     qnn_runtime_version: str = ""
+    compatibility_key: str = ""
 
 
 class RestDeviceRegistration(BaseModel):
