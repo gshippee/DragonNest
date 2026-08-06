@@ -1,3 +1,10 @@
+# Steering-vector registry with full lifecycle metadata.
+#
+# A vector must not be assumed to transfer across model versions,
+# quantizations, runtime graph transformations, hidden-state layouts, or
+# arbitrary layers. validated_runtimes / validated_quantizations /
+# target_layers make those boundaries explicit; only status calibrated or
+# validated vectors are routable.
 vectors:
   - vector_id: concise-vs-verbose-layer-7
     model_family: qwen3
@@ -13,3 +20,44 @@ vectors:
     storage_uri: artifacts/vector_layer_7.pt
     safety_label: style_verbosity
     allow_remote_vector: false
+    source_layer: 7
+    extraction_method: mean_difference
+    positive_dataset_hash: "sha256:0f3a1f6f9d1f4b7c000000000000000000000000000000000000000000000001"
+    negative_dataset_hash: "sha256:0f3a1f6f9d1f4b7c000000000000000000000000000000000000000000000002"
+    normalization: unit_norm
+    dtype: fp32
+    checksum: "sha256:9d5d3f2ab6c14e58000000000000000000000000000000000000000000000003"
+    created_at: "2026-06-12T00:00:00Z"
+    creator: PersonaCare-Steering-Research
+    evaluation_metrics:
+      verbosity_delta: -0.41
+      helpfulness_retention: 0.97
+    evaluation_dataset_version: steering-eval-v3
+    validated_runtimes: [mock, genie]
+    validated_quantizations: [none, w4a16]
+    status: validated
+
+  - vector_id: friendly-warmth-layer-7
+    model_family: mock
+    model_revision: ""
+    hidden_size: 1024
+    target_layers: [7]
+    default_layer: 7
+    alpha_min: -3.0
+    alpha_max: 3.0
+    default_alpha: 1.5
+    positions: [last]
+    default_positions: last
+    storage_uri: artifacts/vector_friendly_layer_7.pt
+    safety_label: style_tone
+    allow_remote_vector: false
+    source_layer: 7
+    extraction_method: mean_difference
+    normalization: unit_norm
+    dtype: fp32
+    created_at: "2026-07-02T00:00:00Z"
+    creator: dragonnest-demo
+    evaluation_dataset_version: steering-eval-v3
+    validated_runtimes: [mock]
+    validated_quantizations: [none]
+    status: calibrated

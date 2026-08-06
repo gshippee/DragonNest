@@ -150,6 +150,26 @@ class SteeringVector:
     storage_uri: str
     safety_label: str
     allow_remote_vector: bool = False
+    # Lifecycle and compatibility-boundary metadata. A vector must not be
+    # assumed to transfer across model versions, quantizations, runtimes, or
+    # layers; these fields make those boundaries explicit.
+    model_revision: str = ""
+    base_model_fingerprint: str = ""
+    tokenizer_fingerprint: str = ""
+    source_layer: int = -1
+    extraction_method: str = ""
+    positive_dataset_hash: str = ""
+    negative_dataset_hash: str = ""
+    normalization: str = ""
+    dtype: str = ""
+    checksum: str = ""
+    created_at: str = ""
+    creator: str = ""
+    evaluation_metrics: tuple[tuple[str, float], ...] = ()
+    evaluation_dataset_version: str = ""
+    validated_runtimes: tuple[str, ...] = ()
+    validated_quantizations: tuple[str, ...] = ()
+    status: str = "draft"  # draft | calibrated | validated | deprecated | rejected
 
 
 @dataclass(frozen=True)
