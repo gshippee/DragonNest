@@ -1,0 +1,128 @@
+# User-facing behavior profiles and how each may be realized on a deployment.
+#
+# Realizations are listed in preference order. The fallback policy controls
+# how far down the ladder the scheduler may go; it never switches to a
+# different profile. Prompt realizations are prompt conditioning only and are
+# never described as activation steering.
+profiles:
+  - profile_id: concise
+    display_name: Concise
+    description: Short, direct answers with minimal elaboration.
+    base_model_family: mock
+    version: "1"
+    policy_tags: [style]
+    fallback_policy: allow_baked_equivalent
+    provenance: PersonaCare-Steering-Research concise-vs-verbose extraction
+    evaluation_status: validated
+    realizations:
+      - mode: runtime_vector
+        vector_id: concise-vs-verbose-layer-7
+        alpha: -2.0
+        alpha_min: -4.0
+        alpha_max: 4.0
+        injection_layer: 7
+        positions: last
+        compatible_model_families: [mock, qwen3]
+        compatible_runtimes: [mock, genie]
+        compatible_quantizations: [none, w4a16]
+        verification_status: verified
+      - mode: baked_profile
+        baked_artifact_id: small-chat-v1-concise-baked
+        compatible_model_families: [mock]
+        verification_status: verified
+      - mode: prompt_profile
+        prompt_template: "Answer as briefly as possible. Prefer one short paragraph."
+        verification_status: calibrated
+
+  - profile_id: friendly
+    display_name: Friendly
+    description: Warm, encouraging conversational tone.
+    base_model_family: mock
+    version: "1"
+    policy_tags: [style]
+    fallback_policy: allow_prompt_fallback
+    provenance: demo calibration set 2026-07
+    evaluation_status: calibrated
+    realizations:
+      - mode: runtime_vector
+        vector_id: friendly-warmth-layer-7
+        alpha: 1.5
+        alpha_min: -3.0
+        alpha_max: 3.0
+        injection_layer: 7
+        positions: last
+        compatible_model_families: [mock]
+        compatible_runtimes: [mock]
+        verification_status: calibrated
+      - mode: prompt_profile
+        prompt_template: "Respond warmly and encouragingly, as a helpful companion."
+        verification_status: calibrated
+
+  - profile_id: medical-safe
+    display_name: Medical-Safe
+    description: >
+      Conservative clinical phrasing with mandatory safety caveats. Only the
+      validated baked variant is acceptable; no runtime or prompt substitute.
+    base_model_family: mock
+    version: "2"
+    policy_tags: [safety, clinical]
+    fallback_policy: exact_only
+    provenance: clinical review board sign-off 2026-06 (demo fixture)
+    evaluation_status: validated
+    realizations:
+      - mode: baked_profile
+        baked_artifact_id: large-reasoning-v1-medical-safe-baked
+        compatible_model_families: [mock]
+        verification_status: verified
+
+  - profile_id: creative
+    display_name: Creative
+    description: Exploratory, idea-rich responses.
+    base_model_family: mock
+    version: "1"
+    policy_tags: [style]
+    fallback_policy: allow_unsteered
+    provenance: demo calibration set 2026-07
+    evaluation_status: calibrated
+    realizations:
+      - mode: runtime_vector
+        vector_id: concise-vs-verbose-layer-7
+        alpha: 2.0
+        alpha_min: -4.0
+        alpha_max: 4.0
+        injection_layer: 7
+        positions: all
+        compatible_model_families: [mock, qwen3]
+        compatible_runtimes: [mock]
+        verification_status: calibrated
+      - mode: prompt_profile
+        prompt_template: "Brainstorm freely and offer several distinct ideas."
+        verification_status: calibrated
+
+  - profile_id: formal
+    display_name: Formal
+    description: Professional register for external communication.
+    base_model_family: mock
+    version: "1"
+    policy_tags: [style]
+    fallback_policy: allow_prompt_fallback
+    provenance: demo calibration set 2026-07
+    evaluation_status: calibrated
+    realizations:
+      - mode: prompt_profile
+        prompt_template: "Use a formal, professional register throughout."
+        verification_status: calibrated
+
+  - profile_id: family-assistant
+    display_name: Family Assistant
+    description: >
+      Household helper persona with child-appropriate guardrails. No
+      realization has been built yet; requesting it should enter
+      provisioning rather than silently degrading.
+    base_model_family: mock
+    version: "0"
+    policy_tags: [persona, guardrails]
+    fallback_policy: reject
+    provenance: requested by product; build not yet run
+    evaluation_status: draft
+    realizations: []
