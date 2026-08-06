@@ -11,6 +11,7 @@ import android.os.IBinder;
 
 public final class AgentForegroundService extends Service {
     public static final String ACTION_RELOAD = "com.dragonnest.agent.RELOAD";
+    public static final String ACTION_UPDATE_SIMULATION = "com.dragonnest.agent.UPDATE_SIMULATION";
     private static final String CHANNEL_ID = "dragonnest-agent";
     private static final int NOTIFICATION_ID = 4101;
     private AgentRuntime runtime;
@@ -65,6 +66,11 @@ public final class AgentForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && ACTION_UPDATE_SIMULATION.equals(intent.getAction())) {
+            telemetry.setSimulation(configuration.simulation());
+            debugLog.add("Simulation updated without reconnecting");
+            return START_STICKY;
+        }
         if (intent != null && ACTION_RELOAD.equals(intent.getAction())) {
             if (runtime != null) {
                 runtime.stop();

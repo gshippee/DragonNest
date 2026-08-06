@@ -68,6 +68,7 @@ public final class AgentConfiguration {
                 optionalFloat("simulation_cpu"),
                 optionalFloat("simulation_accelerator"),
                 optionalFloat("simulation_rtt"),
+                optionalLong("simulation_memory_mb"),
                 preferences.getBoolean("simulation_offline", false));
     }
 
@@ -87,8 +88,26 @@ public final class AgentConfiguration {
         editor.putBoolean("simulation_offline", offline).apply();
     }
 
+    public Long simulatedMemoryMb() {
+        return optionalLong("simulation_memory_mb");
+    }
+
+    public void saveSimulatedMemoryMb(Long memoryMb) {
+        SharedPreferences.Editor editor = preferences.edit();
+        if (memoryMb == null) {
+            editor.remove("simulation_memory_mb");
+        } else {
+            editor.putLong("simulation_memory_mb", memoryMb);
+        }
+        editor.apply();
+    }
+
     private Float optionalFloat(String key) {
         return preferences.contains(key) ? preferences.getFloat(key, 0) : null;
+    }
+
+    private Long optionalLong(String key) {
+        return preferences.contains(key) ? preferences.getLong(key, 0) : null;
     }
 
     private static void putOptional(
