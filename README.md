@@ -178,6 +178,19 @@ python scripts/run_agent.py --device-id pc-01
 python scripts/submit_task.py "Compare both options and recommend one."
 ```
 
+On Windows PowerShell, use `.venv\Scripts\python.exe` in each terminal instead:
+
+```powershell
+.venv\Scripts\python.exe scripts\run_brain.py
+.venv\Scripts\python.exe scripts\run_agent.py --device-id phone-01
+.venv\Scripts\python.exe scripts\run_agent.py --device-id pc-01
+.venv\Scripts\python.exe scripts\submit_task.py "Compare both options and recommend one."
+```
+
+Every other `python scripts\...` example below the same substitution applies:
+replace `python` with `.venv\Scripts\python.exe` and, for multi-line commands,
+replace the `\` line-continuation with PowerShell's backtick `` ` ``.
+
 The dashboard is available at `http://127.0.0.1:8080` by default.
 
 The Agent reconnects with exponential backoff. A stream loss fails active task,
@@ -377,6 +390,43 @@ the current Genie CLI is correctly reported as installed but cold.
 
 An Agent must advertise only artifacts reported as `READY`. The checked-in
 manifest does not imply that the external model binaries are present.
+
+### Local physical proof (`probe_hardware.py`)
+
+Run this once `GENIE_DIR`, `QWEN3_4B_GENIE_SHA256_TREE`, and
+`scripts\check_artifacts.py` all pass, to exercise
+`ExecutionPlan -> HardwareRuntimeAdapter -> GenieExecutor -> local Genie/HTP`
+end to end and capture a secret-free proof record:
+
+```powershell
+.venv\Scripts\python.exe scripts\probe_hardware.py `
+  --device-id pc-01 `
+  --model-id qwen3-4b-genie `
+  --compatibility-key windows-arm64-x1e-v73-qairt-2.48 `
+  --runtime-name genie `
+  --runtime-version QAIRT-2.48 `
+  --accelerator-available `
+  --execute `
+  --output "$env:TEMP\dragonnest-xelite-proof.json"
+```
+
+The proof JSON must show: ARM64 host architecture, the exact compatibility
+key, matching runtime name/version, accelerator availability, passed artifact
+validation, successful execution, a nonempty output and output SHA-256, and
+no mock executor in the execution path. Never commit the proof file itself —
+keep it under `%TEMP%` and commit only its SHA-256
+(`(Get-FileHash -Algorithm SHA256 "$env:TEMP\dragonnest-xelite-proof.json").Hash`)
+where a proof record is needed.
+
+### X Elite coordination mailbox
+
+`coordination/xelite/STATUS.json` is the sanitized, file-mediated handoff for
+physical Snapdragon X Elite proof runs — see
+[coordination/xelite/README.md](coordination/xelite/README.md) and
+[coordination/xelite/AGENT_PROMPT.md](coordination/xelite/AGENT_PROMPT.md).
+It records host identity, runtime/artifact validation state, execution
+results, latencies, and proof/output hashes only — never tokens, credentials,
+SDK binaries, model bundles, or absolute bundle paths.
 
 ## Qualcomm AI Hub Validation
 
