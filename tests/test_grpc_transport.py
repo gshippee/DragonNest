@@ -137,6 +137,52 @@ def test_qr_registration_persists_client_profile_once():
     assert len(service.profiles.all()) == 1
 
 
+def test_reconnect_with_device_credential_updates_client_profile():
+    steering_registry = SteeringRegistry.from_yaml(
+        ROOT / "configs/steering-vectors.yaml"
+    )
+    service = BrainService(steering_registry=steering_registry)
+    session = service.enrollment.create(
+        brain_host="192.168.1.20",
+        brain_port=50051,
+        use_tls=False,
+    )
+
+    def registration(enrollment_token: str, steering_alpha: float) -> pb.RegisterDevice:
+        return pb.RegisterDevice(
+            device_id="android-reconnect-test",
+            display_name="Test Phone",
+            enrollment_token=enrollment_token,
+            models=[pb.ModelCapability(model_id="android-mock")],
+            personal_profile=pb.PersonalProfileRegistration(
+                person_name="Alex",
+                preferred_mode="private",
+                steering_vector_id="concise-vs-verbose-layer-7",
+                steering_alpha=steering_alpha,
+                steering_positions="last",
+            ),
+        )
+
+    error, device_credential = service._authorize_registration(
+        registration(session.bootstrap_credential, -2)
+    )
+    assert error == ""
+    profile = service.profiles.profile_for_device("android-reconnect-test")
+    assert profile.steering_alpha == -2
+
+    # Reconnecting with the already-issued device credential (e.g. after the
+    # user changes their answer style in settings) must update the existing
+    # profile rather than silently dropping the new preference.
+    error, credential = service._authorize_registration(
+        registration(device_credential, 2)
+    )
+    assert error == ""
+    assert credential == ""
+    profile = service.profiles.profile_for_device("android-reconnect-test")
+    assert profile.steering_alpha == 2
+    assert len(service.profiles.all()) == 1
+
+
 def test_grpc_stream_disconnect_retries_on_fallback_agent():
     async def scenario() -> None:
         service = BrainService()
