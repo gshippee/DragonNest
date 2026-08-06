@@ -42,6 +42,10 @@ public final class AndroidHardwareInventory {
                 .setNpuStatus(runtimeCatalog.npuStatus())
                 .setNpuName(runtimeCatalog.npuName())
                 .setQnnRuntimeVersion(runtimeCatalog.qnnRuntimeVersion())
+                .setCompatibilityKey(
+                        "android-" + Build.SUPPORTED_ABIS[0] + "-"
+                                + (socModel.isBlank() ? "unknown-soc" : socModel.toLowerCase())
+                                + "-api" + Build.VERSION.SDK_INT)
                 .build();
     }
 }

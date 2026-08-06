@@ -29,6 +29,10 @@ public record AndroidModelArtifact(
         List<Integer> supportedSteeringLayers,
         AndroidModelSegment segment,
         String runtimeVersion,
+        String artifactId,
+        String steeringMode,
+        String behaviorProfileId,
+        String targetCompatibilityClass,
         String runtimeOptionsJson) {
     public AndroidModelArtifact {
         supportedAccelerators = List.copyOf(supportedAccelerators);
@@ -60,6 +64,12 @@ public record AndroidModelArtifact(
                 .setSupportsSteering(supportsSteering)
                 .setSupportsDataParallel(supportsDataParallel)
                 .setSupportsLayerPipeline(supportsLayerPipeline);
+        capability.setArtifactId(artifactId)
+                .addSteeringModes(steeringMode)
+                .setTargetCompatibilityClass(targetCompatibilityClass);
+        if (!behaviorProfileId.isBlank()) {
+            capability.addBehaviorProfileIds(behaviorProfileId);
+        }
         if (segment != null) {
             capability.setSegment(ModelSegment.newBuilder()
                     .setPipelineId(segment.pipelineId())
