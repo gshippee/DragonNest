@@ -1,0 +1,125 @@
+# Demo fleet: Snapdragon X Elite laptop + Samsung Galaxy S25 Ultra.
+#
+# Both devices advertise portable mock artifacts so the full demo runs with
+# no Qualcomm SDKs; the hardware inventory carries the real SoC identities so
+# compatibility-class mapping, device cards, and the runbook all reflect the
+# physical targets. Health values here are the deterministic simulated
+# baseline used by scripts/demo_scenarios.py.
+devices:
+  - device_id: x-elite-01
+    display_name: Snapdragon X Elite Laptop
+    device_type: pc
+    platform: windows
+    total_memory_mb: 32768
+    health:
+      battery_pct: 95
+      charging: true
+      thermal_level: 0.2
+      cpu_utilization: 0.15
+      accelerator_utilization: 0.1
+      available_memory_mb: 12288
+      network_rtt_ms: 6
+      reachable: true
+    hardware:
+      manufacturer: Qualcomm
+      model: Snapdragon X Elite Reference Laptop
+      os_version: Windows 11
+      soc_manufacturer: Qualcomm
+      soc_model: Snapdragon X Elite X1E-80-100
+      cpu_core_count: 12
+      npu_status: available
+      npu_name: Hexagon NPU
+      qnn_runtime_version: QAIRT-2.48
+    models:
+      - model_id: small-chat-v1
+        model_family: mock
+        role: small_chat
+        task_classes: [chat_qa, summarization, translation_rewrite, reasoning_analysis]
+        max_context_tokens: 4096
+        warm: true
+        quality_score: 0.65
+      - model_id: small-chat-v1-concise-baked
+        model_family: mock
+        role: small_chat
+        task_classes: [chat_qa, summarization, translation_rewrite, reasoning_analysis]
+        max_context_tokens: 4096
+        warm: true
+        quality_score: 0.65
+      - model_id: large-reasoning-v1
+        model_family: mock
+        role: large_reasoning
+        task_classes: [chat_qa, summarization, document_extraction, reasoning_analysis, code_assistance]
+        max_context_tokens: 8192
+        warm: true
+        quality_score: 0.92
+      - model_id: qwen3-0.6b-part-b
+        model_family: qwen3
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis, summarization]
+        max_context_tokens: 2048
+        warm: true
+        quality_score: 0.72
+        model_version: c1899de289a04d12100db370d81485cdf75e47ca
+        tokenizer_id: Qwen/Qwen3-0.6B
+        precision: fp16
+        boundary_format: raw-fp32
+        segment:
+          pipeline_id: qwen3-0.6b-split-14
+          start_layer: 14
+          end_layer: 28
+          total_layers: 28
+          includes_embedding: false
+          includes_lm_head: true
+
+  - device_id: s25-ultra-01
+    display_name: Galaxy S25 Ultra
+    device_type: phone
+    platform: android
+    total_memory_mb: 12288
+    health:
+      battery_pct: 80
+      charging: false
+      thermal_level: 0.3
+      cpu_utilization: 0.25
+      accelerator_utilization: 0.2
+      available_memory_mb: 6144
+      network_rtt_ms: 18
+      reachable: true
+    hardware:
+      manufacturer: Samsung
+      model: Galaxy S25 Ultra
+      os_version: Android 15
+      soc_manufacturer: Qualcomm
+      soc_model: Qualcomm SM8750 Snapdragon 8 Elite
+      cpu_core_count: 8
+      npu_status: available
+      npu_name: Hexagon NPU
+      qnn_runtime_version: QAIRT-2.48
+    models:
+      - model_id: small-chat-v1
+        model_family: mock
+        role: small_chat
+        task_classes: [chat_qa, summarization, translation_rewrite, reasoning_analysis]
+        max_context_tokens: 4096
+        warm: false
+        quality_score: 0.65
+        steering_vector_ids: [concise-vs-verbose-layer-7, friendly-warmth-layer-7]
+        supported_steering_layers: [7]
+      - model_id: qwen3-0.6b-part-a
+        model_family: qwen3
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis, summarization]
+        max_context_tokens: 2048
+        warm: true
+        quality_score: 0.70
+        model_version: c1899de289a04d12100db370d81485cdf75e47ca
+        tokenizer_id: Qwen/Qwen3-0.6B
+        precision: fp16
+        boundary_format: raw-fp32
+        segment:
+          pipeline_id: qwen3-0.6b-split-14
+          start_layer: 0
+          end_layer: 14
+          total_layers: 28
+          includes_embedding: true
+          includes_lm_head: false

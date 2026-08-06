@@ -622,7 +622,7 @@ class DeploymentScheduler:
                 f"{realization_text}."
             )
             lines.append(
-                f"Predicted cost ≈{cost.total_ms:.0f} ms: queue "
+                f"Predicted cost ~{cost.total_ms:.0f} ms: queue "
                 f"{cost.queue_delay_ms:.0f}, cold load {cost.cold_load_ms:.0f}, "
                 f"prefill {cost.prefill_ms:.0f}, decode {cost.decode_ms:.0f}, "
                 f"network {cost.network_ms:.0f}, thermal/battery penalty "
@@ -663,7 +663,7 @@ class DeploymentScheduler:
                     f"Alternative: {candidate.device_id} / "
                     f"{candidate.artifact.artifact_id} via "
                     f"{candidate.realization_mode} would cost "
-                    f"≈{candidate.cost.total_ms:.0f} ms (+{delta:.0f} ms)."
+                    f"~{candidate.cost.total_ms:.0f} ms (+{delta:.0f} ms)."
                 )
         elif error_code == "BEHAVIOR_UNAVAILABLE":
             lines.append(
