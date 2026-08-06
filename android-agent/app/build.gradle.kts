@@ -83,13 +83,32 @@ val mainProto = (
 ).extensions.getByName("proto") as SourceDirectorySet
 mainProto.srcDir("../../proto")
 
+// Neither protoc nor protoc-gen-grpc-java publish a native Windows-on-ARM
+// binary; the windows-x86_64 one runs fine under Windows' built-in x64
+// emulation. Pin to it explicitly on windows-aarch64 hosts instead of
+// letting the protobuf-gradle-plugin auto-detect a classifier
+// ("windows-aarch_64") that doesn't exist upstream.
+val isWindowsOnArm = run {
+    val osName = System.getProperty("os.name").lowercase()
+    val osArch = System.getProperty("os.arch").lowercase()
+    osName.contains("windows") && (osArch.contains("aarch64") || osArch.contains("arm64"))
+}
+
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.5"
+        artifact = if (isWindowsOnArm) {
+            "com.google.protobuf:protoc:3.25.5:windows-x86_64@exe"
+        } else {
+            "com.google.protobuf:protoc:3.25.5"
+        }
     }
     plugins {
         create("grpc") {
-            artifact = "io.grpc:protoc-gen-grpc-java:1.68.1"
+            artifact = if (isWindowsOnArm) {
+                "io.grpc:protoc-gen-grpc-java:1.68.1:windows-x86_64@exe"
+            } else {
+                "io.grpc:protoc-gen-grpc-java:1.68.1"
+            }
         }
     }
     generateProtoTasks {
