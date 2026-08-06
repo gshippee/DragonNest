@@ -252,6 +252,10 @@ class DeviceRegistry:
         with self._lock:
             return self._require(device_id)
 
+    def deregister(self, device_id: str) -> DeviceRecord:
+        with self._lock:
+            return self._records.pop(device_id)
+
     def records(self) -> tuple[DeviceRecord, ...]:
         with self._lock:
             return tuple(self._records[key] for key in sorted(self._records))

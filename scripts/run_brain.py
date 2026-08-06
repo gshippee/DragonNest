@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 import uvicorn
@@ -26,6 +27,16 @@ async def run(args) -> None:
             tls_server_key_path=str(args.tls_key or ""),
             tls_client_ca_path=str(args.tls_client_ca or ""),
             state_db_path=str(args.state_db),
+            http_endpoint_registration_enabled=args.enable_http_endpoints,
+            http_endpoint_admin_token=os.environ.get(
+                args.http_endpoint_admin_token_env, ""
+            ),
+            http_endpoint_allowed_cidrs=tuple(
+                args.http_endpoint_allow_cidr or ("127.0.0.0/8", "::1/128")
+            ),
+            http_endpoint_allowed_hosts=tuple(
+                args.http_endpoint_allow_host or ("localhost",)
+            ),
         ),
         steering_registry=SteeringRegistry.from_yaml(args.steering_config),
     )
@@ -60,6 +71,21 @@ def main() -> None:
     parser.add_argument("--tls-client-ca", type=Path)
     parser.add_argument("--http-host", default="127.0.0.1")
     parser.add_argument("--http-port", type=int, default=8080)
+    parser.add_argument("--enable-http-endpoints", action="store_true")
+    parser.add_argument(
+        "--http-endpoint-admin-token-env",
+        default="DRAGONNEST_HTTP_ENDPOINT_ADMIN_TOKEN",
+    )
+    parser.add_argument(
+        "--http-endpoint-allow-cidr",
+        action="append",
+        default=[],
+    )
+    parser.add_argument(
+        "--http-endpoint-allow-host",
+        action="append",
+        default=[],
+    )
     parser.add_argument(
         "--state-db",
         type=Path,

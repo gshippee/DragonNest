@@ -215,6 +215,44 @@ Regenerate checked-in protobuf bindings after editing the contract:
 scripts/generate_proto.sh
 ```
 
+## HTTP Endpoint Devices
+
+The Brain can also call trusted inference endpoints over HTTP. This control
+plane is disabled by default. Enable it with an admin token and explicit
+network policy:
+
+```bash
+export DRAGONNEST_HTTP_ENDPOINT_ADMIN_TOKEN="replace-me"
+export EDGE_API_TOKEN="endpoint-bearer-token"
+python scripts/run_brain.py \
+  --enable-http-endpoints \
+  --http-endpoint-allow-host edge-box.local
+```
+
+Use the admin dashboard to register the endpoint. Its credential field is an
+environment variable name such as `EDGE_API_TOKEN`; secret values are never
+stored in SQLite. Literal IP endpoint URLs must fall within a configured
+`--http-endpoint-allow-cidr`. DNS hostnames must be explicitly listed with
+`--http-endpoint-allow-host`.
+
+Endpoint configuration persists in the Brain state database and is restored
+on restart. Profile context is denied by default and must be enabled for each
+trusted endpoint. The endpoint implements this JSON API:
+
+```text
+GET  /health
+GET  /info
+POST /execute
+POST /execute_shard
+POST /execute_pipeline_stage
+POST /cancel
+```
+
+The Brain sends the same task, steering, timeout, shard, and boundary fields
+used by the gRPC transport. `/info` metadata is validated before it becomes a
+routing capability. Registration, discovery, and removal require the endpoint
+admin bearer token.
+
 ## Android APK
 
 With JDK 17 and Android SDK 35 available, build and test the Android Agent:

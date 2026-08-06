@@ -3,15 +3,19 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import ipaddress
 import ssl
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import AsyncIterator
+from urllib.parse import urlsplit
 
 import grpc
+import httpx
 
 from ..classifier import RuleBasedTaskClassifier
 from ..dispatch import DeviceOfflineError, DispatchManager
+from ..endpoints import EndpointError, HttpEndpoint, HttpEndpointStore
 from ..enrollment import EnrollmentError, EnrollmentManager
 from ..models import (
     Device,
@@ -31,10 +35,12 @@ from ..planner import ExecutionPlanner
 from ..profiles import PersonalProfile, ProfileError, ProfileStore
 from ..proto import dragonnest_pb2 as pb
 from ..proto import dragonnest_pb2_grpc as pb_grpc
-from ..registry import DeviceRegistry
+from ..registry import DeviceRecord, DeviceRegistry
 from ..router import DeterministicRouter
 from ..steering import SteeringRegistry
 from ..tasks import AttemptState, TaskRecord, TaskStore
+from .http_device import HttpDeviceSession, fetch_endpoint_info
+from .sessions import DeviceSession, SessionConflictError, SessionRegistry
 from .conversion import (
     device_from_registration,
     health_from_proto,
@@ -69,6 +75,10 @@ class BrainServiceConfig:
     require_client_certificate: bool = True
     enrollment_session_ttl_seconds: int = 300
     state_db_path: str = ":memory:"
+    http_endpoint_registration_enabled: bool = False
+    http_endpoint_admin_token: str = field(default="", repr=False)
+    http_endpoint_allowed_cidrs: tuple[str, ...] = ("127.0.0.0/8", "::1/128")
+    http_endpoint_allowed_hosts: tuple[str, ...] = ("localhost",)
 
 
 @dataclass(frozen=True)
@@ -83,6 +93,9 @@ class PipelineAttemptResult:
 
 
 class AgentSession:
+    transport = "grpc_stream"
+    allow_profile_context = True
+
     def __init__(self, device_id: str):
         self.device_id = device_id
         self.outbound: asyncio.Queue[pb.BrainToDevice | None] = asyncio.Queue()
@@ -194,43 +207,6 @@ class AgentSession:
         await self.outbound.put(None)
 
 
-class SessionRegistry:
-    def __init__(self):
-        self._sessions: dict[str, AgentSession] = {}
-        self._lock = asyncio.Lock()
-
-    async def replace(self, session: AgentSession) -> AgentSession | None:
-        async with self._lock:
-            previous = self._sessions.get(session.device_id)
-            self._sessions[session.device_id] = session
-        if previous:
-            await previous.close()
-        return previous
-
-    async def get(self, device_id: str) -> AgentSession | None:
-        async with self._lock:
-            return self._sessions.get(device_id)
-
-    async def remove(self, session: AgentSession) -> bool:
-        async with self._lock:
-            if self._sessions.get(session.device_id) is not session:
-                return False
-            del self._sessions[session.device_id]
-            return True
-
-    async def close_device(self, device_id: str) -> None:
-        session = await self.get(device_id)
-        if session:
-            await session.close()
-
-    async def close_all(self) -> None:
-        async with self._lock:
-            sessions = tuple(self._sessions.values())
-            self._sessions.clear()
-        for session in sessions:
-            await session.close(graceful=True)
-
-
 class BrainService(pb_grpc.BrainControlServicer):
     def __init__(
         self,
@@ -260,7 +236,10 @@ class BrainService(pb_grpc.BrainControlServicer):
             default_ttl_seconds=self.config.enrollment_session_ttl_seconds
         )
         self.profiles = ProfileStore(self.config.state_db_path)
+        self.endpoints = HttpEndpointStore(self.config.state_db_path)
         self._sweeper: asyncio.Task[None] | None = None
+        self._http_client = httpx.AsyncClient()
+        self._http_poll_tasks: dict[str, asyncio.Task[None]] = {}
 
     def set_device_simulation(
         self, device_id: str, changes: dict[str, float | bool | int]
@@ -271,8 +250,18 @@ class BrainService(pb_grpc.BrainControlServicer):
             self._device_simulations.pop(device_id, None)
 
     async def start(self) -> None:
-        if self._sweeper is None:
-            self._sweeper = asyncio.create_task(self._sweep_loop())
+        if self._sweeper is not None:
+            return
+        try:
+            if self.config.http_endpoint_registration_enabled:
+                for endpoint in self.endpoints.all():
+                    await self.register_http_device(endpoint, persist=False)
+        except Exception:
+            for device_id in tuple(self._http_poll_tasks):
+                await self._cancel_http_poll(device_id)
+            await self.sessions.close_all()
+            raise
+        self._sweeper = asyncio.create_task(self._sweep_loop())
 
     async def stop(self) -> None:
         if self._sweeper:
@@ -280,7 +269,120 @@ class BrainService(pb_grpc.BrainControlServicer):
             with contextlib.suppress(asyncio.CancelledError):
                 await self._sweeper
             self._sweeper = None
+        for device_id in tuple(self._http_poll_tasks):
+            await self._cancel_http_poll(device_id)
         await self.sessions.close_all()
+        await self._http_client.aclose()
+
+    async def register_http_device(
+        self, endpoint: HttpEndpoint, *, persist: bool = True
+    ) -> DeviceRecord:
+        if not self.config.http_endpoint_registration_enabled:
+            raise EndpointError("HTTP endpoint registration is disabled")
+        normalized_url = await self.validate_http_endpoint_url(endpoint.base_url)
+        endpoint = replace(endpoint, base_url=normalized_url)
+        existing = await self.sessions.get(endpoint.device.device_id)
+        if existing is not None and existing.transport != "http_endpoint":
+            raise SessionConflictError(
+                f"device {endpoint.device.device_id!r} is already connected via "
+                f"{existing.transport}"
+            )
+        await self._cancel_http_poll(endpoint.device.device_id)
+        session = HttpDeviceSession(endpoint, self._http_client)
+        await self.sessions.register(session, replace_same_transport=True)
+        record = self.registry.register(endpoint.device)
+        if persist:
+            self.endpoints.put(endpoint)
+        self._http_poll_tasks[endpoint.device.device_id] = asyncio.create_task(
+            self._poll_http_device(session)
+        )
+        return record
+
+    async def deregister_http_device(self, device_id: str) -> None:
+        session = await self.sessions.get(device_id)
+        if session is None or session.transport != "http_endpoint":
+            raise EndpointError("HTTP endpoint not found")
+        await self._cancel_http_poll(device_id)
+        await self.sessions.close_device(device_id)
+        self.endpoints.delete(device_id)
+        with contextlib.suppress(KeyError):
+            self.dispatch.handle_device_offline(device_id)
+            self.registry.deregister(device_id)
+
+    async def fetch_http_endpoint_info(
+        self, base_url: str, credential_env: str = ""
+    ) -> dict[str, object]:
+        normalized_url = await self.validate_http_endpoint_url(base_url)
+        return await fetch_endpoint_info(
+            self._http_client,
+            normalized_url,
+            credential_env,
+        )
+
+    async def validate_http_endpoint_url(self, base_url: str) -> str:
+        parsed = urlsplit(base_url.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise EndpointError("base_url must be an absolute http(s) URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise EndpointError(
+                "base_url cannot contain credentials, a query, or a fragment"
+            )
+        try:
+            parsed.port
+        except ValueError as exc:
+            raise EndpointError("base_url port is invalid") from exc
+        hostname = parsed.hostname.rstrip(".").lower()
+        allowed_hosts = {
+            value.rstrip(".").lower()
+            for value in self.config.http_endpoint_allowed_hosts
+        }
+        if hostname not in allowed_hosts:
+            try:
+                address = ipaddress.ip_address(hostname)
+            except ValueError as exc:
+                raise EndpointError(
+                    "base_url hostname is not explicitly allowed"
+                ) from exc
+            try:
+                networks = tuple(
+                    ipaddress.ip_network(value, strict=False)
+                    for value in self.config.http_endpoint_allowed_cidrs
+                )
+            except ValueError as exc:
+                raise EndpointError("configured endpoint CIDR is invalid") from exc
+            if not any(address in network for network in networks):
+                raise EndpointError("base_url is outside the endpoint allowlist")
+        return base_url.strip().rstrip("/")
+
+    async def _cancel_http_poll(self, device_id: str) -> None:
+        poll_task = self._http_poll_tasks.pop(device_id, None)
+        if poll_task is not None:
+            poll_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await poll_task
+
+    async def _poll_http_device(self, session: HttpDeviceSession) -> None:
+        device_id = session.device_id
+        while True:
+            current = await self.sessions.get(device_id)
+            if current is not session or session.closed:
+                return
+            await asyncio.sleep(session.endpoint.poll_interval_seconds)
+            current = await self.sessions.get(device_id)
+            if current is not session or session.closed:
+                return
+            try:
+                health = await session.fetch_health()
+            except DeviceOfflineError:
+                continue
+            with contextlib.suppress(KeyError):
+                self.registry.heartbeat(device_id, health)
+
+    async def _resolve_session(self, device_id: str) -> DeviceSession:
+        session = await self.sessions.get(device_id)
+        if session is not None and not session.closed:
+            return session
+        raise DeviceOfflineError(f"device {device_id} is disconnected")
 
     async def Connect(
         self,
@@ -308,13 +410,27 @@ class BrainService(pb_grpc.BrainControlServicer):
                 registration_rejected=pb.RegistrationRejected(reason=rejection)
             )
             return
+        existing_session = await self.sessions.get(registration.device_id)
+        if (
+            existing_session is not None
+            and existing_session.transport != AgentSession.transport
+        ):
+            yield pb.BrainToDevice(
+                registration_rejected=pb.RegistrationRejected(
+                    reason=(
+                        f"device ID is already registered via "
+                        f"{existing_session.transport}"
+                    )
+                )
+            )
+            return
 
         device = device_from_registration(registration)
         association = self.profiles.association_for_device(device.device_id)
         if association:
             device = replace(device, display_name=association.device_name)
         session = AgentSession(device.device_id)
-        await self.sessions.replace(session)
+        await self.sessions.register(session, replace_same_transport=True)
         self.registry.register(device)
         if peer_fingerprint:
             self.certificate_fingerprints[device.device_id] = peer_fingerprint
@@ -583,9 +699,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             attempt_id: str,
             device: Device,
         ) -> TaskResult:
-            session = await self.sessions.get(device.device_id)
-            if session is None or session.closed:
-                raise DeviceOfflineError(f"device {device.device_id} is disconnected")
+            session = await self._resolve_session(device.device_id)
             model_id = model_by_device.get(device.device_id)
             if model_id is None:
                 fallback_plan, fallback_decision = self.router.route(
@@ -599,8 +713,8 @@ class BrainService(pb_grpc.BrainControlServicer):
                 pb.ExecuteTask(
                     task_id=task_id,
                     attempt_id=attempt_id,
-                    request_text=self._with_profile_context(
-                        request.request_text, profile_context
+                    request_text=self._request_text_for_session(
+                        session, request.request_text, profile_context
                     ),
                     model_id=model_id,
                     timeout_ms=timeout_ms,
@@ -647,19 +761,13 @@ class BrainService(pb_grpc.BrainControlServicer):
                 attempt_id: str,
                 device: Device,
             ) -> TaskResult:
-                session = await self.sessions.get(device.device_id)
-                if session is None or session.closed:
-                    raise DeviceOfflineError(
-                        f"device {device.device_id} is disconnected"
-                    )
+                session = await self._resolve_session(device.device_id)
                 model_id = model_by_device.get(device.device_id)
                 if model_id is None:
                     fallback_plan = ExecutionPlan(
                         task_id=parent.task_id,
                         execution_mode=ExecutionMode.DATA_PARALLEL,
-                        request_text=self._with_profile_context(
-                            shard.request_text, profile_context
-                        ),
+                        request_text=shard.request_text,
                         tasks=(
                             replace(
                                 shard,
@@ -681,8 +789,8 @@ class BrainService(pb_grpc.BrainControlServicer):
                         task_id=parent.task_id,
                         attempt_id=attempt_id,
                         shard_id=shard.shard_id,
-                        request_text=self._with_profile_context(
-                            shard.request_text, profile_context
+                        request_text=self._request_text_for_session(
+                            session, shard.request_text, profile_context
                         ),
                         model_id=model_id,
                         timeout_ms=timeout_ms,
@@ -814,18 +922,14 @@ class BrainService(pb_grpc.BrainControlServicer):
                 replica_attempt_id: str = attempt.attempt_id,
                 replica_model_id: str = model_id,
             ) -> TaskResult:
-                session = await self.sessions.get(replica_device.device_id)
-                if session is None or session.closed:
-                    raise DeviceOfflineError(
-                        f"device {replica_device.device_id} is disconnected"
-                    )
+                session = await self._resolve_session(replica_device.device_id)
                 partial = await session.execute_shard(
                     pb.ExecuteShard(
                         task_id=parent.task_id,
                         attempt_id=replica_attempt_id,
                         shard_id=shard.shard_id,
-                        request_text=self._with_profile_context(
-                            request.request_text, profile_context
+                        request_text=self._request_text_for_session(
+                            session, request.request_text, profile_context
                         ),
                         model_id=replica_model_id,
                         timeout_ms=timeout_ms,
@@ -970,34 +1074,31 @@ class BrainService(pb_grpc.BrainControlServicer):
                 input_boundary: pb.BoundaryTensor | None = boundary,
                 final_stage: bool = index == len(routed.stages) - 1,
             ) -> PipelineAttemptResult:
-                session = await self.sessions.get(device.device_id)
-                if session is None or session.closed:
-                    raise DeviceOfflineError(
-                        f"device {device.device_id} is disconnected"
-                    )
+                session = await self._resolve_session(device.device_id)
                 model_id = models_by_device[device.device_id]
                 self._attempt_models[attempt_id] = model_id
+                stage_steering = (
+                    routed.steering
+                    if routed.steering.enabled
+                    and current_stage.start_layer
+                    <= routed.steering.target_layer
+                    < current_stage.end_layer
+                    else SteeringSpec()
+                )
                 result = await session.execute_pipeline_stage(
                     pb.ExecutePipelineStage(
                         task_id=parent.task_id,
                         attempt_id=attempt_id,
                         stage_id=current_stage.stage_id,
                         stage_index=current_stage.stage_index,
-                        request_text=self._with_profile_context(
-                            request.request_text, profile_context
+                        request_text=self._request_text_for_session(
+                            session, request.request_text, profile_context
                         ),
                         model_id=model_id,
                         input_boundary=input_boundary,
                         final_stage=final_stage,
                         timeout_ms=timeout_ms,
-                        steering=steering_to_proto(
-                            routed.steering
-                            if routed.steering.enabled
-                            and current_stage.start_layer
-                            <= routed.steering.target_layer
-                            < current_stage.end_layer
-                            else SteeringSpec()
-                        ),
+                        steering=steering_to_proto(stage_steering),
                     ),
                     timeout_seconds=timeout_ms / 1000,
                 )
@@ -1281,7 +1382,9 @@ class BrainService(pb_grpc.BrainControlServicer):
             for event in self.registry.sweep():
                 if event.status == HealthStatus.OFFLINE:
                     self.dispatch.handle_device_offline(event.device_id)
-                    await self.sessions.close_device(event.device_id)
+                    session = await self.sessions.get(event.device_id)
+                    if session is not None and session.transport == "grpc_stream":
+                        await self.sessions.close_device(event.device_id)
 
     def _registration_error(
         self, registration: pb.RegisterDevice, peer_fingerprint: str = ""
@@ -1470,6 +1573,17 @@ class BrainService(pb_grpc.BrainControlServicer):
         if not context:
             return request_text
         return f"About the user:\n{context}\n\nRequest:\n{request_text}"
+
+    @classmethod
+    def _request_text_for_session(
+        cls,
+        session: DeviceSession,
+        request_text: str,
+        profile_context: str,
+    ) -> str:
+        if not session.allow_profile_context:
+            return request_text
+        return cls._with_profile_context(request_text, profile_context)
 
     @staticmethod
     def _device_exclusion_reason(record) -> str:
