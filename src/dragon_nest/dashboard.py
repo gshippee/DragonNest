@@ -24,6 +24,7 @@ from .models import (
 )
 from .enrollment import EnrollmentError, EnrollmentStatus
 from .profiles import PersonalProfile, ProfileError
+from .regimes import build_regime_report
 from .proto import dragonnest_pb2 as pb
 from .tasks import AttemptState, TaskRecord
 from .transport.brain import BrainService
@@ -212,6 +213,10 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
     async def admin_page():
         return FileResponse(WEB_ROOT / "admin" / "index.html")
 
+    @app.get("/regimes", include_in_schema=False)
+    async def regimes_page():
+        return FileResponse(WEB_ROOT / "regimes" / "index.html")
+
     @app.get("/manifest.webmanifest", include_in_schema=False)
     async def manifest():
         return FileResponse(
@@ -238,6 +243,11 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
     @app.get("/api/devices")
     async def api_devices():
         return [_device_dict(service, record) for record in service.registry.records()]
+
+    @app.get("/api/regimes")
+    async def api_regimes():
+        devices = [record.device for record in service.registry.records()]
+        return build_regime_report(devices)
 
     @app.post("/api/rest-devices/discover")
     async def api_discover_rest_device(
