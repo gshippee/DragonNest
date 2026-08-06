@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DragonNest · Regime Map</title>
+  <meta name="theme-color" content="#17211b">
+  <link rel="stylesheet" href="/assets/shared/tokens.css">
+  <link rel="stylesheet" href="/assets/shared/base.css">
+  <link rel="stylesheet" href="/assets/regimes/regimes.css">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script src="/assets/shared/api.js" defer></script>
+  <script src="/assets/regimes/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-block">
+      <span class="brand-mark" aria-hidden="true">DN</span>
+      <div class="brand-text"><strong>DragonNest</strong><span>Regime Map · Compute / Memory / Communication</span></div>
+    </div>
+    <nav class="nav-links" aria-label="Primary">
+      <a class="nav-link" href="/admin">← Fleet Control</a>
+      <div class="brain-state"><span id="brain-dot" class="state-dot"></span><span id="brain-state">Connecting</span></div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="band" aria-labelledby="map-title">
+      <div class="section-head">
+        <div><span class="index">01</span><h1 id="map-title">Tradeoff Map</h1></div>
+        <div class="section-actions"><span id="device-count" class="count">0 devices</span></div>
+      </div>
+      <p class="band-intro">Each device is plotted by compute headroom (x) and memory headroom (y); bubble size is communication headroom (inverse of network RTT). Color marks whichever axis is currently the tightest constraint &mdash; that constraint is the device's regime.</p>
+      <div class="regime-legend" id="regime-legend"></div>
+      <div class="chart-wrap">
+        <svg id="regime-chart" viewBox="0 0 720 420" role="img" aria-label="Devices plotted by compute, memory and communication headroom"></svg>
+      </div>
+    </section>
+
+    <section class="band band-muted" aria-labelledby="taskclass-title">
+      <div class="section-head"><div><span class="index">02</span><h2 id="taskclass-title">Achievable by Task Class</h2></div></div>
+      <div id="task-class-grid" class="task-class-grid"></div>
+    </section>
+
+    <section class="band" aria-labelledby="capability-title">
+      <div class="section-head"><div><span class="index">03</span><h2 id="capability-title">Per-Model Achievability</h2></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Device</th><th>Model</th><th>Task classes</th><th>Achievable</th><th>Limiting factor</th><th>Detail</th></tr></thead>
+          <tbody id="capability-table"><tr><td colspan="6" class="empty">No registered models</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="band band-muted" aria-labelledby="pipeline-title">
+      <div class="section-head"><div><span class="index">04</span><h2 id="pipeline-title">Cross-Device Pipeline Opportunities</h2></div></div>
+      <p class="band-intro">Split-layer pipelines only work when the two devices' combined round trip stays inside the latency budget &mdash; a direct example of a communication-bound regime.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pipeline</th><th>Devices</th><th>Combined RTT</th><th>Achievable</th><th>Limiting factor</th></tr></thead>
+          <tbody id="pipeline-table"><tr><td colspan="5" class="empty">No split-layer pipeline pairs found</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="regime-tooltip" class="regime-tooltip" role="tooltip" hidden></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
