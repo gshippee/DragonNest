@@ -61,3 +61,13 @@ th { color: var(--subtle); text-transform: uppercase; font-size: 9px; }
   #task-select { width: 46vw; }
   .device-grid { grid-template-columns: 1fr; }
 }
+
+/* Behavior routing / provisioning additions */
+tr.chosen td { background: var(--status-healthy-soft); }
+.reason-list { margin-top: 4px; font-size: var(--text-xs); color: var(--subtle); max-width: 420px; }
+.chip-mode { border-color: var(--status-healthy); color: var(--status-healthy); background: var(--status-healthy-soft); }
+.chip-warm { border-color: var(--status-healthy); color: var(--status-healthy); }
+.chip-installed { border-color: var(--status-neutral); }
+.sim-artifacts { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.sim-artifacts-title { font-size: var(--text-xs); color: var(--subtle); }
+.sim-artifact-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--text-xs); }

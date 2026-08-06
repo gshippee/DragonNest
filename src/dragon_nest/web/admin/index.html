@@ -65,9 +65,42 @@
       </form>
     </section>
 
+    <section class="band" aria-labelledby="behavior-title">
+      <div class="section-head"><div><span class="index">04</span><h2 id="behavior-title">Behavior Routing</h2></div><span class="count">deployment scheduler</span></div>
+      <form id="behavior-form" class="task-form">
+        <label class="field">Request<textarea id="behavior-request" rows="3" required>Explain why local AI routing matters.</textarea></label>
+        <div class="control-grid">
+          <label class="field">Model family<select id="behavior-family"><option value="mock">mock (portable)</option><option value="qwen3">qwen3</option></select></label>
+          <label class="field">Behavior profile<select id="behavior-profile"><option value="">None</option></select></label>
+          <label class="field">Input tokens<input id="behavior-input-tokens" type="number" min="1" max="1000000" value="256"></label>
+          <label class="field">Output tokens<input id="behavior-output-tokens" type="number" min="1" max="1000000" value="128"></label>
+          <label class="field">Privacy<select id="behavior-privacy"><option value="trusted_fabric">Trusted fabric</option><option value="private">Private (origin only)</option></select></label>
+          <label class="field">Latency<select id="behavior-latency"><option value="interactive">Interactive</option><option value="realtime">Realtime</option><option value="background">Background</option></select></label>
+          <label class="field">Origin device<select id="behavior-origin"><option value="">None</option></select></label>
+          <label class="field">Fallback override<select id="behavior-fallback"><option value="">Profile default</option><option value="exact_only">Exact only</option><option value="allow_baked_equivalent">Allow baked</option><option value="allow_runtime_equivalent">Allow runtime</option><option value="allow_prompt_fallback">Allow prompt</option><option value="allow_unsteered">Allow unsteered</option></select></label>
+          <button id="behavior-preview" class="btn-secondary" type="button"><i data-lucide="route"></i><span>Preview route</span></button>
+          <button id="behavior-execute" class="btn-primary" type="submit"><i data-lucide="send"></i><span>Route &amp; execute</span></button>
+        </div>
+      </form>
+      <div id="behavior-summary" class="profile-strip"></div>
+      <ol id="behavior-explanation" class="trace-list"><li class="empty">No route plan yet — preview or execute a behavior request</li></ol>
+      <div class="table-wrap">
+        <table><thead><tr><th>Device</th><th>Artifact</th><th>Realization</th><th>Deployment</th><th>Predicted cost</th><th>Verdict</th></tr></thead>
+        <tbody id="behavior-candidates"><tr><td colspan="6" class="empty">No candidates yet</td></tr></tbody></table>
+      </div>
+    </section>
+
+    <section class="band band-muted" aria-labelledby="provisioning-title">
+      <div class="section-head"><div><span class="index">05</span><h2 id="provisioning-title">Provisioning</h2></div><span id="provisioning-count" class="count">0 jobs</span></div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Job</th><th>Profile</th><th>Device</th><th>Artifact</th><th>State</th><th>Detail</th><th></th></tr></thead>
+        <tbody id="provisioning-jobs"><tr><td colspan="7" class="empty">No provisioning jobs</td></tr></tbody></table>
+      </div>
+    </section>
+
     <section class="band band-muted" aria-labelledby="trace-title">
       <div class="section-head">
-        <div><span class="index">04</span><h2 id="trace-title">Routing Trace</h2></div>
+        <div><span class="index">06</span><h2 id="trace-title">Routing Trace</h2></div>
         <select id="task-select" aria-label="Selected task"><option>No tasks</option></select>
       </div>
       <div id="profile-strip" class="profile-strip"></div>
@@ -75,20 +108,20 @@
     </section>
 
     <section class="band" aria-labelledby="progress-title">
-      <div class="section-head"><div><span class="index">05</span><h2 id="progress-title">Parallel Progress</h2></div></div>
+      <div class="section-head"><div><span class="index">07</span><h2 id="progress-title">Parallel Progress</h2></div></div>
       <div class="table-wrap">
         <table><thead><tr><th>Unit</th><th>Device</th><th>Model</th><th>Status</th><th>Latency</th><th>Retries</th></tr></thead><tbody id="progress"><tr><td colspan="6" class="empty">No active shards or stages</td></tr></tbody></table>
       </div>
     </section>
 
     <section class="band band-muted" aria-labelledby="result-title">
-      <div class="section-head"><div><span class="index">06</span><h2 id="result-title">Result</h2></div><span id="result-state" class="status-pill neutral">Idle</span></div>
+      <div class="section-head"><div><span class="index">08</span><h2 id="result-title">Result</h2></div><span id="result-state" class="status-pill neutral">Idle</span></div>
       <pre id="result-output" class="result-output">No result selected.</pre>
       <div id="result-meta" class="result-meta"></div>
     </section>
 
     <section class="band band-dark" aria-labelledby="events-title">
-      <div class="section-head"><div><span class="index">07</span><h2 id="events-title">Live Event Log</h2></div><button id="refresh-events" class="icon-btn" title="Refresh events" aria-label="Refresh events"><i data-lucide="refresh-cw"></i></button></div>
+      <div class="section-head"><div><span class="index">09</span><h2 id="events-title">Live Event Log</h2></div><button id="refresh-events" class="icon-btn" title="Refresh events" aria-label="Refresh events"><i data-lucide="refresh-cw"></i></button></div>
       <div id="events" class="event-log" aria-live="polite"></div>
     </section>
   </main>
@@ -100,6 +133,10 @@
       <label class="field">Thermal<div class="range-row"><input id="sim-thermal" type="range" min="0" max="1" step="0.05"><output id="sim-thermal-value"></output></div></label>
       <label class="field">Accelerator load<div class="range-row"><input id="sim-load" type="range" min="0" max="1" step="0.05"><output id="sim-load-value"></output></div></label>
       <label class="field">Network RTT (ms)<input id="sim-rtt" type="number" min="0" max="500"></label>
+      <label class="field">Battery (%)<input id="sim-battery" type="number" min="0" max="100"></label>
+      <label class="field">Available memory (MB)<input id="sim-memory" type="number" min="0"></label>
+      <label class="check-row"><input id="sim-steering" type="checkbox" checked>Runtime steering supported</label>
+      <div id="sim-artifacts" class="sim-artifacts"></div>
       <label class="check-row"><input id="sim-offline" type="checkbox">Simulated offline</label>
       <div class="dialog-actions"><button value="cancel" type="button" class="btn-secondary" id="sim-cancel">Cancel</button><button type="submit" class="btn-primary"><i data-lucide="gauge"></i><span>Apply</span></button></div>
     </form>

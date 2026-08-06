@@ -1,18 +1,22 @@
-const state = { devices: [], tasks: [], vectors: [], selectedTask: null, enrollment: null };
+const state = { devices: [], tasks: [], vectors: [], selectedTask: null, enrollment: null, behaviorProfiles: [], lastPlan: null, provisioning: [] };
 
 const $ = (id) => document.getElementById(id);
 
 async function refresh() {
   try {
-    const [health, devices, tasks, events] = await Promise.all([
-      api("/api/health"), api("/api/devices"), api("/api/tasks"), api("/api/events?limit=120")
+    const [health, devices, tasks, events, provisioning] = await Promise.all([
+      api("/api/health"), api("/api/devices"), api("/api/tasks"), api("/api/events?limit=120"), api("/api/provisioning")
     ]);
     state.devices = devices;
     state.tasks = tasks;
-    const origin = $("origin-device");
-    const selectedOrigin = origin.value;
-    origin.innerHTML = '<option value="">None</option>' + devices.map((device) => `<option value="${esc(device.device_id)}" ${device.device_id === selectedOrigin ? "selected" : ""}>${esc(device.display_name)} (${esc(device.device_id)})</option>`).join("");
-    if (!selectedOrigin && devices.length === 1) origin.value = devices[0].device_id;
+    state.provisioning = provisioning;
+    for (const id of ["origin-device", "behavior-origin"]) {
+      const origin = $(id);
+      const selectedOrigin = origin.value;
+      origin.innerHTML = '<option value="">None</option>' + devices.map((device) => `<option value="${esc(device.device_id)}" ${device.device_id === selectedOrigin ? "selected" : ""}>${esc(device.display_name)} (${esc(device.device_id)})</option>`).join("");
+      if (!selectedOrigin && devices.length === 1) origin.value = devices[0].device_id;
+    }
+    renderProvisioning();
     $("brain-dot").classList.add("online");
     $("brain-state").textContent = `${health.brain_id} online`;
     renderDevices(); renderTaskSelect(); renderEvents(events);
@@ -41,10 +45,12 @@ function renderDevices() {
       inventory.npu_status ? `NPU ${inventory.npu_status}` : ""
     ].filter(Boolean).map((value) => `<span class="chip">${esc(value)}</span>`).join("");
     const isHttpEndpoint = device.transport === "http_endpoint";
+    const steeringModes = (device.steering_realization_modes || []).filter((mode) => mode !== "none").map((mode) => `<span class="chip chip-mode">${esc(mode)}</span>`).join("");
+    const deployments = (device.deployments || []).filter((item) => item.state !== "absent").map((item) => `<span class="chip chip-${esc(item.state)}">${esc(item.artifact_id)} · ${esc(item.state)}</span>`).join("");
     return `<article class="device-card ${statusClass(device.status)}">
       <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(device.platform)} · ${device.connected ? "stream connected" : "disconnected"}</p></div><div><span class="status-pill ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-btn simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button>${isHttpEndpoint ? ` <button class="icon-btn remove-endpoint" data-device="${esc(device.device_id)}" title="Remove endpoint" aria-label="Remove ${esc(device.display_name)}"><i data-lucide="trash-2"></i></button>` : ""}</div></div>
       <div class="metrics"><div class="metric"><span>Battery</span><strong>${h.battery_pct < 0 ? "Unknown" : `${decimal(h.battery_pct, 0)}%${h.charging ? " charging" : ""}`}</strong></div><div class="metric"><span>Thermal</span><strong>${decimal(h.thermal_level)}</strong></div><div class="metric"><span>Memory</span><strong>${h.available_memory_mb === 0 ? "Unknown" : fmt(h.available_memory_mb, " MB")}</strong></div><div class="metric"><span>Accelerator</span><strong>${h.accelerator_utilization < 0 ? "Unknown" : `${decimal(h.accelerator_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>Network RTT</span><strong>${h.network_rtt_ms < 0 ? "Unknown" : `${decimal(h.network_rtt_ms, 0)} ms`}</strong></div><div class="metric"><span>Active</span><strong>${device.active_tasks.length}</strong></div></div>
-      <div class="model-list">${isHttpEndpoint ? '<span class="chip">HTTP endpoint</span>' : ""}${hardware}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
+      <div class="model-list">${isHttpEndpoint ? '<span class="chip">HTTP endpoint</span>' : ""}${hardware}${steeringModes}${deployments}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
     </article>`;
   }).join("") : '<div class="empty">No registered devices</div>';
   document.querySelectorAll(".simulate").forEach((button) => button.addEventListener("click", () => openSimulation(button.dataset.device)));
@@ -120,15 +126,115 @@ async function submitTask(event) {
 
 function openSimulation(deviceId) {
   const device = state.devices.find((item) => item.device_id === deviceId); if (!device) return;
-  $("simulation-device").value = deviceId; $("sim-thermal").value = device.health.thermal_level; $("sim-load").value = device.health.accelerator_utilization; $("sim-rtt").value = device.health.network_rtt_ms; $("sim-offline").checked = device.status === "OFFLINE"; updateSimulationOutputs(); $("simulation-dialog").showModal();
+  $("simulation-device").value = deviceId; $("sim-thermal").value = device.health.thermal_level; $("sim-load").value = device.health.accelerator_utilization; $("sim-rtt").value = device.health.network_rtt_ms; $("sim-battery").value = Math.max(0, device.health.battery_pct); $("sim-memory").value = device.health.available_memory_mb; $("sim-steering").checked = device.runtime_steering_enabled !== false; $("sim-offline").checked = device.status === "OFFLINE";
+  $("sim-artifacts").innerHTML = (device.deployments || []).length ? "<span class=\"sim-artifacts-title\">Artifact deployment states</span>" + device.deployments.map((item) => `<label class="field sim-artifact-row">${esc(item.artifact_id)}<select data-artifact="${esc(item.artifact_id)}" data-original="${esc(item.state)}">${["absent", "installed", "warm"].map((option) => `<option value="${option}" ${option === item.state ? "selected" : ""}>${option}</option>`).join("")}</select></label>`).join("") : "";
+  updateSimulationOutputs(); $("simulation-dialog").showModal();
 }
 
 function updateSimulationOutputs() { $("sim-thermal-value").value = $("sim-thermal").value; $("sim-load-value").value = $("sim-load").value; }
 
 async function applySimulation(event) {
   event.preventDefault();
-  try { await api(`/api/devices/${encodeURIComponent($("simulation-device").value)}/simulate`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ thermal_level: Number($("sim-thermal").value), accelerator_utilization: Number($("sim-load").value), network_rtt_ms: Number($("sim-rtt").value), offline: $("sim-offline").checked }) }); $("simulation-dialog").close(); await refresh(); }
+  const artifactStates = {};
+  document.querySelectorAll("#sim-artifacts select").forEach((select) => {
+    if (select.value !== select.dataset.original) artifactStates[select.dataset.artifact] = select.value;
+  });
+  const payload = { thermal_level: Number($("sim-thermal").value), accelerator_utilization: Number($("sim-load").value), network_rtt_ms: Number($("sim-rtt").value), battery_pct: Number($("sim-battery").value), available_memory_mb: Number($("sim-memory").value), runtime_steering_enabled: $("sim-steering").checked, offline: $("sim-offline").checked };
+  if (Object.keys(artifactStates).length) payload.artifact_states = artifactStates;
+  try { await api(`/api/devices/${encodeURIComponent($("simulation-device").value)}/simulate`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) }); $("simulation-dialog").close(); await refresh(); }
   catch (error) { toast(error.message); }
+}
+
+async function loadBehaviorProfiles() {
+  state.behaviorProfiles = await api("/api/behavior-profiles");
+  $("behavior-profile").innerHTML = '<option value="">None</option>' + state.behaviorProfiles.map((profile) => `<option value="${esc(profile.profile_id)}">${esc(profile.display_name)} (${esc(profile.fallback_policy)})</option>`).join("");
+}
+
+function behaviorPayload() {
+  return {
+    request_text: $("behavior-request").value,
+    base_model_family: $("behavior-family").value,
+    behavior_profile_id: $("behavior-profile").value,
+    estimated_input_tokens: Number($("behavior-input-tokens").value) || 256,
+    estimated_output_tokens: Number($("behavior-output-tokens").value) || 128,
+    privacy: $("behavior-privacy").value,
+    latency_preference: $("behavior-latency").value,
+    origin_device_id: $("behavior-origin").value,
+    fallback_policy_override: $("behavior-fallback").value
+  };
+}
+
+function renderPlan(plan) {
+  state.lastPlan = plan;
+  const summary = [];
+  summary.push(`<span class="profile-item">Profile <strong>${esc(plan.behavior_profile || "none")}</strong></span>`);
+  if (plan.fallback_policy) summary.push(`<span class="profile-item">Fallback policy <strong>${esc(plan.fallback_policy)}</strong></span>`);
+  if (plan.chosen) {
+    summary.push(`<span class="profile-item">Chosen <strong>${esc(plan.chosen.device_id)} / ${esc(plan.chosen.artifact_id)}</strong></span>`);
+    summary.push(`<span class="profile-item">Realized via <strong>${esc(plan.chosen.realization_mode)}</strong></span>`);
+  } else {
+    summary.push(`<span class="profile-item">Result <strong>${esc(plan.error_code || "no route")}</strong></span>`);
+    if (plan.provisioning_hint) summary.push(`<button id="provision-hint" class="btn-secondary" type="button" data-profile="${esc(plan.provisioning_hint)}"><i data-lucide="hammer"></i><span>Provision '${esc(plan.provisioning_hint)}'</span></button>`);
+  }
+  $("behavior-summary").innerHTML = summary.join("");
+  const hint = $("provision-hint");
+  if (hint) hint.addEventListener("click", () => provisionProfile(hint.dataset.profile));
+  $("behavior-explanation").innerHTML = plan.explanation.map((line) => `<li>${esc(line)}</li>`).join("");
+  $("behavior-candidates").innerHTML = plan.candidates.length ? plan.candidates.map((candidate) => {
+    const chosen = plan.chosen && candidate.device_id === plan.chosen.device_id && candidate.artifact_id === plan.chosen.artifact_id && candidate.realization_mode === plan.chosen.realization_mode;
+    const verdict = candidate.feasible
+      ? (chosen ? '<span class="status-pill healthy">chosen</span>' : '<span class="status-pill neutral">feasible</span>')
+      : `<span class="status-pill failed">rejected</span><div class="reason-list">${candidate.rejection_reasons.map((reason) => esc(reason)).join("<br>")}</div>`;
+    const cost = candidate.cost ? `${Math.round(candidate.cost.total_ms)} ms` : "—";
+    const memory = candidate.memory ? ` · ${candidate.memory.total_mb}/${candidate.memory.available_mb} MB${candidate.memory.estimated_fields.length ? " (est)" : ""}` : "";
+    return `<tr class="${chosen ? "chosen" : ""}"><td>${esc(candidate.device_id)}</td><td>${esc(candidate.artifact_id)}</td><td>${esc(candidate.realization_mode)}</td><td>${esc(candidate.deployment_state)}</td><td>${cost}${memory}</td><td>${verdict}</td></tr>`;
+  }).join("") : '<tr><td colspan="6" class="empty">No candidates generated</td></tr>';
+  if (window.lucide) lucide.createIcons();
+}
+
+async function previewBehaviorRoute() {
+  const button = $("behavior-preview"); button.disabled = true;
+  try { renderPlan(await api("/api/route-plan", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(behaviorPayload()) })); }
+  catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
+}
+
+async function executeBehaviorTask(event) {
+  event.preventDefault();
+  const button = $("behavior-execute"); button.disabled = true;
+  try {
+    const response = await api("/api/behavior-tasks", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ ...behaviorPayload(), timeout_ms: 30000 }) });
+    if (response.route_plan) renderPlan(response.route_plan);
+    toast(response.success ? `Task ${response.task_id} succeeded on ${response.device_id}` : `${response.error_code}: ${response.error_message || "no feasible deployment"}`);
+    await refresh(); selectTask(response.task_id);
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
+}
+
+async function provisionProfile(profileId) {
+  const profile = state.behaviorProfiles.find((item) => item.profile_id === profileId);
+  const baked = profile?.realizations?.find((realization) => realization.baked_artifact_id);
+  if (!baked) { toast(`Profile ${profileId} declares no bake target`); return; }
+  const deviceId = $("behavior-origin").value || state.devices[0]?.device_id;
+  if (!deviceId) { toast("No device available for provisioning"); return; }
+  try {
+    await api("/api/provisioning", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ profile_id: profileId, device_id: deviceId, artifact_id: baked.baked_artifact_id }) });
+    toast(`Provisioning ${baked.baked_artifact_id} on ${deviceId}`);
+    await refresh();
+  } catch (error) { toast(error.message); }
+}
+
+function renderProvisioning() {
+  const jobs = state.provisioning || [];
+  $("provisioning-count").textContent = `${jobs.length} job${jobs.length === 1 ? "" : "s"}`;
+  $("provisioning-jobs").innerHTML = jobs.length ? jobs.map((job) => {
+    const terminal = job.state === "warm" || job.state === "failed";
+    return `<tr><td>${esc(job.job_id)}</td><td>${esc(job.profile_id)}</td><td>${esc(job.device_id)}</td><td>${esc(job.artifact_id)}</td><td><span class="status-pill ${job.state === "warm" ? "healthy" : job.state === "failed" ? "failed" : "running"}">${esc(job.state)}</span></td><td>${esc(job.detail)}</td><td>${terminal ? "" : `<button class="btn-secondary advance-job" data-job="${esc(job.job_id)}" type="button">Advance</button>`}</td></tr>`;
+  }).join("") : '<tr><td colspan="7" class="empty">No provisioning jobs</td></tr>';
+  document.querySelectorAll(".advance-job").forEach((button) => button.addEventListener("click", async () => {
+    try { await api(`/api/provisioning/${encodeURIComponent(button.dataset.job)}/advance`, { method: "POST" }); await refresh(); }
+    catch (error) { toast(error.message); }
+  }));
 }
 
 function openEndpointDialog() {
@@ -309,6 +415,8 @@ async function closeEnrollment() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   $("task-form").addEventListener("submit", submitTask);
+  $("behavior-form").addEventListener("submit", executeBehaviorTask);
+  $("behavior-preview").addEventListener("click", previewBehaviorRoute);
   $("task-select").addEventListener("change", (event) => selectTask(event.target.value));
   $("steering-enabled").addEventListener("change", (event) => $("steering-controls").hidden = !event.target.checked);
   $("vector-id").addEventListener("change", applyVectorDefaults);
@@ -331,5 +439,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("enrollment-vector").addEventListener("change", applyEnrollmentVectorDefaults);
   watchOnlineStatus("offline-banner");
   setupInstallPrompt("install-button");
-  await loadVectors(); await refresh(); setInterval(refresh, 1000);
+  await loadVectors(); await loadBehaviorProfiles(); await refresh(); setInterval(refresh, 1000);
 });

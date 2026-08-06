@@ -37,6 +37,25 @@ def _client(service: BrainService) -> httpx.AsyncClient:
     )
 
 
+def test_admin_page_serves_behavior_routing_and_provisioning_panels():
+    async def scenario() -> None:
+        service = _service()
+        async with _client(service) as client:
+            page = await client.get("/admin")
+        assert page.status_code == 200
+        for marker in (
+            "Behavior Routing",
+            "Provisioning",
+            "behavior-candidates",
+            "provisioning-jobs",
+            "sim-artifacts",
+            "Runtime steering supported",
+        ):
+            assert marker in page.text
+
+    asyncio.run(scenario())
+
+
 def test_route_plan_preview_lists_candidates_and_rejections():
     async def scenario() -> None:
         service = _service()
