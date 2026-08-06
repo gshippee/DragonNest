@@ -99,13 +99,16 @@ class SteeringRegistry:
                 f"vector {vector_id} status is {vector.status!r}; only "
                 "calibrated or validated vectors are routable",
             )
-        if vector.model_family != model_family:
+        # The "mock" family is the SDK-free portable test double; it accepts
+        # any vector family/revision (matching validate() semantics) while the
+        # runtime/quantization/layer boundaries below still apply.
+        if model_family != "mock" and vector.model_family != model_family:
             return (
                 False,
                 f"vector family {vector.model_family} does not match model "
                 f"family {model_family}",
             )
-        if vector.model_revision and model_revision and (
+        if model_family != "mock" and vector.model_revision and model_revision and (
             vector.model_revision != model_revision
         ):
             return (
