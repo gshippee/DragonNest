@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
+from . import local_hardware
 from .dispatch import DeviceOfflineError
 from .models import (
     Device,
@@ -141,6 +142,14 @@ class RestDeviceRegistration(BaseModel):
     poll_interval_seconds: float = Field(default=5.0, ge=1, le=300)
     models: list[ModelCapabilityPayload] = Field(default_factory=list)
     hardware: HardwareInventoryPayload = Field(default_factory=HardwareInventoryPayload)
+    probe_local: bool = Field(
+        default=False,
+        description=(
+            "Fill `hardware` (and platform/total_memory_mb, if unset) by probing "
+            "this Brain process's own host machine in-process instead of over "
+            "the network -- for a device that has no HTTP /info route of its own."
+        ),
+    )
 
 
 class HttpEndpointProbeRequest(BaseModel):
@@ -223,6 +232,12 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
         info = await _probe_http_endpoint(service, request.base_url, request.api_key)
         return info.model_dump()
 
+    @app.get("/api/local-devices/probe")
+    async def api_probe_local_device():
+        """Probe the Brain's own host machine -- no network round-trip, for
+        registering a device that has no HTTP /info route of its own."""
+        return local_hardware.probe_local_hardware()
+
     @app.post("/api/rest-devices")
     async def api_register_rest_device(request: RestDeviceRegistration):
         models = request.models
@@ -231,6 +246,12 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
         platform = request.platform
         total_memory_mb = request.total_memory_mb
         hardware = request.hardware
+        if request.probe_local and hardware == HardwareInventoryPayload():
+            local_info = local_hardware.probe_local_hardware()
+            hardware = HardwareInventoryPayload(**local_info["hardware"])
+            platform = platform or local_info["platform"]
+            total_memory_mb = total_memory_mb or local_info["total_memory_mb"]
+            display_name = display_name or local_info["display_name"]
         if not models:
             info = await _probe_http_endpoint(
                 service, request.base_url, request.api_key

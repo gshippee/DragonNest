@@ -146,6 +146,7 @@ function openEndpointDialog() {
   $("endpoint-max-context").value = "4096";
   $("endpoint-total-memory").value = "0";
   $("endpoint-auto-discover").checked = true;
+  $("endpoint-probe-local").checked = false;
   $("endpoint-submit").disabled = false;
   toggleEndpointMode();
   $("endpoint-dialog").showModal();
@@ -170,6 +171,17 @@ function applyDiscoveredInfo(info) {
   toast(models.length
     ? `Found ${models.length} model${models.length === 1 ? "" : "s"}: ${models.map((m) => m.model_id).join(", ")}`
     : "Endpoint reachable, but reported no models via /info.");
+}
+
+async function probeLocalHardware() {
+  if (!$("endpoint-probe-local").checked) return;
+  try {
+    const info = await api("/api/local-devices/probe");
+    if (info.display_name && !$("endpoint-display-name").value.trim()) $("endpoint-display-name").value = info.display_name;
+    if (info.total_memory_mb && !Number($("endpoint-total-memory").value)) $("endpoint-total-memory").value = info.total_memory_mb;
+    const hw = info.hardware || {};
+    toast(`Probed local hardware: ${hw.model || hw.soc_model || hw.manufacturer || "unknown model"}, NPU ${hw.npu_status}`);
+  } catch (error) { toast(error.message); }
 }
 
 async function fetchEndpointDetails() {
@@ -200,6 +212,7 @@ async function registerEndpoint(event) {
         base_url: $("endpoint-base-url").value.trim(),
         api_key: $("endpoint-api-key").value,
         total_memory_mb: Number($("endpoint-total-memory").value) || 0,
+        probe_local: $("endpoint-probe-local").checked,
         models: autoDiscover ? [] : [{
           model_id: $("endpoint-model-id").value.trim(),
           model_family: $("endpoint-model-family").value.trim(),
@@ -302,6 +315,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("endpoint-cancel").addEventListener("click", () => $("endpoint-dialog").close());
   $("endpoint-fetch").addEventListener("click", fetchEndpointDetails);
   $("endpoint-auto-discover").addEventListener("change", toggleEndpointMode);
+  $("endpoint-probe-local").addEventListener("change", probeLocalHardware);
   $("forget-device").addEventListener("click", forgetDevice);
   $("profile-form").addEventListener("submit", saveProfile);
   $("task-form").addEventListener("submit", submitTask);

@@ -98,6 +98,7 @@
         <button id="endpoint-fetch" class="btn-secondary" type="button"><i data-lucide="refresh-cw"></i><span>Fetch details</span></button>
       </div>
       <label class="check-row"><input id="endpoint-auto-discover" type="checkbox" checked>Auto-discover models from this endpoint (GET /info)</label>
+      <label class="check-row"><input id="endpoint-probe-local" type="checkbox">This is a local device -- probe hardware from this machine (no network round-trip)</label>
       <div id="endpoint-manual-fields" class="control-grid" hidden>
         <label class="field">Model ID<input id="endpoint-model-id" type="text" maxlength="200" value="endpoint-model"></label>
         <label class="field">Model family<input id="endpoint-model-family" type="text" maxlength="120" value="endpoint"></label>
