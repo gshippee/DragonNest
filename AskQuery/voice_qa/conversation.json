@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "Hi, can you let me know who is the doctor who consulted me last time? And what are the medications that are prescribed to me and when my follow-up request is scheduled? Thanks."
+  ],
+  [
+    "assistant",
+    "{\"status\": \"answer\", \"text\": \"Dr. Adam Duley was the doctor consulted during your previous visit. Follow-up appointments are scheduled for December 18th at Paducah KY location.\"}"
+  ]
+]
