@@ -135,6 +135,18 @@ class ArtifactCatalog:
         except KeyError as exc:
             raise KeyError(f"unknown artifact {artifact_id}") from exc
 
+    def mark_ready(self, artifact_id: str) -> None:
+        """Record that provisioning built and validated this artifact.
+
+        In-memory only: readiness earned through the provisioning flow is
+        demo-scoped and does not survive a Brain restart.
+        """
+        from dataclasses import replace
+
+        spec = self.get(artifact_id)
+        if spec.readiness != "ready":
+            self._artifacts[artifact_id] = replace(spec, readiness="ready")
+
     def maybe_get(self, artifact_id: str) -> ArtifactSpec | None:
         return self._artifacts.get(artifact_id)
 

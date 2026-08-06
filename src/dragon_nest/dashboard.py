@@ -11,8 +11,10 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from .deployments import ArtifactState
 from .dispatch import DeviceOfflineError
 from .endpoints import EndpointError, HttpEndpoint
+from .scheduler import RequestSpec, RoutePlan
 from .models import (
     Device,
     HardwareInventory,
@@ -65,6 +67,40 @@ class SimulationRequest(BaseModel):
     cpu_utilization: float | None = Field(default=None, ge=0, le=1)
     accelerator_utilization: float | None = Field(default=None, ge=0, le=1)
     network_rtt_ms: float | None = Field(default=None, ge=0)
+    # Deployment/steering overlays (not health fields):
+    artifact_states: dict[str, str] | None = None  # artifact_id -> ArtifactState
+    runtime_steering_enabled: bool | None = None
+
+
+class RoutePlanRequest(BaseModel):
+    request_text: str = Field(default="", max_length=8000)
+    base_model_family: str = "mock"
+    behavior_profile_id: str = ""
+    estimated_input_tokens: int = Field(default=256, ge=1, le=1_000_000)
+    estimated_output_tokens: int = Field(default=128, ge=1, le=1_000_000)
+    privacy: str = "trusted_fabric"
+    latency_preference: str = "interactive"
+    origin_device_id: str = ""
+    fallback_policy_override: str = ""
+
+    def to_spec(self) -> RequestSpec:
+        return RequestSpec(**self.model_dump())
+
+
+class BehaviorTaskSubmission(RoutePlanRequest):
+    request_text: str = Field(min_length=1, max_length=8000)
+    timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
+
+    def to_spec(self) -> RequestSpec:
+        values = self.model_dump()
+        values.pop("timeout_ms", None)
+        return RequestSpec(**values)
+
+
+class ProvisioningRequest(BaseModel):
+    profile_id: str = Field(min_length=1, max_length=200)
+    device_id: str = Field(min_length=1, max_length=200)
+    artifact_id: str = Field(min_length=1, max_length=200)
 
 
 class EnrollmentSessionRequest(BaseModel):
@@ -477,6 +513,25 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="device not found") from exc
         changes = request.model_dump(exclude_none=True)
+        artifact_states = changes.pop("artifact_states", None)
+        runtime_steering_enabled = changes.pop("runtime_steering_enabled", None)
+        if artifact_states is not None:
+            try:
+                parsed_states = {
+                    artifact_id: ArtifactState(state)
+                    for artifact_id, state in artifact_states.items()
+                }
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"invalid artifact state: {exc}"
+                ) from exc
+            service.set_deployment_simulation(device_id, parsed_states)
+        if runtime_steering_enabled is not None:
+            service.set_runtime_steering_enabled(
+                device_id, runtime_steering_enabled
+            )
+        if not changes:
+            return _device_dict(service, service.registry.get(device_id))
         if request.offline is True:
             service.set_device_simulation(device_id, changes)
             service.dispatch.handle_device_offline(device_id)
@@ -565,7 +620,184 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
             return []
         return [asdict(vector) for vector in service.steering_registry.vectors()]
 
+    @app.get("/api/behavior-profiles")
+    async def api_behavior_profiles():
+        if service.behavior_registry is None:
+            return []
+        return [
+            {
+                "profile_id": profile.profile_id,
+                "display_name": profile.display_name,
+                "description": profile.description,
+                "base_model_family": profile.base_model_family,
+                "version": profile.version,
+                "policy_tags": profile.policy_tags,
+                "fallback_policy": profile.fallback_policy.value,
+                "provenance": profile.provenance,
+                "evaluation_status": profile.evaluation_status,
+                "realizations": [
+                    {
+                        "mode": realization.mode.value,
+                        "vector_id": realization.vector_id,
+                        "alpha": realization.alpha,
+                        "injection_layer": realization.injection_layer,
+                        "baked_artifact_id": realization.baked_artifact_id,
+                        "verification_status": realization.verification_status,
+                        "description": realization.describe(),
+                    }
+                    for realization in profile.realizations
+                ],
+            }
+            for profile in service.behavior_registry.all()
+        ]
+
+    @app.get("/api/artifact-catalog")
+    async def api_artifact_catalog():
+        if service.artifact_catalog is None:
+            return []
+        return [asdict(artifact) for artifact in service.artifact_catalog.all()]
+
+    @app.get("/api/deployments")
+    async def api_deployments():
+        if service.artifact_catalog is None:
+            return []
+        index = service.current_deployment_index()
+        return [
+            {
+                "device_id": record.device.device_id,
+                "steering_realization_modes": (
+                    service.device_steering_realization_modes(
+                        record.device.device_id
+                    )
+                ),
+                "artifacts": [
+                    {
+                        "artifact_id": state.artifact_id,
+                        "state": state.state.value,
+                        "resident_bytes": state.resident_bytes,
+                    }
+                    for state in index.for_device(record.device.device_id)
+                ],
+            }
+            for record in service.registry.records()
+        ]
+
+    @app.post("/api/route-plan")
+    async def api_route_plan(request: RoutePlanRequest):
+        _require_scheduler(service)
+        try:
+            plan = service.build_route_plan(request.to_spec())
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _route_plan_dict(plan)
+
+    @app.post("/api/behavior-tasks")
+    async def api_submit_behavior_task(request: BehaviorTaskSubmission):
+        _require_scheduler(service)
+        try:
+            plan, response = await service.submit_behavior_task(
+                request.to_spec(), timeout_ms=request.timeout_ms
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            **_response_dict(response),
+            "route_plan": _route_plan_dict(plan),
+        }
+
+    @app.get("/api/provisioning")
+    async def api_provisioning_jobs():
+        return [_provisioning_dict(job) for job in service.provisioning.jobs()]
+
+    @app.post("/api/provisioning")
+    async def api_start_provisioning(request: ProvisioningRequest):
+        if service.artifact_catalog is not None:
+            if service.artifact_catalog.maybe_get(request.artifact_id) is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"unknown artifact {request.artifact_id}",
+                )
+        job = service.provisioning.start(
+            request.profile_id, request.device_id, request.artifact_id
+        )
+        return _provisioning_dict(job)
+
+    @app.post("/api/provisioning/{job_id}/advance")
+    async def api_advance_provisioning(job_id: str):
+        try:
+            job = service.provisioning.advance(job_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _provisioning_dict(job)
+
     return app
+
+
+def _require_scheduler(service: BrainService) -> None:
+    if service.scheduler is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "behavior-aware scheduling is not configured; start the Brain "
+                "with an artifact catalog and behavior profiles"
+            ),
+        )
+
+
+def _route_plan_dict(plan: RoutePlan) -> dict[str, Any]:
+    def candidate_dict(candidate) -> dict[str, Any]:
+        return {
+            "device_id": candidate.device_id,
+            "artifact_id": candidate.artifact.artifact_id,
+            "artifact_behavior_profile": candidate.artifact.behavior_profile_id,
+            "runtime": candidate.artifact.runtime,
+            "quantization": candidate.artifact.quantization,
+            "realization_mode": candidate.realization_mode,
+            "realization": (
+                candidate.realization.describe()
+                if candidate.realization is not None
+                else ""
+            ),
+            "deployment_state": candidate.deployment.state.value,
+            "feasible": candidate.feasible,
+            "rejection_reasons": candidate.rejection_reasons,
+            "memory": asdict(candidate.memory) if candidate.memory else None,
+            "cost": asdict(candidate.cost) if candidate.cost else None,
+        }
+
+    return {
+        "request": asdict(plan.request),
+        "behavior_profile": plan.profile.profile_id if plan.profile else "",
+        "fallback_policy": plan.fallback_policy,
+        "candidates": [candidate_dict(c) for c in plan.candidates],
+        "chosen": (
+            candidate_dict(plan.chosen) if plan.chosen is not None else None
+        ),
+        "steering": asdict(plan.steering),
+        "prompt_prefix": plan.prompt_prefix,
+        "explanation": plan.explanation,
+        "error_code": plan.error_code,
+        "provisioning_hint": plan.provisioning_hint,
+    }
+
+
+def _provisioning_dict(job) -> dict[str, Any]:
+    return {
+        "job_id": job.job_id,
+        "profile_id": job.profile_id,
+        "device_id": job.target_device_id,
+        "artifact_id": job.artifact_id,
+        "state": job.state.value,
+        "detail": job.detail,
+        "adapter": job.adapter_name,
+        "history": [
+            {"state": state, "detail": detail} for state, detail in job.history
+        ],
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+    }
 
 
 def _device_dict(
@@ -637,6 +869,27 @@ def _device_dict(
         "simulated_constraint": record.simulated_constraint,
         "personal_profile": (
             _profile_dict(personal_profile) if personal_profile else None
+        ),
+        "steering_realization_modes": (
+            service.device_steering_realization_modes(device.device_id)
+            if service.artifact_catalog is not None
+            else ()
+        ),
+        "runtime_steering_enabled": (
+            device.device_id not in service.runtime_steering_disabled
+        ),
+        "deployments": (
+            [
+                {
+                    "artifact_id": state.artifact_id,
+                    "state": state.state.value,
+                }
+                for state in service.current_deployment_index().for_device(
+                    device.device_id
+                )
+            ]
+            if service.artifact_catalog is not None
+            else []
         ),
     }
 
@@ -715,6 +968,11 @@ def _task_dict(service: BrainService, task: TaskRecord) -> dict[str, Any]:
         "progress": _progress_dict(plan, service, task.task_id),
         "result": _result_dict(result),
         "stale_result_count": len(task.stale_results),
+        "route_plan": (
+            _route_plan_dict(service.route_plans[task.task_id])
+            if task.task_id in service.route_plans
+            else None
+        ),
     }
 
 

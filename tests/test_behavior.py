@@ -95,13 +95,12 @@ def test_prompt_realization_is_never_described_as_activation_steering():
     assert "prompt" not in runtime.describe()
 
 
-def test_family_assistant_has_no_deployable_realizations(registry):
+def test_family_assistant_declares_only_an_unbuilt_bake_target(registry):
     profile = registry.get("family-assistant")
-    deployable = [
-        r for r in profile.realizations
-        if r.mode != SteeringRealizationMode.NONE
+    assert [r.mode for r in profile.realizations] == [
+        SteeringRealizationMode.BAKED_PROFILE
     ]
-    assert deployable == []
+    assert profile.realizations[0].verification_status == "unverified"
     assert profile.fallback_policy == BehaviorFallbackPolicy.REJECT
 
 

@@ -7,7 +7,9 @@ from pathlib import Path
 
 import uvicorn
 
+from dragon_nest.behavior import BehaviorProfileRegistry
 from dragon_nest.dashboard import create_dashboard_app
+from dragon_nest.deployments import ArtifactCatalog
 from dragon_nest.steering import SteeringRegistry
 from dragon_nest.transport.brain import (
     BrainService,
@@ -39,6 +41,8 @@ async def run(args) -> None:
             ),
         ),
         steering_registry=SteeringRegistry.from_yaml(args.steering_config),
+        artifact_catalog=ArtifactCatalog.from_yaml(args.artifact_catalog),
+        behavior_registry=BehaviorProfileRegistry.from_yaml(args.behavior_profiles),
     )
     server, port = await create_server(service, args.address)
     dashboard = uvicorn.Server(
@@ -95,6 +99,16 @@ def main() -> None:
         "--steering-config",
         type=Path,
         default=Path("configs/steering-vectors.yaml"),
+    )
+    parser.add_argument(
+        "--artifact-catalog",
+        type=Path,
+        default=Path("configs/artifact-catalog.yaml"),
+    )
+    parser.add_argument(
+        "--behavior-profiles",
+        type=Path,
+        default=Path("configs/behavior-profiles.yaml"),
     )
     args = parser.parse_args()
     try:

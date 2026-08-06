@@ -116,13 +116,18 @@ profiles:
   - profile_id: family-assistant
     display_name: Family Assistant
     description: >
-      Household helper persona with child-appropriate guardrails. No
-      realization has been built yet; requesting it should enter
-      provisioning rather than silently degrading.
+      Household helper persona with child-appropriate guardrails. The baked
+      realization below is a build target only — the artifact has not been
+      compiled; requesting this profile enters provisioning rather than
+      silently degrading.
     base_model_family: mock
     version: "0"
     policy_tags: [persona, guardrails]
     fallback_policy: reject
     provenance: requested by product; build not yet run
     evaluation_status: draft
-    realizations: []
+    realizations:
+      - mode: baked_profile
+        baked_artifact_id: family-assistant-v0-baked
+        compatible_model_families: [mock]
+        verification_status: unverified

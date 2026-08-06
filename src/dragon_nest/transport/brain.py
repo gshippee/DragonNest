@@ -6,6 +6,7 @@ import hashlib
 import ipaddress
 import ssl
 import time
+import uuid
 from dataclasses import dataclass, field, replace
 from typing import AsyncIterator
 from urllib.parse import urlsplit
@@ -13,10 +14,25 @@ from urllib.parse import urlsplit
 import grpc
 import httpx
 
+from ..behavior import BehaviorProfileRegistry
 from ..classifier import RuleBasedTaskClassifier
+from ..deployments import (
+    ArtifactCatalog,
+    ArtifactState,
+    DeploymentIndex,
+    device_compatibility_classes,
+)
 from ..dispatch import DeviceOfflineError, DispatchManager
 from ..endpoints import EndpointError, HttpEndpoint, HttpEndpointStore
 from ..enrollment import EnrollmentError, EnrollmentManager
+from ..provisioning import MockAiHubAdapter, ProvisioningManager
+from ..scheduler import (
+    DeploymentScheduler,
+    ExecutionCandidate,
+    RequestSpec,
+    RoutePlan,
+    SchedulerConfig,
+)
 from ..models import (
     Device,
     ExecutionMetrics,
@@ -214,6 +230,9 @@ class BrainService(pb_grpc.BrainControlServicer):
         registry: DeviceRegistry | None = None,
         tasks: TaskStore | None = None,
         steering_registry: SteeringRegistry | None = None,
+        artifact_catalog: ArtifactCatalog | None = None,
+        behavior_registry: BehaviorProfileRegistry | None = None,
+        scheduler_config: SchedulerConfig | None = None,
     ):
         self.config = config or BrainServiceConfig()
         self.registry = registry or DeviceRegistry()
@@ -224,6 +243,24 @@ class BrainService(pb_grpc.BrainControlServicer):
         self.planner = ExecutionPlanner()
         self.steering_registry = steering_registry
         self.router = DeterministicRouter(steering_registry)
+        self.artifact_catalog = artifact_catalog
+        self.behavior_registry = behavior_registry
+        self.scheduler = (
+            DeploymentScheduler(
+                artifact_catalog,
+                behavior_registry,
+                steering_registry or SteeringRegistry({}),
+                scheduler_config,
+            )
+            if artifact_catalog is not None and behavior_registry is not None
+            else None
+        )
+        self.deployment_overrides: dict[tuple[str, str], ArtifactState] = {}
+        self.runtime_steering_disabled: set[str] = set()
+        self.route_plans: dict[str, RoutePlan] = {}
+        self.provisioning = ProvisioningManager(
+            MockAiHubAdapter(), on_deployed=self._on_provisioned
+        )
         self._route_reasons: dict[str, tuple[str, ...]] = {}
         self._attempt_models: dict[str, str] = {}
         self._steering_specs: dict[str, SteeringSpec] = {}
@@ -248,6 +285,179 @@ class BrainService(pb_grpc.BrainControlServicer):
             self._device_simulations[device_id] = changes
         else:
             self._device_simulations.pop(device_id, None)
+
+    # -- behavior-aware deployment scheduling ---------------------------------
+
+    def _on_provisioned(
+        self, device_id: str, artifact_id: str, state: ArtifactState
+    ) -> None:
+        self.deployment_overrides[(device_id, artifact_id)] = state
+        if self.artifact_catalog is not None:
+            self.artifact_catalog.mark_ready(artifact_id)
+
+    def set_deployment_simulation(
+        self, device_id: str, artifact_states: dict[str, ArtifactState]
+    ) -> None:
+        for artifact_id, state in artifact_states.items():
+            self.deployment_overrides[(device_id, artifact_id)] = state
+
+    def set_runtime_steering_enabled(self, device_id: str, enabled: bool) -> None:
+        if enabled:
+            self.runtime_steering_disabled.discard(device_id)
+        else:
+            self.runtime_steering_disabled.add(device_id)
+
+    def current_deployment_index(self) -> DeploymentIndex:
+        if self.artifact_catalog is None:
+            raise RuntimeError("Brain has no artifact catalog configured")
+        return DeploymentIndex.build(
+            self.registry.records(),
+            self.artifact_catalog,
+            overrides=self.deployment_overrides,
+        )
+
+    def device_steering_realization_modes(self, device_id: str) -> tuple[str, ...]:
+        """Steering realization modes a device currently supports, derived
+        from its advertisement, deployed artifacts, and simulation overlays."""
+        record = self.registry.get(device_id)
+        modes = []
+        if (
+            any(model.supports_steering for model in record.device.models)
+            and device_id not in self.runtime_steering_disabled
+        ):
+            modes.append("runtime_vector")
+        if self.artifact_catalog is not None:
+            index = self.current_deployment_index()
+            for state in index.for_device(device_id):
+                artifact = self.artifact_catalog.maybe_get(state.artifact_id)
+                if (
+                    artifact is not None
+                    and artifact.behavior_profile_id
+                    and state.state.value in {"installed", "warm"}
+                ):
+                    modes.append("baked_profile")
+                    break
+        modes.append("prompt_profile")
+        modes.append("none")
+        return tuple(modes)
+
+    def build_route_plan(self, spec: RequestSpec) -> RoutePlan:
+        if self.scheduler is None:
+            raise RuntimeError(
+                "Brain has no artifact catalog / behavior registry configured"
+            )
+        return self.scheduler.plan(
+            spec,
+            self.registry.records(),
+            self.current_deployment_index(),
+            runtime_steering_disabled=frozenset(self.runtime_steering_disabled),
+        )
+
+    async def submit_behavior_task(
+        self, spec: RequestSpec, timeout_ms: int = 0
+    ) -> tuple[RoutePlan, pb.SubmitTaskResponse]:
+        plan = self.build_route_plan(spec)
+        task_id = f"task-{uuid.uuid4().hex[:8]}"
+        profile = self.classifier.classify(
+            spec.request_text or spec.behavior_profile_id or "request", "auto"
+        )
+        self.task_profiles[task_id] = profile
+        self.route_plans[task_id] = plan
+        self._route_reasons[task_id] = plan.explanation
+        self._steering_specs[task_id] = plan.steering
+        chosen = plan.chosen
+        self.execution_plans[task_id] = ExecutionPlan(
+            task_id=task_id,
+            execution_mode=ExecutionMode.SINGLE,
+            request_text=spec.request_text,
+            tasks=(
+                PlannedTask(
+                    shard_id="shard-1",
+                    request_text=spec.request_text,
+                    selected_device_id=chosen.device_id if chosen else "",
+                    selected_model_id=chosen.artifact.artifact_id if chosen else "",
+                ),
+            ),
+            steering=plan.steering,
+            origin_device_id=spec.origin_device_id,
+            reasons=plan.explanation,
+        )
+        if chosen is None:
+            self.tasks.create(spec.request_text, task_id=task_id)
+            failed = self.tasks.fail(
+                task_id,
+                plan.error_code,
+                next(
+                    (
+                        line
+                        for line in plan.explanation
+                        if "No deployment" in line or "No feasible" in line
+                    ),
+                    plan.error_code,
+                ),
+            )
+            return plan, self._response_for_task(failed)
+
+        timeout_ms = timeout_ms or self.config.default_task_timeout_ms
+        best_per_device: dict[str, ExecutionCandidate] = {}
+        for candidate in sorted(
+            (c for c in plan.candidates if c.feasible),
+            key=lambda c: (c.cost.total_ms, c.artifact.artifact_id),
+        ):
+            best_per_device.setdefault(candidate.device_id, candidate)
+        ordered_devices = [chosen.device_id] + [
+            device_id
+            for device_id, candidate in sorted(
+                best_per_device.items(), key=lambda item: item[1].cost.total_ms
+            )
+            if device_id != chosen.device_id
+        ]
+
+        async def execute_attempt(
+            attempt_task_id: str,
+            attempt_id: str,
+            device: Device,
+        ) -> TaskResult:
+            session = await self._resolve_session(device.device_id)
+            candidate = best_per_device[device.device_id]
+            self._attempt_models[attempt_id] = candidate.artifact.artifact_id
+            request_text = spec.request_text
+            steering_spec = SteeringSpec()
+            realization = candidate.realization
+            if candidate.realization_mode == "runtime_vector" and realization:
+                steering_spec = SteeringSpec(
+                    enabled=True,
+                    vector_id=realization.vector_id,
+                    model_family=candidate.artifact.base_model_family,
+                    target_layer=realization.injection_layer,
+                    alpha=realization.alpha,
+                    positions=realization.positions,
+                )
+            elif candidate.realization_mode == "prompt_profile" and realization:
+                if realization.prompt_template:
+                    request_text = (
+                        f"{realization.prompt_template}\n\n{request_text}"
+                    )
+            result = await session.execute(
+                pb.ExecuteTask(
+                    task_id=attempt_task_id,
+                    attempt_id=attempt_id,
+                    request_text=request_text,
+                    model_id=candidate.artifact.artifact_id,
+                    timeout_ms=timeout_ms,
+                    steering=steering_to_proto(steering_spec),
+                ),
+                timeout_seconds=timeout_ms / 1000,
+            )
+            return task_result_from_proto(result)
+
+        dispatched = await self.dispatch.submit(
+            spec.request_text,
+            tuple(ordered_devices),
+            execute_attempt,
+            task_id=task_id,
+        )
+        return plan, self._response_for_task(dispatched.task)
 
     async def start(self) -> None:
         if self._sweeper is not None:
