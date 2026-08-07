@@ -1,19 +1,25 @@
 package com.dragonnest.agent;
 
+import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public final class AgentRuntime {
     private static final long MAX_BACKOFF_SECONDS = 60;
-    private final ScheduledExecutorService executor =
-            Executors.newSingleThreadScheduledExecutor();
+    private static final long SIMULATION_HEARTBEAT_DELAY_MS = 50;
+    private final ScheduledExecutorService executor;
     private final Supplier<AgentConnection> connectionFactory;
-    private final EnrollmentStore enrollmentStore;
-    private final AndroidTelemetry telemetry;
-    private final ClientDebugLog debugLog;
+    private final CredentialLoader credentialLoader;
+    private final CredentialSaver credentialSaver;
+    private final TelemetrySampler telemetrySampler;
+    private final Consumer<String> debugLogger;
+    private final AtomicBoolean simulationHeartbeatQueued = new AtomicBoolean();
     private volatile AgentConnection connection;
     private volatile boolean stopping;
     private volatile ScheduledFuture<?> heartbeatFuture;
@@ -24,20 +30,38 @@ public final class AgentRuntime {
             EnrollmentStore enrollmentStore,
             AndroidTelemetry telemetry,
             ClientDebugLog debugLog) {
+        this(
+                connectionFactory,
+                enrollmentStore::load,
+                enrollmentStore::save,
+                telemetry::sample,
+                debugLog::add,
+                Executors.newSingleThreadScheduledExecutor());
+    }
+
+    AgentRuntime(
+            Supplier<AgentConnection> connectionFactory,
+            CredentialLoader credentialLoader,
+            CredentialSaver credentialSaver,
+            TelemetrySampler telemetrySampler,
+            Consumer<String> debugLogger,
+            ScheduledExecutorService executor) {
         this.connectionFactory = connectionFactory;
-        this.enrollmentStore = enrollmentStore;
-        this.telemetry = telemetry;
-        this.debugLog = debugLog;
+        this.credentialLoader = credentialLoader;
+        this.credentialSaver = credentialSaver;
+        this.telemetrySampler = telemetrySampler;
+        this.debugLogger = debugLogger;
+        this.executor = executor;
     }
 
     public void start() {
-        debugLog.add("Agent runtime started");
+        debugLogger.accept("Agent runtime started");
         AgentStatusRepository.update(AgentConnectionState.CONNECTING, "Connecting to DragonNest");
         executor.execute(this::connect);
     }
 
     public void onNetworkChanged() {
-        debugLog.add("Network state changed");
+        debugLogger.accept("Network state changed");
         executor.execute(() -> {
             if (connection != null && connection.isConnected()) {
                 sendHeartbeat();
@@ -47,9 +71,29 @@ public final class AgentRuntime {
         });
     }
 
+    /**
+     * Publishes changed demo telemetry promptly without replacing the active
+     * gRPC stream. Rapid slider events share one pending executor task.
+     */
+    public void onSimulationChanged() {
+        if (stopping || !simulationHeartbeatQueued.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            executor.schedule(() -> {
+                simulationHeartbeatQueued.set(false);
+                if (!stopping && connection != null && connection.isConnected()) {
+                    sendHeartbeat();
+                }
+            }, SIMULATION_HEARTBEAT_DELAY_MS, TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException ignored) {
+            simulationHeartbeatQueued.set(false);
+        }
+    }
+
     public void stop() {
         stopping = true;
-        debugLog.add("Agent runtime stopping");
+        debugLogger.accept("Agent runtime stopping");
         AgentStatusRepository.update(AgentConnectionState.STOPPED, "Agent stopped");
         executor.execute(() -> {
             if (connection != null) {
@@ -71,20 +115,20 @@ public final class AgentRuntime {
         }
         AgentConnection next = null;
         try {
-            debugLog.add("Connecting to Brain");
+            debugLogger.accept("Connecting to Brain");
             AgentStatusRepository.update(AgentConnectionState.CONNECTING, "Connecting to DragonNest");
             next = connectionFactory.get();
-            String replacementCredential = next.connect(enrollmentStore.load());
+            String replacementCredential = next.connect(credentialLoader.load());
             if (replacementCredential != null && !replacementCredential.isBlank()) {
-                enrollmentStore.save(replacementCredential);
+                credentialSaver.save(replacementCredential);
             }
             connection = next;
             reconnectBackoffSeconds = 1;
-            debugLog.add("Brain registration accepted");
+            debugLogger.accept("Brain registration accepted");
             AgentStatusRepository.update(AgentConnectionState.CONNECTED, "Connected through DragonNest");
             sendHeartbeat();
         } catch (Exception failure) {
-            debugLog.add("Brain connection failed: " + failureSummary(failure));
+            debugLogger.accept("Brain connection failed: " + failureSummary(failure));
             AgentStatusRepository.update(AgentConnectionState.RETRYING, failureSummary(failure));
             if (next != null) {
                 next.close();
@@ -99,7 +143,7 @@ public final class AgentRuntime {
             return;
         }
         try {
-            connection.sendHeartbeat(telemetry.sample(
+            connection.sendHeartbeat(telemetrySampler.sample(
                     connection.activeTaskIds(),
                     connection.warmModelIds()));
             if (heartbeatFuture != null) {
@@ -121,7 +165,7 @@ public final class AgentRuntime {
             return;
         }
         long delay = reconnectBackoffSeconds;
-        debugLog.add("Retrying Brain connection in " + delay + "s");
+        debugLogger.accept("Retrying Brain connection in " + delay + "s");
         AgentStatusRepository.update(
                 AgentConnectionState.RETRYING,
                 "Retrying in " + delay + "s");
@@ -133,5 +177,22 @@ public final class AgentRuntime {
         String detail = failure.getMessage();
         return failure.getClass().getSimpleName()
                 + (detail == null || detail.isBlank() ? "" : ": " + detail);
+    }
+
+    @FunctionalInterface
+    interface CredentialLoader {
+        String load() throws Exception;
+    }
+
+    @FunctionalInterface
+    interface CredentialSaver {
+        void save(String credential) throws Exception;
+    }
+
+    @FunctionalInterface
+    interface TelemetrySampler {
+        TelemetrySnapshot sample(
+                List<String> activeTasks,
+                List<String> warmModels);
     }
 }

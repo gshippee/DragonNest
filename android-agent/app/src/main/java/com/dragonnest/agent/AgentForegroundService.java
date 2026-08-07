@@ -68,6 +68,9 @@ public final class AgentForegroundService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_UPDATE_SIMULATION.equals(intent.getAction())) {
             telemetry.setSimulation(configuration.simulation());
+            if (runtime != null) {
+                runtime.onSimulationChanged();
+            }
             debugLog.add("Simulation updated without reconnecting");
             return START_STICKY;
         }

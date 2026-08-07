@@ -60,6 +60,7 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "sendShutdown" in runtime
     assert "registerDefaultNetworkCallback" in foreground
     assert "runtime.onNetworkChanged()" in foreground
+    assert "runtime.onSimulationChanged()" in foreground
     assert 'KeyStore.getInstance(ANDROID_KEYSTORE)' in enrollment
     assert "BrainControlGrpc.newStub" in connection
     assert "setRegisterDevice" in connection
