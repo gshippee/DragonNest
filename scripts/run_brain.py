@@ -19,6 +19,29 @@ from dragon_nest.transport.brain import (
 )
 
 
+def service_config_from_args(
+    args: argparse.Namespace, http_endpoint_admin_token: str
+) -> BrainServiceConfig:
+    return BrainServiceConfig(
+        brain_id=args.brain_id,
+        enrollment_token=args.enrollment_token,
+        dev_mode=not args.production,
+        tls_server_certificate_path=str(args.tls_certificate or ""),
+        tls_server_key_path=str(args.tls_key or ""),
+        tls_client_ca_path=str(args.tls_client_ca or ""),
+        state_db_path=str(args.state_db),
+        default_task_timeout_ms=args.default_task_timeout_ms,
+        http_endpoint_registration_enabled=args.enable_http_endpoints,
+        http_endpoint_admin_token=http_endpoint_admin_token,
+        http_endpoint_allowed_cidrs=tuple(
+            args.http_endpoint_allow_cidr or ("127.0.0.0/8", "::1/128")
+        ),
+        http_endpoint_allowed_hosts=tuple(
+            args.http_endpoint_allow_host or ("localhost",)
+        ),
+    )
+
+
 async def run(args) -> None:
     http_endpoint_admin_token = os.environ.get(args.http_endpoint_admin_token_env, "")
     if (
@@ -34,23 +57,7 @@ async def run(args) -> None:
             "--production to require it explicitly."
         )
     service = BrainService(
-        BrainServiceConfig(
-            brain_id=args.brain_id,
-            enrollment_token=args.enrollment_token,
-            dev_mode=not args.production,
-            tls_server_certificate_path=str(args.tls_certificate or ""),
-            tls_server_key_path=str(args.tls_key or ""),
-            tls_client_ca_path=str(args.tls_client_ca or ""),
-            state_db_path=str(args.state_db),
-            http_endpoint_registration_enabled=args.enable_http_endpoints,
-            http_endpoint_admin_token=http_endpoint_admin_token,
-            http_endpoint_allowed_cidrs=tuple(
-                args.http_endpoint_allow_cidr or ("127.0.0.0/8", "::1/128")
-            ),
-            http_endpoint_allowed_hosts=tuple(
-                args.http_endpoint_allow_host or ("localhost",)
-            ),
-        ),
+        service_config_from_args(args, http_endpoint_admin_token),
         steering_registry=SteeringRegistry.from_yaml(args.steering_config),
         artifact_catalog=ArtifactCatalog.from_yaml(args.artifact_catalog),
         behavior_registry=BehaviorProfileRegistry.from_yaml(args.behavior_profiles),
@@ -75,7 +82,7 @@ async def run(args) -> None:
         await stop_server(server, service)
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the DragonNest gRPC Brain")
     parser.add_argument("--address", default="0.0.0.0:50051")
     parser.add_argument("--brain-id", default="dragon-nest-brain")
@@ -86,6 +93,12 @@ def main() -> None:
     parser.add_argument("--tls-client-ca", type=Path)
     parser.add_argument("--http-host", default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=8080)
+    parser.add_argument(
+        "--default-task-timeout-ms",
+        type=int,
+        default=BrainServiceConfig().default_task_timeout_ms,
+        help="Default dispatch timeout when a request does not provide one.",
+    )
     parser.add_argument(
         "--enable-http-endpoints",
         dest="enable_http_endpoints",
@@ -137,7 +150,11 @@ def main() -> None:
         type=Path,
         default=Path("configs/behavior-profiles.yaml"),
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
     try:
         asyncio.run(run(args))
     except KeyboardInterrupt:
