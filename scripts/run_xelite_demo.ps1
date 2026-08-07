@@ -17,13 +17,21 @@
 #>
 param(
     [string]$EnrollmentToken = $env:DRAGONNEST_ENROLLMENT_TOKEN,
-    [string]$GenieDir
+    [string]$GenieDir,
+    [string]$StageDir,
+    [string]$Qairt245Root,
+    [string]$Qwen17Tokenizer
 )
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $RepoRoot ".venv\Scripts\python.exe"
-$WorkerScript = Join-Path $PSScriptRoot "run_xelite_worker.ps1"
+$elasticRequested = [bool]$StageDir -or [bool]$Qairt245Root
+$WorkerScript = Join-Path $PSScriptRoot $(if ($elasticRequested) {
+    "run_xelite_elastic_worker.ps1"
+} else {
+    "run_xelite_worker.ps1"
+})
 
 function Fail([string]$Message) {
     Write-Host "ERROR: $Message" -ForegroundColor Red
@@ -106,8 +114,20 @@ Set-Location -LiteralPath $repoLiteral
 "@
 
 $workerInvocation = "& $workerScriptLiteral -Brain '127.0.0.1:50051'"
+if ($elasticRequested -and (-not $StageDir -or -not $Qairt245Root)) {
+    Fail "-StageDir and -Qairt245Root must be supplied together for Elastic."
+}
+if ($elasticRequested) {
+    $stageLiteral = ConvertTo-SingleQuotedLiteral ((Resolve-Path -LiteralPath $StageDir).Path)
+    $qairtLiteral = ConvertTo-SingleQuotedLiteral ((Resolve-Path -LiteralPath $Qairt245Root).Path)
+    $workerInvocation += " -StageDir $stageLiteral -Qairt245Root $qairtLiteral"
+}
 if ($GenieDir) {
     $workerInvocation += " -GenieDir `$env:DRAGONNEST_XELITE_DEMO_GENIE_DIR"
+}
+if ($Qwen17Tokenizer) {
+    $tokenizerLiteral = ConvertTo-SingleQuotedLiteral $Qwen17Tokenizer
+    $workerInvocation += " -Qwen17Tokenizer $tokenizerLiteral"
 }
 $workerCommand = @"
 Set-Location -LiteralPath $repoLiteral
@@ -136,6 +156,7 @@ Write-Host "DragonNest same-host X Elite demo started" -ForegroundColor Cyan
 Write-Host "Brain process:       $($brainProcess.Id)"
 Write-Host "Worker process:      $($workerProcess.Id)"
 Write-Host "Laptop worker:       pc-01 -> 127.0.0.1:50051"
+Write-Host "Elastic provider:    $(if ($elasticRequested) { 'Qwen3-1.7B S0-S3 enabled (acceptance pending)' } else { 'disabled' })"
 Write-Host "PersonaCare Brain:   ${lanAddress}:50051" -ForegroundColor Green
 Write-Host "Dashboard:           http://${lanAddress}:8080/admin" -ForegroundColor Green
 Write-Host "Task timeout:        75000 ms"

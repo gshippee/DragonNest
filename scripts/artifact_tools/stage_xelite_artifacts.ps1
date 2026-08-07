@@ -45,5 +45,5 @@ for ($index = 0; $index -lt 4; $index++) {
     Write-Host "  `$env:QWEN3_1_7B_S${index}_XELITE_QNN='$destination'"
 }
 
-Write-Host "The contexts are QAIRT 2.45 artifacts. Validate loading with the laptop's"
-Write-Host "QAIRT 2.48 runtime before advertising them as physically executable."
+Write-Host "The contexts require the physically verified QAIRT 2.45 runtime."
+Write-Host "QAIRT 2.48 is not a substitute: physical bring-up observed graph-finalization failure."

@@ -24,6 +24,7 @@ from ..models import (
 from ..proto import dragonnest_pb2 as pb
 from ..proto import dragonnest_pb2_grpc as pb_grpc
 from ..pipeline_sessions import PipelineSessionKey, PipelineSessionStore
+from ..runtime.qwen17_provider import PIPELINE_ID as QWEN17_PIPELINE_ID
 from ..telemetry import PlatformTelemetry, SystemTelemetry
 from .conversion import (
     health_to_proto,
@@ -60,6 +61,7 @@ class DeviceAgent:
         artifacts: ArtifactRegistry | None = None,
         executor: ExecutorDispatcher | None = None,
         telemetry: PlatformTelemetry | None = None,
+        pipeline_provider=None,
     ):
         self.config = config or AgentClientConfig()
         self.artifacts = artifacts
@@ -76,6 +78,7 @@ class DeviceAgent:
         self._simulated_disconnect_in_progress = False
         self.cancelled_attempt_ids: set[str] = set()
         self.pipeline_sessions = PipelineSessionStore()
+        self.pipeline_provider = pipeline_provider
         self._network_changed = asyncio.Event()
         self._event_loop: asyncio.AbstractEventLoop | None = None
         self._last_heartbeat_sent_at: float | None = None
@@ -121,6 +124,8 @@ class DeviceAgent:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         self.pipeline_sessions.clear()
+        if self.pipeline_provider is not None:
+            self.pipeline_provider.clear()
 
     def simulate_disconnect_on_next_task(self) -> None:
         self._disconnect_next_task = True
@@ -240,6 +245,8 @@ class DeviceAgent:
                 # A disconnected Brain cannot complete/reset an in-flight
                 # generation. Never carry stage-local KV into a new stream.
                 self.pipeline_sessions.clear()
+                if self.pipeline_provider is not None:
+                    self.pipeline_provider.clear()
 
     async def _request_messages(self):
         yield pb.DeviceToBrain(
@@ -416,6 +423,8 @@ class DeviceAgent:
                 )
             except Exception as exc:
                 self.pipeline_sessions.cleanup_task(command.task_id)
+                if self.pipeline_provider is not None:
+                    self.pipeline_provider.cleanup_task(command.task_id)
                 result = pb.PipelineStageResult(
                     task_id=command.task_id,
                     attempt_id=command.attempt_id,
@@ -433,6 +442,13 @@ class DeviceAgent:
         self, command: pb.ExecutePipelineStage
     ) -> pb.PipelineStageResult:
         if command.operation in {pb.PIPELINE_RESET, pb.PIPELINE_CANCEL}:
+            if self.pipeline_provider is not None:
+                self.pipeline_provider.release(
+                    command.task_id,
+                    command.pipeline_id,
+                    command.stage_index,
+                    cancelled=command.operation == pb.PIPELINE_CANCEL,
+                )
             if command.pipeline_id:
                 self.pipeline_sessions.release(
                     PipelineSessionKey(
@@ -455,13 +471,74 @@ class DeviceAgent:
                 artifact = self.artifacts.get(command.model_id)
             except ArtifactNotFoundError:
                 artifact = None
-        if artifact is not None and artifact.runtime == RuntimeName.QNN:
+        if artifact is None:
+            # Plain ExecutorDispatcher agents are the explicit control-plane
+            # simulation used by tests/demo scenarios. HardwareRuntimeAdapter
+            # exposes capabilities(); on that path missing bytes are fatal.
+            if self.artifacts is None or not hasattr(self.executor, "capabilities"):
+                return self._run_mock_pipeline_stage(command)
+            raise RuntimeError(
+                f"physical pipeline artifact {command.model_id!r} is unavailable; "
+                "mock fallback is forbidden"
+            )
+        if artifact.runtime == RuntimeName.QNN:
             if command.steering.enabled:
                 raise RuntimeError(
                     "runtime steering inputs are not configured for this QNN stage"
                 )
+            split = artifact.split_boundary
+            if split is not None and split.pipeline_id == QWEN17_PIPELINE_ID:
+                if self.pipeline_provider is None:
+                    raise RuntimeError(
+                        "Qwen3-1.7B physical provider is not configured; "
+                        "refusing generic replacement-KV or mock execution"
+                    )
+                return await self._run_qwen17_pipeline_stage(command, artifact)
             return await self._run_qnn_pipeline_stage(command, artifact)
-        return self._run_mock_pipeline_stage(command)
+        raise RuntimeError(
+            f"pipeline artifact {artifact.model_id} uses unsupported runtime "
+            f"{artifact.runtime.value}; mock fallback is forbidden"
+        )
+
+    async def _run_qwen17_pipeline_stage(self, command, artifact):
+        boundary = (
+            _array_from_boundary(command.input_boundary)
+            if command.HasField("input_boundary") and command.input_boundary.data
+            else None
+        )
+        physical = await asyncio.to_thread(
+            self.pipeline_provider.execute, command, artifact, boundary
+        )
+        metrics = pb.ExecutionMetrics(
+            model_id=artifact.model_id,
+            model_version=artifact.model_version,
+            runtime_name=RuntimeName.QNN.value,
+            runtime_version=str(
+                artifact.runtime_options.get("runtime_version", "QAIRT-2.45")
+            ),
+            accelerator="htp",
+            execution_latency_ms=physical.latency_ms,
+        )
+        result = pb.PipelineStageResult(
+            task_id=command.task_id,
+            attempt_id=command.attempt_id,
+            stage_id=command.stage_id,
+            device_id=self.device.device_id,
+            success=True,
+            metrics=metrics,
+            operation=command.operation,
+            eos=physical.eos,
+            token_text=physical.token_text,
+        )
+        if physical.boundary is not None:
+            result.output_boundary.CopyFrom(
+                _boundary_from_array(
+                    artifact.split_boundary.output_tensor, physical.boundary
+                )
+            )
+        if physical.next_token_id is not None:
+            result.next_token_id = physical.next_token_id
+        return result
 
     async def _run_qnn_pipeline_stage(self, command, artifact):
         qnn = self.executor.qnn
@@ -652,6 +729,8 @@ class DeviceAgent:
     def _cancel_assignment(self, command: pb.CancelTask) -> None:
         self.cancelled_attempt_ids.add(command.attempt_id)
         self.pipeline_sessions.cleanup_task(command.task_id)
+        if self.pipeline_provider is not None:
+            self.pipeline_provider.cleanup_task(command.task_id, cancelled=True)
         task = self._execution_tasks.get(command.attempt_id)
         if task is not None and not task.done():
             task.cancel()

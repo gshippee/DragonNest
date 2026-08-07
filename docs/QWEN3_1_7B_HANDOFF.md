@@ -5,9 +5,11 @@
 Pipeline `qwen3-1.7b-w4a16-demo-v1` has eight downloaded, checksummed QNN
 context binaries: S0-S3 for S25/v79 and X Elite/v73. Qualcomm AI Hub
 interface comparison passed for every prompt/decode graph on both targets.
-Neither four-stage target has physically executed this exact recovered pipeline
-through DragonNest. Do not report physical latency, memory, determinism, or
-QAIRT 2.45-context/2.48-runtime compatibility until the commands below pass.
+The reproducible `scripts/xelite_bringup/` harness has physically proven the
+X Elite v73 S0-S3 prefill, eight autoregressive decode steps, stage-local KV,
+HTP-only execution, and coherent output with QAIRT 2.45. That proves the
+runtime algorithm, not the new normal Agent/provider path. The latter remains
+pending the 4+0 acceptance below. S25 S0-S3 remains unexecuted.
 
 Artifact names say `w4a16`; recovered compile options say
 `--quantize_full_type w8a16 --quantize_io`. The mismatch is unresolved and is
@@ -65,49 +67,56 @@ The public gRPC regression submits a normal `layer_pipeline` task and proves
 PREFILL→S0/S1/S2/S3, DECODE→S0/S1/S2/S3, explicit token sampling, and RESET
 cleanup. It uses mock executors and is control-plane evidence only.
 
-## X Elite physical handoff
+## X Elite production-provider acceptance
 
 No model download or compilation is required. On the laptop:
 
 ```powershell
-git pull
+git switch codex/qwen17-variable-split
+git pull --ff-only
+.\.venv\Scripts\python.exe -m pip install -e ".[dev,xelite]"
 .\scripts\artifact_tools\stage_xelite_artifacts.ps1 `
   -CacheRoot C:\DragonNestArtifacts `
   -StageDir "$env:TEMP\dragonnest-qwen17-xelite"
-
-# Copy the four environment-variable commands printed by the staging helper.
-.\.venv\Scripts\python.exe scripts\check_artifacts.py
 ```
 
-Then complete the physical-only gate in this order:
-
-1. Bind `qnn_jni.cpp`/the Python QNN stage adapter to QAIRT provider, backend,
-   device, context-deserialization, graph selection, named I/O, and persistent
-   per-stage KV buffers. The checked-in JNI methods deliberately fail rather
-   than return fake execution.
-2. Prove one S0 prompt and decode invocation against QAIRT 2.48. If the 2.45
-   context does not load, use a matching 2.45 runtime; do not relabel it.
-3. Repeat S1-S3, verify the declared boundary names/dtypes/shapes, then run the
-   whole local four-stage loop for two tokens.
-4. Only after that proof, start the combined Agent with both compatibility
-   classes explicitly enabled:
+Start Brain plus the production provider. `StageDir` is the directory created
+above and `Qairt245Root` is the physically proven QAIRT 2.45 installation:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\run_agent.py `
-  --device-id pc-01 `
-  --brain 127.0.0.1:50051 `
-  --enrollment-token "$env:DRAGONNEST_ENROLLMENT_TOKEN" `
-  --fabric configs\hardware-fabric.yaml `
-  --artifact-manifest configs\model-artifacts.yaml `
-  --compatibility-key windows-arm64-x1e-v73-qairt-2.48 `
-  --compatible-target-class windows-arm64-x1e-v73-qairt-2.45 `
-  --runtime-name qnn+genie `
-  --runtime-version QAIRT-2.48 `
-  --accelerator-available
+$env:DRAGONNEST_ENROLLMENT_TOKEN = '<random-shared-token-at-least-24-chars>'
+.\scripts\run_xelite_demo.ps1 `
+  -StageDir "$env:TEMP\dragonnest-qwen17-xelite" `
+  -Qairt245Root 'C:\Qualcomm\AIStack\QAIRT\2.45.0.260326' `
+  -GenieDir 'C:\path\to\physically-verified-qwen3-4b-bundle'
 ```
 
-The existing `scripts/run_xelite_worker.ps1` and verified Qwen3-4B Genie path
-remain unchanged.
+The launcher preflights the public Qwen3-1.7B tokenizer/config before it
+advertises the stages. The first run may fetch those public files from Hugging
+Face, matching the physically proven harness. For an offline demo, download
+them once and add `-Qwen17Tokenizer 'C:\path\to\local\Qwen3-1.7B'`; the same
+source is used for tokenization and RoPE configuration.
+
+Then exercise DragonNest's normal Brain submission path, not the standalone
+smoke harness:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\submit_task.py `
+  --brain 127.0.0.1:50051 `
+  --preferred-mode elastic `
+  --execution-mode auto `
+  --origin-device-id pc-01 `
+  --timeout-ms 75000 `
+  'Reply with exactly: DRAGONNEST_ELASTIC_4X0_OK'
+```
+
+Accept only if the dashboard/task proof shows `layer_pipeline`, pipeline
+`qwen3-1.7b-w4a16-demo-v1`, S0/S1/S2/S3 all on `pc-01`, runtime `qnn`,
+accelerator `htp`, nonempty real decoded text, no mock executor, and no
+remaining provider sessions after success. Repeat RESET, CANCEL, timeout, and
+disconnect cleanup checks before marking the production provider physically
+verified. The Qwen3-4B Genie capability remains separately advertised and its
+working execution semantics are unchanged.
 
 ## S25 physical handoff
 

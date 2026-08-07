@@ -25,6 +25,12 @@ dev = [
   "grpcio-tools>=1.83",
   "pytest>=8.0",
 ]
+xelite = [
+  "psutil>=5.9",
+  "sentencepiece>=0.2",
+  "torch>=2.2",
+  "transformers>=4.51,<5",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

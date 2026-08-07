@@ -40,6 +40,13 @@ async def run(args) -> None:
             artifact_store=args.artifact_store,
         )
         telemetry = AdapterTelemetry(adapter)
+    pipeline_provider = None
+    if args.enable_qwen17_pipeline:
+        if artifacts is None:
+            raise RuntimeError("--enable-qwen17-pipeline requires --artifact-manifest")
+        from dragon_nest.runtime.qwen17_provider import Qwen17PipelineProvider
+
+        pipeline_provider = Qwen17PipelineProvider(artifacts)
     agent = DeviceAgent(
         device,
         AgentClientConfig(
@@ -52,6 +59,7 @@ async def run(args) -> None:
         artifacts=artifacts,
         executor=adapter,
         telemetry=telemetry,
+        pipeline_provider=pipeline_provider,
     )
     print(f"Starting {args.device_id}; connecting to {args.brain}")
     try:
@@ -102,6 +110,14 @@ def main() -> None:
         "--artifact-store",
         type=Path,
         default=Path.home() / ".dragonnest" / "artifacts",
+    )
+    parser.add_argument(
+        "--enable-qwen17-pipeline",
+        action="store_true",
+        help=(
+            "Enable the fail-closed physical Qwen3-1.7B QNN stage provider; "
+            "requires the four checksummed X Elite artifacts and QAIRT 2.45"
+        ),
     )
     parser.set_defaults(artifact_manifest=Path("configs/model-artifacts.yaml"))
     args = parser.parse_args()
