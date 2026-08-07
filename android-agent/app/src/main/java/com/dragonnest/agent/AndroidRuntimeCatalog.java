@@ -141,6 +141,11 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
         return executorFor(command.getModelId()).executePipelineStage(command);
     }
 
+    @Override
+    public void cleanupTask(String taskId) {
+        executors.values().forEach(executor -> executor.cleanupTask(taskId));
+    }
+
     private AndroidTaskExecutor executorFor(String modelId) {
         AndroidTaskExecutor executor = executors.get(modelId);
         if (executor == null) {

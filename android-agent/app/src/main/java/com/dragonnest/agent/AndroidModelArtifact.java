@@ -71,13 +71,27 @@ public record AndroidModelArtifact(
             capability.addBehaviorProfileIds(behaviorProfileId);
         }
         if (segment != null) {
-            capability.setSegment(ModelSegment.newBuilder()
+            ModelSegment.Builder segmentBuilder = ModelSegment.newBuilder()
                     .setPipelineId(segment.pipelineId())
-                    .setStartLayer(segment.startLayer())
-                    .setEndLayer(segment.endLayer())
                     .setTotalLayers(segment.totalLayers())
                     .setIncludesEmbedding(segment.includesEmbedding())
-                    .setIncludesLmHead(segment.includesLmHead()));
+                    .setIncludesLmHead(segment.includesLmHead())
+                    .setInputTensor(segment.inputTensor())
+                    .setOutputTensor(segment.outputTensor())
+                    .setBoundaryFormat(segment.boundaryFormat());
+            if (segment.stageCount() > 0) {
+                segmentBuilder.setStageIndex(segment.stageIndex())
+                        .setStageCount(segment.stageCount());
+            }
+            if (segment.transformerStartLayer() != null) {
+                segmentBuilder.setStartLayer(segment.transformerStartLayer())
+                        .setTransformerStartLayer(segment.transformerStartLayer());
+            }
+            if (segment.transformerEndLayer() != null) {
+                segmentBuilder.setEndLayer(segment.transformerEndLayer())
+                        .setTransformerEndLayer(segment.transformerEndLayer());
+            }
+            capability.setSegment(segmentBuilder);
         }
         return capability.build();
     }

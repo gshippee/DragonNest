@@ -52,6 +52,9 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     genie_bridge = (
         sources / "vendor/GenieRuntimeBridge.java"
     ).read_text(encoding="utf-8")
+    qnn_bridge = (
+        sources / "vendor/QnnRuntimeBridge.java"
+    ).read_text(encoding="utf-8")
     genie_jni = (
         android_root / "app/src/main/cpp/genie_jni.cpp"
     ).read_text(encoding="utf-8")
@@ -104,6 +107,10 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert '".installed"' in asset_installer
     assert "nativeProbe" in genie_bridge
     assert "genie_config.json" in genie_bridge
+    assert "nativeCreateSession" in qnn_bridge
+    assert "nativeExecutionReady" in qnn_bridge
+    assert "PIPELINE_PREFILL" in qnn_bridge
+    assert "PIPELINE_RESET" in qnn_bridge
     assert "GenieDialog_query" in genie_jni
     gradle = (android_root / "app/build.gradle.kts").read_text(encoding="utf-8")
     assert 'jniLibs.srcDir("../vendor/jniLibs")' in gradle

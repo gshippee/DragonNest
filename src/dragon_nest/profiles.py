@@ -224,6 +224,13 @@ class ProfileStore:
         association = self.association_for_device(device_id)
         return self.get(association.profile_id) if association else None
 
+    def disassociate_device(self, device_id: str) -> bool:
+        with self._lock, self._connection:
+            deleted = self._connection.execute(
+                "DELETE FROM device_profiles WHERE device_id=?", (device_id,)
+            )
+        return deleted.rowcount > 0
+
     def delete_if_unassociated(self, profile_id: str) -> bool:
         with self._lock, self._connection:
             associated = self._connection.execute(

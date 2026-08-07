@@ -66,6 +66,39 @@ public final class AndroidArtifactRegistryTest {
         assertFalse(registry.isVerified(registry.all().get(0)));
     }
 
+    @Test
+    public void acceptsEmbeddingOnlyIndexedPipelineStage() throws Exception {
+        Path root = Files.createTempDirectory("dragonnest-pipeline");
+        Path artifact = root.resolve("stage0.bin");
+        Files.write(artifact, "stage-0".getBytes(StandardCharsets.UTF_8));
+        String manifest = """
+                {"models":[{
+                  "model_id":"qwen3-1.7b-s0-s25", "model_version":"demo-v1",
+                  "runtime":"qnn", "artifact_path":"stage0.bin",
+                  "checksum":"sha256:%s", "tokenizer_id":"Qwen/Qwen3-1.7B",
+                  "precision":"w4a16-name-w8a16-compile-observed",
+                  "supported_accelerators":["htp"], "min_memory_mb":1024,
+                  "max_context_tokens":512, "supports_steering":false,
+                  "supports_data_parallel":false, "supports_layer_pipeline":true,
+                  "model_family":"qwen3-1.7b", "role":"pipeline_segment",
+                  "task_classes":["reasoning_analysis"],
+                  "split_boundary":{"pipeline_id":"qwen3-1.7b-w4a16-demo-v1",
+                    "stage_index":0, "stage_count":4, "total_layers":28,
+                    "input_tensor":"input_ids", "output_tensor":"embedding",
+                    "includes_embedding":true, "includes_lm_head":false,
+                    "boundary_format":"qnn-raw-tensor-v1"}
+                }]}""".formatted(sha256(Files.readAllBytes(artifact)));
+
+        AndroidModelArtifact parsed = AndroidArtifactRegistry.fromJson(manifest, root)
+                .all().get(0);
+
+        assertEquals(0, parsed.segment().stageIndex());
+        assertEquals(4, parsed.segment().stageCount());
+        assertEquals(null, parsed.segment().transformerStartLayer());
+        assertFalse(parsed.capability().getSegment().hasTransformerStartLayer());
+        assertTrue(parsed.capability().getSegment().getIncludesEmbedding());
+    }
+
     private static String sha256(byte[] source) throws Exception {
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(source);
         StringBuilder output = new StringBuilder();

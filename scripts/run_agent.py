@@ -32,6 +32,7 @@ async def run(args) -> None:
         adapter = HardwareRuntimeAdapter(
             artifacts,
             compatibility_key=args.compatibility_key,
+            compatible_target_classes=tuple(args.compatible_target_class),
             runtime_name=args.runtime_name,
             runtime_version=args.runtime_version,
             accelerator_available=args.accelerator_available,
@@ -80,6 +81,15 @@ def main() -> None:
     parser.add_argument(
         "--compatibility-key",
         help="exact target class, for example windows-arm64-x1e-v73-qairt-2.48",
+    )
+    parser.add_argument(
+        "--compatible-target-class",
+        action="append",
+        default=[],
+        help=(
+            "Additional artifact target proven compatible with this runtime; "
+            "repeatable and never inferred automatically."
+        ),
     )
     parser.add_argument("--runtime-name", default="genie")
     parser.add_argument("--runtime-version", default="unknown")

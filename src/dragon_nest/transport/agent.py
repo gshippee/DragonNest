@@ -16,12 +16,14 @@ from ..models import (
     Device,
     ExecutionMode,
     ExecutionPlan,
+    ModelSegment,
     PlannedTask,
     RuntimeName,
     TaskResult,
 )
 from ..proto import dragonnest_pb2 as pb
 from ..proto import dragonnest_pb2_grpc as pb_grpc
+from ..pipeline_sessions import PipelineSessionKey, PipelineSessionStore
 from ..telemetry import PlatformTelemetry, SystemTelemetry
 from .conversion import (
     health_to_proto,
@@ -73,6 +75,7 @@ class DeviceAgent:
         self._disconnect_next_task = False
         self._simulated_disconnect_in_progress = False
         self.cancelled_attempt_ids: set[str] = set()
+        self.pipeline_sessions = PipelineSessionStore()
         self._network_changed = asyncio.Event()
         self._event_loop: asyncio.AbstractEventLoop | None = None
         self._last_heartbeat_sent_at: float | None = None
@@ -117,6 +120,7 @@ class DeviceAgent:
         for task in tuple(self._execution_tasks.values()):
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        self.pipeline_sessions.clear()
 
     def simulate_disconnect_on_next_task(self) -> None:
         self._disconnect_next_task = True
@@ -233,6 +237,9 @@ class DeviceAgent:
                 heartbeat.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await heartbeat
+                # A disconnected Brain cannot complete/reset an in-flight
+                # generation. Never carry stage-local KV into a new stream.
+                self.pipeline_sessions.clear()
 
     async def _request_messages(self):
         yield pb.DeviceToBrain(
@@ -408,6 +415,7 @@ class DeviceAgent:
                     timeout=command.timeout_ms / 1000,
                 )
             except Exception as exc:
+                self.pipeline_sessions.cleanup_task(command.task_id)
                 result = pb.PipelineStageResult(
                     task_id=command.task_id,
                     attempt_id=command.attempt_id,
@@ -424,6 +432,23 @@ class DeviceAgent:
     async def _run_pipeline_stage(
         self, command: pb.ExecutePipelineStage
     ) -> pb.PipelineStageResult:
+        if command.operation in {pb.PIPELINE_RESET, pb.PIPELINE_CANCEL}:
+            if command.pipeline_id:
+                self.pipeline_sessions.release(
+                    PipelineSessionKey(
+                        command.task_id, command.pipeline_id, command.stage_index
+                    )
+                )
+            else:
+                self.pipeline_sessions.cleanup_task(command.task_id)
+            return pb.PipelineStageResult(
+                task_id=command.task_id,
+                attempt_id=command.attempt_id,
+                stage_id=command.stage_id,
+                device_id=self.device.device_id,
+                success=True,
+                operation=command.operation,
+            )
         artifact = None
         if self.artifacts is not None:
             try:
@@ -442,20 +467,30 @@ class DeviceAgent:
         qnn = self.executor.qnn
         if qnn is None:
             raise RuntimeError("QNN executor is not configured")
+        split = artifact.split_boundary
+        if split is None:
+            raise RuntimeError(f"{artifact.model_id} has no split boundary metadata")
+        pipeline_id = command.pipeline_id or split.pipeline_id
+        key = PipelineSessionKey(command.task_id, pipeline_id, command.stage_index)
+        session = None
+        if command.operation == pb.PIPELINE_PREFILL:
+            session = self.pipeline_sessions.begin_prefill(key)
+        elif command.operation == pb.PIPELINE_DECODE:
+            session = self.pipeline_sessions.require_decode(key)
+
         if command.HasField("input_boundary") and command.input_boundary.data:
             boundary = _array_from_boundary(command.input_boundary)
-            split = artifact.split_boundary
-            if split is None:
-                raise RuntimeError(
-                    f"{artifact.model_id} has no split boundary metadata"
-                )
             inputs = {split.input_tensor: boundary}
+        elif command.operation == pb.PIPELINE_DECODE and split.includes_embedding:
+            inputs = {split.input_tensor: np.asarray([[command.token_id]], dtype=np.int32)}
         else:
             if qnn.input_builder is None:
                 raise RuntimeError(
                     f"{artifact.model_id} requires a text-to-tensor input adapter"
                 )
             inputs = qnn.input_builder(command.request_text, artifact)
+        if session is not None:
+            inputs.update(session.kv_inputs)
         graph = await qnn.execute_graph(
             artifact.model_id, inputs, attempt_id=command.attempt_id
         )
@@ -468,7 +503,12 @@ class DeviceAgent:
                 success=False,
                 error_code=graph.error_code,
                 error_message=graph.error_message,
+                operation=command.operation,
             )
+        if session is not None:
+            self.pipeline_sessions.retain_outputs(key, graph.outputs)
+            if command.operation == pb.PIPELINE_PREFILL:
+                self.pipeline_sessions.complete_prefill(key)
         metric_holder = TaskResult(
             task_id=command.task_id,
             attempt_id=command.attempt_id,
@@ -478,6 +518,37 @@ class DeviceAgent:
         )
         metrics = task_result_to_proto(metric_holder).metrics
         if command.final_stage:
+            if command.operation in {pb.PIPELINE_PREFILL, pb.PIPELINE_DECODE}:
+                if split.output_tensor not in graph.outputs:
+                    raise RuntimeError(
+                        f"{artifact.model_id} did not emit {split.output_tensor}"
+                    )
+                logits = np.asarray(graph.outputs[split.output_tensor])
+                if logits.size == 0:
+                    raise RuntimeError(f"{artifact.model_id} emitted empty logits")
+                next_token_id = int(np.argmax(logits.reshape(-1, logits.shape[-1])[-1]))
+                eos_ids = {
+                    int(value)
+                    for value in artifact.runtime_options.get("eos_token_ids", ())
+                }
+                token_decoder = getattr(qnn, "token_decoder", None)
+                token_text = (
+                    str(token_decoder(next_token_id, artifact))
+                    if token_decoder is not None
+                    else ""
+                )
+                return pb.PipelineStageResult(
+                    task_id=command.task_id,
+                    attempt_id=command.attempt_id,
+                    stage_id=command.stage_id,
+                    device_id=self.device.device_id,
+                    success=True,
+                    metrics=metrics,
+                    next_token_id=next_token_id,
+                    eos=next_token_id in eos_ids,
+                    token_text=token_text,
+                    operation=command.operation,
+                )
             if qnn.output_formatter:
                 output = qnn.output_formatter(graph.outputs, artifact)
             else:
@@ -493,6 +564,7 @@ class DeviceAgent:
                 success=True,
                 output_text=output,
                 metrics=metrics,
+                operation=command.operation,
             )
         split = artifact.split_boundary
         if split is None or split.output_tensor not in graph.outputs:
@@ -507,6 +579,7 @@ class DeviceAgent:
                 split.output_tensor, graph.outputs[split.output_tensor]
             ),
             metrics=metrics,
+            operation=command.operation,
         )
 
     def _run_mock_pipeline_stage(
@@ -520,7 +593,27 @@ class DeviceAgent:
             accelerator="cpu",
             execution_latency_ms=1,
         )
+        pipeline_id = command.pipeline_id or "legacy-mock-pipeline"
+        key = PipelineSessionKey(command.task_id, pipeline_id, command.stage_index)
+        if command.operation == pb.PIPELINE_PREFILL:
+            self.pipeline_sessions.begin_prefill(key)
+            self.pipeline_sessions.complete_prefill(key)
+        elif command.operation == pb.PIPELINE_DECODE:
+            self.pipeline_sessions.require_decode(key)
         if command.final_stage:
+            if command.operation in {pb.PIPELINE_PREFILL, pb.PIPELINE_DECODE}:
+                return pb.PipelineStageResult(
+                    task_id=command.task_id,
+                    attempt_id=command.attempt_id,
+                    stage_id=command.stage_id,
+                    device_id=self.device.device_id,
+                    success=True,
+                    next_token_id=1,
+                    eos=(command.operation == pb.PIPELINE_DECODE),
+                    token_text="x",
+                    operation=command.operation,
+                    metrics=metrics,
+                )
             boundary_note = (
                 command.input_boundary.checksum[:20]
                 if command.HasField("input_boundary")
@@ -538,6 +631,7 @@ class DeviceAgent:
                     f"steering={_steering_text(command.steering)}"
                 ),
                 metrics=metrics,
+                operation=command.operation,
             )
         payload = (f"{command.task_id}:{command.stage_id}:{command.model_id}").encode(
             "utf-8"
@@ -552,10 +646,12 @@ class DeviceAgent:
                 "hidden", np.frombuffer(payload, dtype=np.uint8)
             ),
             metrics=metrics,
+            operation=command.operation,
         )
 
     def _cancel_assignment(self, command: pb.CancelTask) -> None:
         self.cancelled_attempt_ids.add(command.attempt_id)
+        self.pipeline_sessions.cleanup_task(command.task_id)
         task = self._execution_tasks.get(command.attempt_id)
         if task is not None and not task.done():
             task.cancel()
@@ -641,6 +737,35 @@ class DeviceAgent:
                             artifact.split_boundary.boundary_format
                             if artifact.split_boundary
                             else model.boundary_format
+                        ),
+                        segment=(
+                            ModelSegment(
+                                pipeline_id=artifact.split_boundary.pipeline_id,
+                                start_layer=artifact.split_boundary.start_layer,
+                                end_layer=artifact.split_boundary.end_layer,
+                                total_layers=artifact.split_boundary.total_layers,
+                                includes_embedding=(
+                                    artifact.split_boundary.includes_embedding
+                                ),
+                                includes_lm_head=(
+                                    artifact.split_boundary.includes_lm_head
+                                ),
+                                stage_index=artifact.split_boundary.stage_index,
+                                stage_count=artifact.split_boundary.stage_count,
+                                transformer_start_layer=(
+                                    artifact.split_boundary.transformer_start_layer
+                                ),
+                                transformer_end_layer=(
+                                    artifact.split_boundary.transformer_end_layer
+                                ),
+                                input_tensor=artifact.split_boundary.input_tensor,
+                                output_tensor=artifact.split_boundary.output_tensor,
+                                boundary_format=(
+                                    artifact.split_boundary.boundary_format
+                                ),
+                            )
+                            if artifact.split_boundary
+                            else model.segment
                         ),
                     )
                 )

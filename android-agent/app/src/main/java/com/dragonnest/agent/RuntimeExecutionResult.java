@@ -6,9 +6,18 @@ import com.dragonnest.proto.BoundaryTensor;
 public record RuntimeExecutionResult(
         String outputText,
         BoundaryTensor boundary,
-        String accelerator) {
+        String accelerator,
+        Integer nextTokenId,
+        boolean eos,
+        String tokenText) {
     public RuntimeExecutionResult {
         outputText = outputText == null ? "" : outputText;
         accelerator = accelerator == null ? "" : accelerator;
+        tokenText = tokenText == null ? "" : tokenText;
+    }
+
+    public RuntimeExecutionResult(
+            String outputText, BoundaryTensor boundary, String accelerator) {
+        this(outputText, boundary, accelerator, null, false, "");
     }
 }

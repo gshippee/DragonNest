@@ -92,6 +92,10 @@ Request 2: send another simple chat question with the same controls. Expect:
 - runtime `genie`, accelerator `htp`;
 - PersonaCare displays `Ran on <X Elite laptop display name>`.
 
+This complete two-request transition has passed on the physical S25 and X
+Elite stage setup. Repeat it as a demo procedure; it is no longer an
+unverified topology claim.
+
 The current thin APK executes Request 1 with `android-mock-v1`. This proves
 the phone-origin routing and live RAM-pressure transition, not phone NPU
 execution. Do not claim phone NPU execution until a real Android runtime
@@ -140,7 +144,16 @@ phone install the Android Agent APK and point it at the Brain's LAN address):
 .venv\Scripts\python.exe scripts\run_agent.py --device-id s25-ultra-01 --fabric configs\demo-fleet.yaml
 ```
 
-Open <http://127.0.0.1:8080/admin>.
+Open <http://127.0.0.1:8080/admin>. The primary control-room view contains
+only **Device Registry**, **Live Requests**, and **Selected Request**. Live
+Requests follows the newest PersonaCare or admin request by default. Clicking
+an older request pins it across refreshes; choose **Follow latest** to resume.
+Each device card exposes installed/cold/warm model inventory and labels a
+RAM override as **SIMULATED**. The trash button removes a device from the
+fabric; that device must be explicitly enrolled again before it can rejoin.
+Manual submission, behavior routing, steering, provisioning, and endpoint
+administration remain under **Advanced**; the raw event stream is under the
+collapsed **Event log** diagnostics panel.
 
 **Expected registration flow:** both devices appear as cards within ~2
 seconds, status HEALTHY, with SoC identity chips ("Snapdragon X Elite
@@ -155,9 +168,9 @@ real native probes), steering-realization chips (`runtime_vector`,
 > (gauge icon on each card) — that is also how every scenario below is
 > triggered.
 
-## 4. Scenario walkthrough (Behavior Routing panel, section 04)
+## 4. Scenario walkthrough (Advanced -> Behavior Routing)
 
-All scenarios use the **Behavior Routing** band: choose model family
+Expand **Advanced** and use **Behavior Routing**: choose model family
 `mock`, fill the fields listed, press **Preview route** (no execution) or
 **Route & execute**. The candidate table shows every (device, artifact,
 realization) considered, with rejection reasons and cost breakdowns; the
@@ -208,7 +221,7 @@ explanation list is the scheduler's own narrative.
   `scripts/demo_scenarios.py` scenario F which forces a disconnect exactly
   when the task lands.
 - **Expect:** the laptop attempt is fenced as `DEVICE_OFFLINE`, the task
-  retries once on `s25-ultra-01` and succeeds; the Routing Trace and task
+  retries once on `s25-ultra-01` and succeeds; the Selected Request route explanation and task
   attempts show both attempts; a late laptop result cannot overwrite the
   accepted one (result fencing).
 
@@ -216,8 +229,8 @@ explanation list is the scheduler's own narrative.
 - Profile: `Family Assistant`, Preview.
 - **Expect:** `BEHAVIOR_UNAVAILABLE` — the profile's only realization is an
   unbuilt bake target — plus a **Provision 'family-assistant'** button.
-- Click it (target defaults to the origin/first device). The Provisioning
-  band (section 05) shows the job; press **Advance** repeatedly:
+- Click it (target defaults to the origin/first device). The **Provisioning**
+  area under Advanced shows the job; press **Advance** repeatedly:
   `missing → build_queued → compiling → validating → ready_remote →
   downloading → installed → warm`. Every detail line is prefixed `[mock]` —
   the UI never claims a real AI Hub compile ran.
@@ -226,7 +239,7 @@ explanation list is the scheduler's own narrative.
 
 ## 5. Classic execution modes (unchanged)
 
-The Task Submission band (section 03) still drives the original paths:
+**Advanced -> Manual Task Submission** still drives the original paths:
 single, data-parallel fanout/replica race, and the fixed qwen3-0.6b
 layer-pipeline template (`part-a` on the phone, `part-b` on the laptop),
 including origin-preference, private mode, and disconnect recovery.
@@ -255,20 +268,42 @@ including origin-preference, private mode, and disconnect recovery.
 - Remaining physical Android execution/provisioning obligations are specified
   in `docs/HARDWARE_CONTRACT.md`.
 
-## 8. Next milestones: split compute, then parallel
+## 8. Act 3 control plane: variable four-stage split
 
-Split compute is intentionally not part of the RAM-reroute milestone. The
-Brain/router already supports `layer_pipeline`, but the classifier only marks
+The recovered `qwen3-1.7b-w4a16-demo-v1` control plane now reconstructs S0-S3,
+routes one laptop-prefix/phone-suffix cut with cumulative stage memory, performs
+explicit prefill/decode passes, and cleans stage-local sessions. Desktop tests
+prove the 2+2, 3+1, and 4+0 cuts through the public gRPC path. This remains
+mock/control-plane evidence until both targets execute their real QNN contexts.
+
+The classifier only marks
 a task as a layer-pipeline candidate when `preferred_mode == "quality"` and
 complexity is high. PersonaCare currently sends only `auto`, or `private` via
 **Keep on phone**, so the phone UI cannot yet request the quality/pipeline
-path automatically. The corresponding physical pipeline artifacts must also
-be installed and advertised by the phone and laptop workers.
+path automatically. Do not change the classifier in this milestone; use an
+explicit quality submission for physical bring-up. The exact artifact staging,
+evidence boundary, and acceptance commands are in
+`docs/QWEN3_1_7B_HANDOFF.md`.
 
-The next milestone is therefore: phone request -> Brain selects complex
-quality mode -> fixed Qwen split -> stage A on phone -> hidden boundary over
-gRPC -> stage B on X Elite -> final result returned to PersonaCare. Do not
-change the classifier until the RAM-reroute demo passes.
+The eventual UI milestone is: phone request -> Brain selects complex quality
+mode -> fixed S0-S3 cut -> prompt pass -> repeated decode passes -> final text
+returned to PersonaCare.
+
+Keep the four S25 context binaries outside the APK. With one debuggable S25
+attached to the X Elite artifact-cache host, stage them with:
+
+```powershell
+.\scripts\deploy_s25_demo_artifacts.ps1 -CacheRoot C:\DragonNestArtifacts
+```
+
+The wrapper verifies all four source hashes before its first phone mutation,
+checks that exactly one expected S25 and the debuggable app are present, copies
+through a temporary ADB directory into `files/dragonnest-models/`, verifies the
+installed hashes, writes the runtime manifest, and restarts PersonaCare. Until
+the direct JNI QNN session/graph/KV binding passes physical validation it ends
+with `ARTIFACTS INSTALLED` / `RUNTIME NOT YET EXECUTABLE`, and the Agent does
+not advertise those stages. The two 0.6B bundles are optional: missing bytes
+are reported and any unchecksummed bytes are refused rather than guessed.
 
 The planner/router also already contain `data_parallel` support. New parallel
 architecture is deferred until phone-to-phone, phone-low-RAM-to-X-Elite, and

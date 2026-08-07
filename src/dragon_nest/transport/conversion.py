@@ -18,13 +18,31 @@ def device_from_registration(message: pb.RegisterDevice) -> Device:
     for model in message.models:
         segment = None
         if model.HasField("segment") and model.segment.pipeline_id:
+            stage_count = model.segment.stage_count
+            transformer_start = (
+                model.segment.transformer_start_layer
+                if model.segment.HasField("transformer_start_layer")
+                else (model.segment.start_layer if not stage_count else None)
+            )
+            transformer_end = (
+                model.segment.transformer_end_layer
+                if model.segment.HasField("transformer_end_layer")
+                else (model.segment.end_layer if not stage_count else None)
+            )
             segment = ModelSegment(
                 pipeline_id=model.segment.pipeline_id,
-                start_layer=model.segment.start_layer,
-                end_layer=model.segment.end_layer,
+                start_layer=transformer_start,
+                end_layer=transformer_end,
                 total_layers=model.segment.total_layers,
                 includes_embedding=model.segment.includes_embedding,
                 includes_lm_head=model.segment.includes_lm_head,
+                stage_index=(model.segment.stage_index if stage_count else -1),
+                stage_count=stage_count,
+                transformer_start_layer=transformer_start,
+                transformer_end_layer=transformer_end,
+                input_tensor=model.segment.input_tensor,
+                output_tensor=model.segment.output_tensor,
+                boundary_format=model.segment.boundary_format,
             )
         models.append(
             ModelCapability(
@@ -97,14 +115,26 @@ def registration_from_device(
     for model in device.models:
         segment = None
         if model.segment:
-            segment = pb.ModelSegment(
+            segment_builder = pb.ModelSegment(
                 pipeline_id=model.segment.pipeline_id,
-                start_layer=model.segment.start_layer,
-                end_layer=model.segment.end_layer,
                 total_layers=model.segment.total_layers,
                 includes_embedding=model.segment.includes_embedding,
                 includes_lm_head=model.segment.includes_lm_head,
+                stage_index=max(0, model.segment.stage_index),
+                stage_count=model.segment.stage_count,
+                input_tensor=model.segment.input_tensor,
+                output_tensor=model.segment.output_tensor,
+                boundary_format=model.segment.boundary_format,
             )
+            if model.segment.transformer_start_layer is not None:
+                segment_builder.start_layer = model.segment.transformer_start_layer
+                segment_builder.transformer_start_layer = (
+                    model.segment.transformer_start_layer
+                )
+            if model.segment.transformer_end_layer is not None:
+                segment_builder.end_layer = model.segment.transformer_end_layer
+                segment_builder.transformer_end_layer = model.segment.transformer_end_layer
+            segment = segment_builder
         models.append(
             pb.ModelCapability(
                 model_id=model.model_id,

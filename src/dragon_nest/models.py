@@ -82,11 +82,32 @@ class HardwareInventory:
 @dataclass(frozen=True)
 class ModelSegment:
     pipeline_id: str
-    start_layer: int
-    end_layer: int
-    total_layers: int
+    # Legacy fields are retained for wire/config compatibility. New manifests
+    # use transformer_* because an embedding-only stage has no layer interval.
+    start_layer: int | None = None
+    end_layer: int | None = None
+    total_layers: int = 0
     includes_embedding: bool = False
     includes_lm_head: bool = False
+    stage_index: int = -1
+    stage_count: int = 0
+    transformer_start_layer: int | None = None
+    transformer_end_layer: int | None = None
+    input_tensor: str = ""
+    output_tensor: str = ""
+    boundary_format: str = ""
+
+    def __post_init__(self) -> None:
+        start = self.transformer_start_layer
+        end = self.transformer_end_layer
+        if start is None and self.start_layer is not None:
+            start = self.start_layer
+        if end is None and self.end_layer is not None:
+            end = self.end_layer
+        object.__setattr__(self, "transformer_start_layer", start)
+        object.__setattr__(self, "transformer_end_layer", end)
+        object.__setattr__(self, "start_layer", start)
+        object.__setattr__(self, "end_layer", end)
 
 
 @dataclass(frozen=True)
@@ -211,13 +232,19 @@ class PipelineStage:
     pipeline_id: str
     selected_device_id: str
     selected_model_id: str
-    start_layer: int
-    end_layer: int
+    start_layer: int | None
+    end_layer: int | None
     model_family: str = ""
     model_version: str = ""
     tokenizer_id: str = ""
     precision: str = ""
     boundary_format: str = ""
+    stage_count: int = 0
+    input_tensor: str = ""
+    output_tensor: str = ""
+    includes_embedding: bool = False
+    includes_lm_head: bool = False
+    min_memory_mb: int = 0
 
 
 @dataclass(frozen=True)

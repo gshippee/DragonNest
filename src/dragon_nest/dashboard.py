@@ -158,11 +158,18 @@ class ModelSegmentPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pipeline_id: str = Field(min_length=1, max_length=200)
-    start_layer: int = Field(ge=0)
-    end_layer: int = Field(gt=0)
-    total_layers: int = Field(gt=0)
+    start_layer: int | None = Field(default=None, ge=0)
+    end_layer: int | None = Field(default=None, ge=0)
+    total_layers: int = Field(default=0, ge=0)
     includes_embedding: bool = False
     includes_lm_head: bool = False
+    stage_index: int = Field(default=-1, ge=-1)
+    stage_count: int = Field(default=0, ge=0)
+    transformer_start_layer: int | None = Field(default=None, ge=0)
+    transformer_end_layer: int | None = Field(default=None, ge=0)
+    input_tensor: str = ""
+    output_tensor: str = ""
+    boundary_format: str = ""
 
 
 class ModelCapabilityPayload(BaseModel):
@@ -323,6 +330,14 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
     @app.get("/api/devices")
     async def api_devices():
         return [_device_dict(service, record) for record in service.registry.records()]
+
+    @app.delete("/api/devices/{device_id:path}")
+    async def api_remove_device(device_id: str):
+        try:
+            await service.remove_device(device_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="device not found") from exc
+        return {"device_id": device_id, "status": "REMOVED"}
 
     @app.get("/api/regimes")
     async def api_regimes():
@@ -924,6 +939,9 @@ def _device_dict(
         "hardware": asdict(device.hardware),
         "active_tasks": active_task_ids,
         "simulated_constraint": record.simulated_constraint,
+        "simulated_fields": sorted(
+            service._device_simulations.get(device.device_id, {}).keys()
+        ),
         "personal_profile": (
             _profile_dict(personal_profile) if personal_profile else None
         ),

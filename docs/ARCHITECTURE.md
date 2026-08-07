@@ -74,10 +74,11 @@ force an immediate refresh instead of waiting for the normal heartbeat period.
 `SubmitTask` supports remote single-device execution and concurrent shard
 fanout. Each shard has an internal lifecycle record and retry fence while every
 wire message retains the stable parent task ID. Layer pipelines execute stages
-sequentially, validate SHA-256 boundary payloads, and retry a failed stage only
-on a device advertising the same pipeline and layer range. The mock path is
-fully runnable; real QNN boundary transport still requires target-hardware
-validation.
+sequentially, validate SHA-256 boundary payloads, and use indexed stage identity
+for pipelines that include non-transformer stages. Indexed placements are fixed
+for the whole request: a per-stage retry cannot add another device transition
+or bypass the cumulative-memory decision. The mock prefill/decode path is fully
+runnable; real QNN execution still requires target-hardware validation.
 
 Private requests filter the eligible set to their declared origin device before
 routing. A `first_success` data-parallel request sends one shard to two replicas,
@@ -97,7 +98,9 @@ The browser polls once per second; no separate dashboard state store exists.
 canonical contract as the Python services. Its foreground service maintains the
 bidirectional stream, reports platform telemetry, dispatches task, shard, and
 pipeline commands to `AndroidTaskExecutor`, returns normalized metrics/results,
-and applies Brain cancellation by attempt ID.
+and applies Brain cancellation by attempt ID. QNN stage sessions are keyed by
+task/pipeline/stage and are released on reset, cancellation, timeout, or stream
+disconnect.
 
 The packaged MVP executor is deterministic mock inference. The executor
 interface is the Android integration point for Qualcomm QNN/Genie libraries;
@@ -127,20 +130,23 @@ Future reducers can call a real LLM on the best eligible device.
 
 ### Layer Pipeline
 
-A single model is split into layer ranges. Each device advertises model segment
-capabilities. A valid pipeline must cover contiguous layers without gaps.
+A single model is split into ordered logical stages. Transformer ranges are
+optional because a stage may own only embeddings. A valid indexed pipeline must
+contain every stage exactly once and agree on model/tokenizer/precision and
+named boundary contracts.
 
 This is based on the local split-compute research pattern:
 
 ```text
-Part A: input_ids -> hidden boundary
-Part B: hidden boundary -> logits/output
+PREFILL: S0 -> S1 -> ... -> S(N-1) -> next_token_id
+DECODE:  S0 -> S1 -> ... -> S(N-1) -> next_token_id (repeat)
 ```
 
-The portable MVP sends mock boundary tensors over the live gRPC stream.
-`QnnPipelineExecutor` and the Agent stage adapter can serialize real QNN output
-arrays into the same boundary contract using validated manifests. The remaining
-gate is running that path with compiled split artifacts on target devices.
+Each physical stage retains its own KV cache; only the named activation crosses
+the live gRPC stream. The recovered Qwen3-1.7B demo uses an embeddings-only S0,
+layers 0-9, 10-19, and 20-27+head. The Brain implements explicit
+PREFILL/DECODE/RESET/CANCEL and greedy top-1 token circulation. The remaining
+gate is binding and running the direct QNN context/KV path on both targets.
 
 ### Vector Steering
 

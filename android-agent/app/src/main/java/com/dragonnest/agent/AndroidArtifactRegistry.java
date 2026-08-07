@@ -198,19 +198,45 @@ public final class AndroidArtifactRegistry {
         if (item == null) {
             return null;
         }
-        int start = item.getInt("start_layer");
-        int end = item.getInt("end_layer");
-        int total = item.getInt("total_layers");
-        if (start < 0 || start >= end || end > total) {
-            throw new IllegalArgumentException("Invalid split-layer range");
+        int stageCount = item.optInt("stage_count", 0);
+        int stageIndex = stageCount > 0 ? item.getInt("stage_index") : -1;
+        Integer start = null;
+        if (item.has("transformer_start_layer")) {
+            start = Integer.valueOf(item.getInt("transformer_start_layer"));
+        } else if (item.has("start_layer")) {
+            start = Integer.valueOf(item.getInt("start_layer"));
+        }
+        Integer end = null;
+        if (item.has("transformer_end_layer")) {
+            end = Integer.valueOf(item.getInt("transformer_end_layer"));
+        } else if (item.has("end_layer")) {
+            end = Integer.valueOf(item.getInt("end_layer"));
+        }
+        int total = item.optInt("total_layers", 0);
+        if (stageCount > 0 && (stageIndex < 0 || stageIndex >= stageCount)) {
+            throw new IllegalArgumentException("Invalid pipeline stage index");
+        }
+        if ((start == null) != (end == null)) {
+            throw new IllegalArgumentException("Incomplete transformer-layer range");
+        }
+        if (start != null && (start < 0 || start > end || (total > 0 && end > total))) {
+            throw new IllegalArgumentException("Invalid transformer-layer range");
+        }
+        boolean includesEmbedding = item.optBoolean("includes_embedding", false);
+        if (start == null && !includesEmbedding) {
+            throw new IllegalArgumentException("Layerless stage must own embeddings");
         }
         return new AndroidModelSegment(
                 requiredString(item, "pipeline_id"),
+                stageIndex,
+                stageCount,
                 start,
                 end,
                 total,
-                item.optBoolean("includes_embedding", false),
+                includesEmbedding,
                 item.optBoolean("includes_lm_head", false),
+                item.optString("input_tensor", ""),
+                item.optString("output_tensor", ""),
                 requiredString(item, "boundary_format"));
     }
 

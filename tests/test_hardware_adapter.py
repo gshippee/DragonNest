@@ -125,6 +125,23 @@ def test_adapter_reports_installed_but_not_warm_for_cli_runtime(tmp_path: Path):
     assert capabilities.supported_steering_modes == ("none",)
 
 
+def test_adapter_accepts_only_explicit_additional_target_classes(tmp_path: Path):
+    registry = _registry(tmp_path)
+    adapter = HardwareRuntimeAdapter(
+        registry,
+        compatibility_key="host-runtime",
+        compatible_target_classes=("test-device",),
+        runtime_name="mixed",
+        runtime_version="test",
+        accelerator_available=True,
+        telemetry=_Telemetry(),
+        artifact_store=tmp_path / "store",
+        dispatcher=_Dispatcher(),
+    )
+
+    assert adapter.capabilities().installed_artifact_ids == ("artifact-v1",)
+
+
 def test_real_xelite_advertised_model_id_resolves_to_brain_catalog(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

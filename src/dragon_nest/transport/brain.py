@@ -84,6 +84,7 @@ class BrainServiceConfig:
     default_task_timeout_ms: int = 30_000
     sweep_interval_seconds: float = 1.0
     max_boundary_bytes: int = 32 * 1024 * 1024
+    pipeline_max_new_tokens: int = 8
     dev_mode: bool = True
     tls_server_certificate_path: str = ""
     tls_server_key_path: str = ""
@@ -106,6 +107,9 @@ class PipelineAttemptResult:
     error_code: str = ""
     error_message: str = ""
     metrics: ExecutionMetrics | None = None
+    next_token_id: int | None = None
+    eos: bool = False
+    token_text: str = ""
 
 
 class AgentSession:
@@ -269,6 +273,7 @@ class BrainService(pb_grpc.BrainControlServicer):
         self._device_simulations: dict[str, dict[str, float | bool | int]] = {}
         self.certificate_fingerprints: dict[str, str] = {}
         self.revoked_certificate_fingerprints: set[str] = set()
+        self.removed_device_ids: set[str] = set()
         self.enrollment = EnrollmentManager(
             default_ttl_seconds=self.config.enrollment_session_ttl_seconds
         )
@@ -521,6 +526,29 @@ class BrainService(pb_grpc.BrainControlServicer):
         with contextlib.suppress(KeyError):
             self.dispatch.handle_device_offline(device_id)
             self.registry.deregister(device_id)
+
+    async def remove_device(self, device_id: str) -> None:
+        """Remove a device from this fabric until it is explicitly re-enrolled."""
+        self.registry.get(device_id)
+        session = await self.sessions.get(device_id)
+        if session is not None and session.transport == "http_endpoint":
+            await self.deregister_http_device(device_id)
+        else:
+            self.removed_device_ids.add(device_id)
+            fingerprint = self.certificate_fingerprints.pop(device_id, "")
+            if fingerprint:
+                self.revoked_certificate_fingerprints.add(fingerprint)
+            await self.sessions.close_device(device_id)
+            self.dispatch.handle_device_offline(device_id)
+            with contextlib.suppress(KeyError):
+                self.registry.deregister(device_id)
+        self.enrollment.revoke_device_credential(device_id)
+        self.profiles.disassociate_device(device_id)
+        self._device_simulations.pop(device_id, None)
+        self.runtime_steering_disabled.discard(device_id)
+        for key in tuple(self.deployment_overrides):
+            if key[0] == device_id:
+                del self.deployment_overrides[key]
 
     async def fetch_http_endpoint_info(
         self, base_url: str, credential_env: str = ""
@@ -1271,6 +1299,10 @@ class BrainService(pb_grpc.BrainControlServicer):
         timeout_ms: int,
         profile_context: str = "",
     ) -> pb.SubmitTaskResponse:
+        if routed.stages and all(stage.stage_count > 0 for stage in routed.stages):
+            return await self._submit_autoregressive_pipeline(
+                request, routed, timeout_ms, profile_context
+            )
         parent = self.tasks.create(request.request_text, task_id=routed.task_id)
         boundary: pb.BoundaryTensor | None = None
         final_result: PipelineAttemptResult | None = None
@@ -1407,11 +1439,277 @@ class BrainService(pb_grpc.BrainControlServicer):
         self.tasks.record_result(accepted.attempt_id, result)
         return self._response_for_task(self.tasks.get(parent.task_id))
 
+    async def _submit_autoregressive_pipeline(
+        self,
+        request: pb.SubmitTaskRequest,
+        routed: ExecutionPlan,
+        timeout_ms: int,
+        profile_context: str,
+    ) -> pb.SubmitTaskResponse:
+        parent = self.tasks.create(request.request_text, task_id=routed.task_id)
+        token_ids: list[int] = []
+        token_text: list[str] = []
+        final_result: PipelineAttemptResult | None = None
+        failure: tuple[str, str, str] | None = None
+        try:
+            next_input_token = 0
+            for generation_step in range(self.config.pipeline_max_new_tokens):
+                operation = (
+                    pb.PIPELINE_PREFILL
+                    if generation_step == 0
+                    else pb.PIPELINE_DECODE
+                )
+                final_result = await self._execute_pipeline_pass(
+                    parent.task_id,
+                    request,
+                    routed,
+                    timeout_ms,
+                    profile_context,
+                    operation,
+                    next_input_token,
+                    generation_step,
+                )
+                if not final_result.success:
+                    failure = (
+                        routed.stages[-1].stage_id,
+                        final_result.error_code or "PIPELINE_STAGE_FAILED",
+                        final_result.error_message,
+                    )
+                    break
+                if final_result.next_token_id is None:
+                    failure = (
+                        routed.stages[-1].stage_id,
+                        "NEXT_TOKEN_MISSING",
+                        "final pipeline stage did not return an explicit next_token_id",
+                    )
+                    break
+                token_ids.append(final_result.next_token_id)
+                token_text.append(final_result.token_text)
+                if final_result.eos:
+                    break
+                next_input_token = final_result.next_token_id
+        except Exception as exc:
+            failure = ("", "PIPELINE_GENERATION_FAILED", str(exc))
+        finally:
+            await self._reset_pipeline_sessions(parent.task_id, routed, timeout_ms)
+
+        if failure is not None:
+            stage_id, error_code, error_message = failure
+            return self._fail_pipeline_parent(
+                parent.task_id, stage_id, error_code, error_message
+            )
+        if final_result is None or not token_ids:
+            return self._fail_pipeline_parent(
+                parent.task_id,
+                "",
+                "PIPELINE_GENERATION_FAILED",
+                "pipeline produced no tokens",
+            )
+
+        accepted = self.tasks.assign(parent.task_id, "brain-pipeline")
+        self.tasks.mark_running(accepted.attempt_id)
+        pipeline_id = routed.stages[0].pipeline_id
+        self._attempt_models[accepted.attempt_id] = pipeline_id
+        decoded = "".join(token_text)
+        if not decoded:
+            decoded = " ".join(f"<token:{token_id}>" for token_id in token_ids)
+        result = TaskResult(
+            task_id=parent.task_id,
+            attempt_id=accepted.attempt_id,
+            success=True,
+            output_text=decoded,
+            device_id=final_result.device_id,
+            latency_ms=(
+                final_result.metrics.execution_latency_ms
+                if final_result.metrics
+                else 0
+            ),
+            metrics=final_result.metrics,
+        )
+        self.tasks.record_result(accepted.attempt_id, result)
+        return self._response_for_task(self.tasks.get(parent.task_id))
+
+    async def _execute_pipeline_pass(
+        self,
+        parent_task_id: str,
+        request: pb.SubmitTaskRequest,
+        routed: ExecutionPlan,
+        timeout_ms: int,
+        profile_context: str,
+        operation: int,
+        token_id: int,
+        generation_step: int,
+    ) -> PipelineAttemptResult:
+        boundary: pb.BoundaryTensor | None = None
+        final_result: PipelineAttemptResult | None = None
+        operation_name = pb.PipelineOperation.Name(operation).lower()
+        for index, stage in enumerate(routed.stages):
+            child_task_id = (
+                f"{parent_task_id}:{operation_name}:{generation_step}:{stage.stage_id}"
+            )
+            candidates, models_by_device = self._pipeline_stage_candidates(stage)
+
+            async def execute_attempt(
+                internal_task_id: str,
+                attempt_id: str,
+                device: Device,
+                current_stage: PipelineStage = stage,
+                input_boundary: pb.BoundaryTensor | None = boundary,
+                final_stage: bool = index == len(routed.stages) - 1,
+            ) -> PipelineAttemptResult:
+                session = await self._resolve_session(device.device_id)
+                model_id = models_by_device[device.device_id]
+                self._attempt_models[attempt_id] = model_id
+                owns_steering_layer = (
+                    current_stage.start_layer is not None
+                    and current_stage.end_layer is not None
+                    and current_stage.start_layer
+                    <= routed.steering.target_layer
+                    <= current_stage.end_layer
+                )
+                stage_steering = (
+                    routed.steering
+                    if routed.steering.enabled and owns_steering_layer
+                    else SteeringSpec()
+                )
+                result = await session.execute_pipeline_stage(
+                    pb.ExecutePipelineStage(
+                        task_id=parent_task_id,
+                        attempt_id=attempt_id,
+                        stage_id=current_stage.stage_id,
+                        stage_index=current_stage.stage_index,
+                        request_text=(
+                            self._request_text_for_session(
+                                session, request.request_text, profile_context
+                            )
+                            if operation == pb.PIPELINE_PREFILL
+                            else ""
+                        ),
+                        model_id=model_id,
+                        input_boundary=input_boundary,
+                        final_stage=final_stage,
+                        timeout_ms=timeout_ms,
+                        steering=steering_to_proto(stage_steering),
+                        operation=operation,
+                        pipeline_id=current_stage.pipeline_id,
+                        stage_count=current_stage.stage_count,
+                        token_id=token_id,
+                        max_new_tokens=self.config.pipeline_max_new_tokens,
+                    ),
+                    timeout_seconds=timeout_ms / 1000,
+                )
+                internal = pipeline_result_from_proto(result)
+                output_boundary = (
+                    result.output_boundary
+                    if result.HasField("output_boundary")
+                    and result.output_boundary.data
+                    else None
+                )
+                if internal.success and not final_stage:
+                    if output_boundary is None:
+                        return PipelineAttemptResult(
+                            False,
+                            "",
+                            device.device_id,
+                            error_code="BOUNDARY_TENSOR_MISSING",
+                            error_message=(
+                                f"{current_stage.stage_id} returned no boundary tensor"
+                            ),
+                            metrics=internal.metrics,
+                        )
+                    error = self._boundary_error(output_boundary)
+                    if error:
+                        return PipelineAttemptResult(
+                            False,
+                            "",
+                            device.device_id,
+                            error_code="INVALID_BOUNDARY_TENSOR",
+                            error_message=error,
+                            metrics=internal.metrics,
+                        )
+                return PipelineAttemptResult(
+                    success=internal.success,
+                    output_text=internal.output_text,
+                    device_id=device.device_id,
+                    boundary=output_boundary,
+                    error_code=internal.error_code,
+                    error_message=internal.error_message,
+                    metrics=internal.metrics,
+                    next_token_id=(
+                        result.next_token_id
+                        if result.HasField("next_token_id")
+                        else None
+                    ),
+                    eos=result.eos,
+                    token_text=result.token_text,
+                )
+
+            dispatched = await self.dispatch.submit(
+                request.request_text,
+                candidates,
+                execute_attempt,
+                task_id=child_task_id,
+            )
+            if dispatched.task.state.value != "SUCCEEDED" or not isinstance(
+                dispatched.task.result, PipelineAttemptResult
+            ):
+                return PipelineAttemptResult(
+                    False,
+                    "",
+                    stage.selected_device_id,
+                    error_code=(
+                        dispatched.task.error_code or "PIPELINE_STAGE_FAILED"
+                    ),
+                    error_message=dispatched.task.error_message,
+                )
+            final_result = dispatched.task.result
+            boundary = final_result.boundary
+        if final_result is None:
+            return PipelineAttemptResult(
+                False,
+                "",
+                "",
+                error_code="PIPELINE_STAGE_FAILED",
+                error_message="pipeline contained no stages",
+            )
+        return final_result
+
+    async def _reset_pipeline_sessions(
+        self, task_id: str, routed: ExecutionPlan, timeout_ms: int
+    ) -> None:
+        for stage in routed.stages:
+            try:
+                session = await self._resolve_session(stage.selected_device_id)
+                attempt_id = f"reset-{uuid.uuid4()}"
+                await session.execute_pipeline_stage(
+                    pb.ExecutePipelineStage(
+                        task_id=task_id,
+                        attempt_id=attempt_id,
+                        stage_id=stage.stage_id,
+                        stage_index=stage.stage_index,
+                        model_id=stage.selected_model_id,
+                        timeout_ms=timeout_ms,
+                        operation=pb.PIPELINE_RESET,
+                        pipeline_id=stage.pipeline_id,
+                        stage_count=stage.stage_count,
+                    ),
+                    timeout_seconds=timeout_ms / 1000,
+                )
+            except Exception:
+                # The Agent also clears every pipeline session when its stream
+                # closes, so a failed reset cannot leak state across reconnect.
+                continue
+
     def _pipeline_stage_candidates(
         self, stage: PipelineStage
     ) -> tuple[tuple[str, ...], dict[str, str]]:
         candidates = [stage.selected_device_id]
         models = {stage.selected_device_id: stage.selected_model_id}
+        # Indexed pipelines are routed as a cumulative-memory placement. A
+        # per-stage failover could violate that placement or introduce a
+        # second device transition, so it must be re-routed as a whole.
+        if stage.stage_count > 0:
+            return tuple(candidates), models
         for device in self.registry.eligible():
             if device.device_id == stage.selected_device_id:
                 continue
@@ -1613,9 +1911,18 @@ class BrainService(pb_grpc.BrainControlServicer):
         if not registration.models:
             return "at least one model capability is required", ""
         issued_credential = ""
+        bootstrap_session = (
+            self.enrollment.session_for_bootstrap(registration.enrollment_token)
+            if self.config.dev_mode
+            else None
+        )
+        if (
+            registration.device_id in self.removed_device_ids
+            and bootstrap_session is None
+        ):
+            return "device was removed from this fabric; enroll it again", ""
         if self.config.dev_mode:
             credential = registration.enrollment_token
-            bootstrap_session = self.enrollment.session_for_bootstrap(credential)
             profile_values: dict[str, object] | None = None
             if registration.HasField("personal_profile"):
                 try:
@@ -1708,6 +2015,8 @@ class BrainService(pb_grpc.BrainControlServicer):
                     )
                 except ProfileError as exc:
                     return f"personal profile association failed: {exc}", ""
+        if bootstrap_session is not None:
+            self.removed_device_ids.discard(registration.device_id)
         return "", issued_credential
 
     def _profile_values_from_registration(

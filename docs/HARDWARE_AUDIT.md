@@ -23,9 +23,9 @@ baked-profile release, QAIRT 2.45.41 Android tooling, and current GenieX source.
 Proprietary SDK/model files remain outside this repository.
 
 The thin PersonaCare Android client/Agent APK was rebuilt locally after the
-immediate simulation-heartbeat change. Nine Android unit tests and
-`assembleDebug` passed. The 19,575,982-byte debug APK has SHA-256
-`fc076ff2aae5fbd60372a302828c09d85a5801cf59f95056540074e29d7efb82`.
+immediate simulation-heartbeat and Act 3 protocol changes. Ten Android unit
+tests and `assembleDebug` passed. The 19,545,564-byte debug APK has SHA-256
+`27b92b7f4189f9ebd1081d37d1a94a635508e84e791488f72f5d6d7b53df34af`.
 It intentionally contains no vendor runtime or model, so this is **verified
 locally without hardware**, not an NPU execution claim.
 
@@ -43,7 +43,7 @@ locally without hardware**, not an NPU execution claim.
 | Custom/fork path | Current GenieX QAIRT source exposes `Graph::write(name, data)` and `InputProvider`; a fork is feasible, **inferred from official source inspection** | Same, but rebuilding/package/license practicality on the phone is **unverified** |
 | `runtime_vector` | Fixed-shape QNN graph inputs (`steering_vector`, `alpha`) are **verified through Qualcomm AI Hub** on X Elite/8 Elite classes. Runtime-vector injection in the physically verified laptop Genie generation path is **unsupported**, so capability is disabled | Full-model stock GenieX is disabled. Direct-QNN Qwen Part B dynamic input was **verified through Qualcomm AI Hub**, not in the APK or a complete generation loop |
 | `baked_profile` | Build/export is feasible by graph rewrite, **verified locally without hardware**; X Elite compiled artifact is **unverified** | Qwen3-0.6B concise layer-7 artifact compiled and bundled, **verified through Qualcomm AI Hub**. Final base/steered physical APK comparison remains **unverified** |
-| Fixed split stage | Stage-1 tensor graph compatibility is **verified through Qualcomm AI Hub**; physical laptop stage execution is **unverified** | Qwen3-0.6B two-stage and Qwen3-1.7B four-stage execution are **verified on physical hardware** |
+| Fixed split stage | Qwen3-1.7B v73 contexts are downloaded/checksummed and their tensor interfaces are **verified through Qualcomm AI Hub**; physical laptop stage execution is **unverified** | Qwen3-0.6B two-stage execution is **verified on physical hardware**. The exact recovered Qwen3-1.7B prompt+decode+KV contexts are downloaded/checksummed and **verified through Qualcomm AI Hub**; physical execution is **unverified** |
 | Install/load | External bundle discovery, tree checksum, manifest validation, installed/cold advertisement, execution, and cleanup are **verified on physical hardware**; persistent warm load remains unsupported | APK asset installer + app-private checksum registry are **verified locally without hardware**. Physical QNN proof used ADB `/data/local/tmp`; DragonNest APK install/load is **unverified** |
 | Compatibility sharing | Exact X1E/v73/QAIRT-2.48 bundle compatibility is **verified on this laptop**. Do not share its contexts with SM8750 v79; other X Elite hosts remain **unverified** | Existing artifacts target `sm8750-ac`/v79. Same-family sharing is intended but only SM-S938U1 was physically exercised; wider sharing is **unverified** |
 | Licenses/files | Required Genie/HTP 2.48 runtime files and model bundle were present and executed, **verified on physical hardware**; redistribution remains subject to their licenses | Matching arm64 QNN/Genie libraries, v79 skel/stub, model contexts, Android SDK/NDK/JDK are required. QAIRT 2.45 files used physically; redistribution rights remain subject to their licenses |
@@ -65,9 +65,12 @@ locally without hardware**, not an NPU execution claim.
 - A roughly 9 GB available-memory drop was observed during execution and
   recovered afterward. It is not yet a calibrated artifact-memory estimate.
 
-The stage demo does not require a separate desktop Brain. Its remaining
-topology proof is PersonaCare on the S25 -> LAN -> Brain on the X Elite ->
-same-host `pc-01` Agent -> real Genie/HTP -> result returned to PersonaCare.
+The stage demo does not require a separate desktop Brain. The complete Act 1
+to Act 2 topology is now **verified on physical hardware**: PersonaCare on the
+S25 executed Request A on `android-mock-v1`; its immediate 64 MB simulated-RAM
+heartbeat caused Request B to reject phone placement and route over LAN to the
+same-host X Elite Brain/`pc-01` Agent; real Qwen3-4B then executed through
+Genie/HTP and PersonaCare displayed `Ran on Snapdragon X Elite Laptop`.
 
 ### S25 Ultra, physical direct-QNN execution
 
@@ -82,15 +85,20 @@ The `[1,32,1024]` boundary is 128 KiB. Top-1 agreement was 100% against the
 AI Hub and local FP32 references. Held-open Part A reported 8.4 MiB PSS and
 12.4 MiB RSS while its approximately 718 MiB context was memory-mapped.
 
-Qwen3-1.7B W4A16 four-context autoregressive proof:
+Qwen3-1.7B W4A16 four-context claim — **correction, 2026-08-07**:
 
 - prompt partition walls: 0.40, 0.53, 0.51, and 1.15 seconds;
 - warm decode partition sum: 1.73-1.77 seconds/token (about 0.56-0.58 tok/s);
 - contexts total 1,674,248,192 bytes; largest single context 622,391,296 bytes;
 - two runs produced the same four token IDs.
 
-These measurements are direct QNN process timings, not DragonNest gRPC/APK
-measurements. Temperature was not captured and remains **unverified**.
+The byte totals are genuine and re-confirmed by the recovered 2026-08-05 AI
+Hub artifacts. The prompt-wall timings, decode sum, and determinism statement
+above have no corroborating script, log, physical transcript, or AI Hub profile
+record and are therefore **unsourced and not physically verified**. Do not use
+them as demo evidence. The exact prompt/decode graph interfaces did match across
+S25 and X Elite at the AI Hub schema level for all four stages; that does not
+prove physical execution, numerical parity, or KV ABI compatibility.
 
 ### Qualcomm AI Hub
 
@@ -129,25 +137,28 @@ Concrete answers:
 
 ## Shortest paths
 
-1. **X Elite:** the worker path is complete. Run
-   `scripts/run_xelite_demo.ps1` on the laptop so the LAN-visible Brain and
-   loopback `pc-01` worker share one generated token, then enroll PersonaCare
-   against the printed laptop LAN address.
-2. **S25:** stage the smaller Qwen3-0.6B base bundle (and then concise baked
-   bundle) with matching licensed runtime files, build the integrated PersonaCare
-   hardware APK, install, connect its embedded Agent to the existing Brain, and
-   submit a task. Do not start with the 1.7B split proof because it does not yet
-   implement the DragonNest JNI generation contract.
+1. **X Elite QNN stages:** verify the four cached v73 hashes with
+   `scripts/artifact_tools/stage_xelite_artifacts.ps1`, then bind and exercise
+   the existing QNN runner against the prompt/decode graph names. Keep the
+   physically verified Qwen3-4B Genie capability unchanged.
+2. **S25 QNN stages:** build/install the thin debug APK, provision the four
+   contexts afterward with `scripts/deploy_s25_demo_artifacts.ps1`, package matching
+   licensed QAIRT 2.45 arm64 libraries, then complete the native QNN context/KV
+   binding and run the acceptance sequence in `docs/QWEN3_1_7B_HANDOFF.md`.
 
 ## Current blockers
 
-- The real worker is complete. The remaining demo proof is the two-request
-  S25 flow: normal phone placement, immediate 64 MB heartbeat, then reroute to
-  same-host `pc-01` and real Genie/HTP with the result displayed in PersonaCare.
 - The DragonNest Android QAIRT/Genie bridge has not loaded either S25 bundle on
   the physical phone. The recovered static bundle was built against QAIRT 2.45
   / GenieX 0.3.5 while the current JNI staging guide targets QAIRT 2.48; the
   config/API match must be tested, not assumed.
+- The new Android QNN JNI boundary and app-private provisioning path are present,
+  but context deserialization, named tensor binding, tokenizer integration, and
+  stage-local KV updates still require the licensed QAIRT headers/libraries and
+  physical S25 validation.
+- X Elite QNN contexts were compiled for QAIRT 2.45 while the verified laptop
+  Genie environment is QAIRT 2.48. Compatibility must be executed and measured;
+  it is not inferred from the matching v73 tensor schema.
 - The S25 is not attached now, so APK registration, gRPC execution, thermal
   telemetry, installed/warm artifact state, and baked-profile routing are not
   physical claims.
@@ -159,16 +170,20 @@ Concrete answers:
 - **Physically verified:** Dell Latitude 7455/X1E80100 identity; Qwen3-4B
   Genie/HTP through `HardwareRuntimeAdapter`, local gRPC, and the real LAN
   interface; worker launcher; SM-S938U1 identity; QNN 2.45.41/v79 execution;
-  Qwen3-0.6B split numerics/timings; Qwen3-1.7B four-context generation.
+  Qwen3-0.6B split numerics/timings; PersonaCare phone-origin Request A on the
+  thin Android mock followed by immediate low-RAM Request B rerouting to real
+  X Elite Genie/HTP and returning its result to PersonaCare.
 - **AI-Hub verified:** fixed named QNN steering/alpha inputs; small v79->v73
-  boundary chain; S25 base/baked compilation; X Elite CRD tensor stage.
+  boundary chain; S25 base/baked compilation; all eight Qwen3-1.7B stage
+  contexts and their cross-target prompt/decode tensor interfaces.
 - **Source/API verified:** stock Genie/GenieX named-input boundary and custom
   `InputProvider` extension point.
 - **Mocked/local only:** Brain transport tests, Android thin APK build/unit
   tests, adapter unit tests, artifact installation/lifecycle tests.
-- **Blocked/unverified:** complete S25-to-laptop two-request stage flow;
-  DragonNest hardware APK run; physical baked-profile comparison; full-model
-  runtime-vector generation.
+- **Blocked/unverified:** Qwen3-1.7B stage execution on both devices; QAIRT
+  2.45-context/2.48-runtime compatibility on X Elite; Android native context/KV
+  binding; complete S25-to-laptop generation; physical baked-profile comparison;
+  full-model runtime-vector generation.
 
 ## Exact next physical commands
 
@@ -182,7 +197,11 @@ On the workstation with the S25 attached, after staging the matching licensed
 SDK/bundle as described in `android-agent/README.md`:
 
 ```powershell
-$env:DRAGONNEST_QAIRT_SDK_ROOT='C:\path\to\qairt\2.48.0.260626'; $env:DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS='true'; .\android-agent\gradlew.bat -p android-agent :app:assembleDebug; adb install -r android-agent\app\build\outputs\apk\debug\app-debug.apk; adb shell am start -n com.dragonnest.agent/.AgentSettingsActivity
+$env:DRAGONNEST_QAIRT_SDK_ROOT='C:\path\to\matching\qairt\2.45'
+.\android-agent\gradlew.bat -p android-agent :app:assembleDebug
+adb install -r android-agent\app\build\outputs\apk\debug\app-debug.apk
+.\scripts\deploy_s25_demo_artifacts.ps1 -CacheRoot C:\DragonNestArtifacts
+adb shell am start -n com.dragonnest.agent/.AgentSettingsActivity
 ```
 
 The commands create no repository secrets. Return only secret-free proof JSON

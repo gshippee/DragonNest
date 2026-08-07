@@ -207,6 +207,9 @@ class EnrollmentManager:
         expected = self._device_credentials.get(device_id)
         return bool(expected and hmac.compare_digest(expected, _digest(credential)))
 
+    def revoke_device_credential(self, device_id: str) -> bool:
+        return self._device_credentials.pop(device_id, None) is not None
+
     def _refresh(self, session: EnrollmentSession) -> None:
         if (
             session.status == EnrollmentStatus.PENDING

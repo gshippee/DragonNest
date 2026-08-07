@@ -107,11 +107,21 @@ may not escape it:
 ```
 
 For a layer-pipeline QNN artifact, set `supports_layer_pipeline` to `true` and
-add `split_boundary` with `pipeline_id`, `start_layer`, `end_layer`,
-`total_layers`, `includes_embedding`, `includes_lm_head`, and `boundary_format`.
-Both stages must be compiled for the S25 target, use the same tokenizer/model
-version/precision, and share an exact boundary format. Existing Snapdragon X
-Elite artifacts must not be treated as S25 artifacts.
+add `split_boundary` with `pipeline_id`, `stage_index`, `stage_count`, optional
+`transformer_start_layer`/`transformer_end_layer`, `input_tensor`,
+`output_tensor`, `includes_embedding`, `includes_lm_head`, and
+`boundary_format`. The transformer interval is intentionally absent for an
+embedding-only stage. Every stage must be compiled for the S25 target, use the
+same tokenizer/model version/precision contract, and share exact adjacent
+tensor interfaces. Existing Snapdragon X Elite artifacts must not be treated
+as S25 artifacts.
+
+The four Qwen3-1.7B contexts are not APK assets. For the debug demo, install the
+thin APK first and run `scripts/deploy_s25_demo_artifacts.ps1 -CacheRoot
+<external-cache>` from the repo root. It verifies the external and app-private
+hashes via `run-as`,
+installs the manifest under `files/dragonnest-models`, and forces a clean
+catalog reload. See `docs/QWEN3_1_7B_HANDOFF.md`.
 
 At first launch the Agent copies packaged model assets into private storage,
 then validates them. The Agent reports `npu_status=available` only after a

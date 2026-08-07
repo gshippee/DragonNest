@@ -31,6 +31,7 @@ def service_config_from_args(
         tls_client_ca_path=str(args.tls_client_ca or ""),
         state_db_path=str(args.state_db),
         default_task_timeout_ms=args.default_task_timeout_ms,
+        pipeline_max_new_tokens=args.pipeline_max_new_tokens,
         http_endpoint_registration_enabled=args.enable_http_endpoints,
         http_endpoint_admin_token=http_endpoint_admin_token,
         http_endpoint_allowed_cidrs=tuple(
@@ -98,6 +99,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=BrainServiceConfig().default_task_timeout_ms,
         help="Default dispatch timeout when a request does not provide one.",
+    )
+    parser.add_argument(
+        "--pipeline-max-new-tokens",
+        type=int,
+        default=BrainServiceConfig().pipeline_max_new_tokens,
+        choices=range(1, 65),
+        metavar="1..64",
+        help="Greedy distributed-pipeline generation limit (demo default: 8).",
     )
     parser.add_argument(
         "--enable-http-endpoints",

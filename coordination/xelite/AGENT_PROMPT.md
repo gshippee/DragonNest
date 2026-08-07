@@ -17,10 +17,10 @@ the physically verified Qwen3-4B bundle checksum, validates the manifest,
 advertises installed/cold with runtime steering off, and refuses ambiguous or
 checksum-mismatched bundles rather than guessing.
 
-The physical proof is recorded in
-`docs/results/xelite_worker_status.md`. The remaining stage proof starts in
-PersonaCare on the S25: normal RAM routes to the phone mock runtime, then a
-64 MB simulated heartbeat reroutes the next request to real Genie/HTP here.
+The physical proof is recorded in `docs/results/xelite_worker_status.md`. The
+full PersonaCare two-request stage sequence has also passed physically: normal
+RAM used the phone mock, and the immediate 64 MB simulated heartbeat rerouted
+the next request to real Genie/HTP here and returned it to PersonaCare.
 
 Never commit enrollment tokens, proprietary model/runtime files, absolute
 bundle paths, credentials, or verbose runtime logs.

@@ -67,6 +67,7 @@ class HardwareRuntimeAdapter:
         artifacts: ArtifactRegistry,
         *,
         compatibility_key: str,
+        compatible_target_classes: tuple[str, ...] = (),
         runtime_name: str,
         runtime_version: str,
         accelerator_available: bool,
@@ -78,6 +79,9 @@ class HardwareRuntimeAdapter:
     ):
         self.artifacts = artifacts
         self.compatibility_key = compatibility_key
+        self.compatible_target_classes = frozenset(
+            (compatibility_key, *compatible_target_classes)
+        )
         self.runtime_name = runtime_name
         self.runtime_version = runtime_version
         self.accelerator_available = accelerator_available
@@ -102,7 +106,7 @@ class HardwareRuntimeAdapter:
 
     def _compatible(self, artifact: ModelArtifact) -> bool:
         return not artifact.target_compatibility_class or (
-            artifact.target_compatibility_class == self.compatibility_key
+            artifact.target_compatibility_class in self.compatible_target_classes
         )
 
     def validate_artifact(self, manifest: ModelArtifact | str) -> Path:

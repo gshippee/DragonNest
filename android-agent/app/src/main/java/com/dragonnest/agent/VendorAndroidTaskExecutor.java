@@ -5,6 +5,7 @@ import android.content.Context;
 import com.dragonnest.proto.ExecutePipelineStage;
 import com.dragonnest.proto.ExecuteShard;
 import com.dragonnest.proto.ExecuteTask;
+import com.dragonnest.proto.PipelineOperation;
 
 /** Shared transport adapter for a single checksum-validated QNN or Genie artifact. */
 class VendorAndroidTaskExecutor implements AndroidTaskExecutor {
@@ -24,22 +25,30 @@ class VendorAndroidTaskExecutor implements AndroidTaskExecutor {
     @Override
     public TaskExecutionResult execute(ExecuteTask command) throws Exception {
         return run(new RuntimeExecutionRequest(
-                command.getRequestText(), command.getSteering(), null, true));
+                command.getTaskId(), "", 0, command.getRequestText(), command.getSteering(),
+                null, true, PipelineOperation.PIPELINE_OPERATION_UNSPECIFIED, 0, 0));
     }
 
     @Override
     public TaskExecutionResult executeShard(ExecuteShard command) throws Exception {
         return run(new RuntimeExecutionRequest(
-                command.getRequestText(), command.getSteering(), null, true));
+                command.getTaskId(), "", 0, command.getRequestText(), command.getSteering(),
+                null, true, PipelineOperation.PIPELINE_OPERATION_UNSPECIFIED, 0, 0));
     }
 
     @Override
     public TaskExecutionResult executePipelineStage(ExecutePipelineStage command) throws Exception {
         return run(new RuntimeExecutionRequest(
+                command.getTaskId(),
+                command.getPipelineId(),
+                command.getStageIndex(),
                 command.getRequestText(),
                 command.getSteering(),
                 command.hasInputBoundary() ? command.getInputBoundary() : null,
-                command.getFinalStage()));
+                command.getFinalStage(),
+                command.getOperation(),
+                command.getTokenId(),
+                command.getMaxNewTokens()));
     }
 
     private TaskExecutionResult run(RuntimeExecutionRequest request) throws Exception {
@@ -62,9 +71,17 @@ class VendorAndroidTaskExecutor implements AndroidTaskExecutor {
                         null),
                 before,
                 after);
+        if (request.operation() != PipelineOperation.PIPELINE_OPERATION_UNSPECIFIED) {
+            return TaskExecutionResult.generated(result, latency, details, request.operation());
+        }
         if (result.boundary() != null) {
             return TaskExecutionResult.boundary(result.boundary(), latency, details);
         }
         return TaskExecutionResult.success(result.outputText(), latency, details);
+    }
+
+    @Override
+    public void cleanupTask(String taskId) {
+        bridge.releaseTask(taskId);
     }
 }

@@ -27,14 +27,30 @@ class ArtifactChecksumError(ArtifactError):
 @dataclass(frozen=True)
 class SplitBoundary:
     pipeline_id: str
-    start_layer: int
-    end_layer: int
-    total_layers: int
-    input_tensor: str
-    output_tensor: str
+    start_layer: int | None = None
+    end_layer: int | None = None
+    total_layers: int = 0
+    input_tensor: str = ""
+    output_tensor: str = ""
     includes_embedding: bool = False
     includes_lm_head: bool = False
     boundary_format: str = "raw"
+    stage_index: int = -1
+    stage_count: int = 0
+    transformer_start_layer: int | None = None
+    transformer_end_layer: int | None = None
+
+    def __post_init__(self) -> None:
+        start = self.transformer_start_layer
+        end = self.transformer_end_layer
+        if start is None and self.start_layer is not None:
+            start = self.start_layer
+        if end is None and self.end_layer is not None:
+            end = self.end_layer
+        object.__setattr__(self, "transformer_start_layer", start)
+        object.__setattr__(self, "transformer_end_layer", end)
+        object.__setattr__(self, "start_layer", start)
+        object.__setattr__(self, "end_layer", end)
 
 
 @dataclass(frozen=True)
@@ -219,8 +235,31 @@ class ArtifactRegistry:
                 raise ArtifactError(
                     f"{artifact.model_id}: split_boundary requires supports_layer_pipeline"
                 )
-            if not (0 <= split.start_layer < split.end_layer <= split.total_layers):
-                raise ArtifactError(f"{artifact.model_id}: invalid split layer range")
+            if split.stage_count:
+                if not (0 <= split.stage_index < split.stage_count):
+                    raise ArtifactError(f"{artifact.model_id}: invalid pipeline stage index")
+            elif split.stage_index >= 0:
+                raise ArtifactError(
+                    f"{artifact.model_id}: stage_count is required with stage_index"
+                )
+            start = split.transformer_start_layer
+            end = split.transformer_end_layer
+            if (start is None) != (end is None):
+                raise ArtifactError(
+                    f"{artifact.model_id}: transformer layer range must be fully specified"
+                )
+            if start is not None:
+                ordered = start <= end if split.stage_count else start < end
+                if not (
+                    0 <= start
+                    and ordered
+                    and (split.total_layers <= 0 or end <= split.total_layers)
+                ):
+                    raise ArtifactError(f"{artifact.model_id}: invalid split layer range")
+            if start is None and not split.includes_embedding:
+                raise ArtifactError(
+                    f"{artifact.model_id}: a layerless stage must own embeddings"
+                )
             if not split.input_tensor or not split.output_tensor:
                 raise ArtifactError(f"{artifact.model_id}: split tensors must be named")
 
