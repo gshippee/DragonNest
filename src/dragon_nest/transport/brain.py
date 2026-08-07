@@ -8,7 +8,7 @@ import ssl
 import time
 import uuid
 from dataclasses import dataclass, field, replace
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable
 from urllib.parse import urlsplit
 
 import grpc
@@ -234,10 +234,12 @@ class BrainService(pb_grpc.BrainControlServicer):
         artifact_catalog: ArtifactCatalog | None = None,
         behavior_registry: BehaviorProfileRegistry | None = None,
         scheduler_config: SchedulerConfig | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.config = config or BrainServiceConfig()
         self.registry = registry or DeviceRegistry()
         self.tasks = tasks or TaskStore()
+        self._clock = clock
         self.dispatch = DispatchManager(self.registry, self.tasks)
         self.sessions = SessionRegistry()
         self.classifier = RuleBasedTaskClassifier()
@@ -1475,6 +1477,7 @@ class BrainService(pb_grpc.BrainControlServicer):
                 request, routed, timeout_ms, profile_context
             )
         parent = self.tasks.create(request.request_text, task_id=routed.task_id)
+        pipeline_start = self._clock()
         boundary: pb.BoundaryTensor | None = None
         final_result: PipelineAttemptResult | None = None
 
@@ -1602,9 +1605,7 @@ class BrainService(pb_grpc.BrainControlServicer):
                 )
             ),
             device_id=final_result.device_id,
-            latency_ms=(
-                final_result.metrics.execution_latency_ms if final_result.metrics else 0
-            ),
+            latency_ms=int((self._clock() - pipeline_start) * 1000),
             metrics=final_result.metrics,
         )
         self.tasks.record_result(accepted.attempt_id, result)
@@ -1618,6 +1619,7 @@ class BrainService(pb_grpc.BrainControlServicer):
         profile_context: str,
     ) -> pb.SubmitTaskResponse:
         parent = self.tasks.create(request.request_text, task_id=routed.task_id)
+        pipeline_start = self._clock()
         token_ids: list[int] = []
         token_text: list[str] = []
         final_result: PipelineAttemptResult | None = None
@@ -1690,11 +1692,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             success=True,
             output_text=decoded,
             device_id=final_result.device_id,
-            latency_ms=(
-                final_result.metrics.execution_latency_ms
-                if final_result.metrics
-                else 0
-            ),
+            latency_ms=int((self._clock() - pipeline_start) * 1000),
             metrics=final_result.metrics,
         )
         self.tasks.record_result(accepted.attempt_id, result)

@@ -9,6 +9,7 @@ import pytest
 
 from dragon_nest.artifacts import ArtifactRegistry
 from dragon_nest.classifier import RuleBasedTaskClassifier
+from dragon_nest.config import load_devices
 from dragon_nest.models import (
     Device,
     HardwareInventory,
@@ -47,7 +48,7 @@ def _models(target: str, compatibility: str) -> tuple[ModelCapability, ...]:
                 model_id=f"qwen3-1.7b-s{index}-{target}",
                 model_family="qwen3-1.7b",
                 role="pipeline_segment",
-                task_classes=("reasoning_analysis",),
+                task_classes=("chat_qa", "reasoning_analysis"),
                 max_context_tokens=512,
                 warm=False,
                 quality_score=0.8,
@@ -247,6 +248,122 @@ def test_public_grpc_path_runs_prefill_decode_and_cleans_sessions():
             assert response.output_text == "xx"
             assert response.device_id == "phone-01"
             assert all(len(agent.pipeline_sessions) == 0 for agent in agents)
+        finally:
+            await asyncio.gather(*(agent.stop() for agent in agents))
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await stop_server(server, service)
+
+    asyncio.run(scenario())
+
+
+def test_hardware_fabric_pipeline_stages_advertise_chat_qa():
+    """The physical Qwen3-1.7B pipeline stage entries in hardware-fabric.yaml
+    must advertise chat_qa (not just reasoning_analysis) so a plain chat
+    prompt is eligible for explicit Elastic routing without magic words."""
+    devices = load_devices(ROOT / "configs/hardware-fabric.yaml")
+    pipeline_models = [
+        model
+        for device in devices
+        for model in device.models
+        if model.model_id.startswith("qwen3-1.7b-s")
+    ]
+    assert len(pipeline_models) == 8
+    assert all("chat_qa" in model.task_classes for model in pipeline_models)
+    assert all("reasoning_analysis" in model.task_classes for model in pipeline_models)
+
+
+def test_public_grpc_path_accepts_plain_chat_prompt_under_explicit_elastic():
+    """A normal chat prompt with no "analyze"-style keyword must still route
+    onto the Qwen3-1.7B pipeline when the user explicitly selects Elastic;
+    it must not require magic reasoning_analysis trigger words."""
+
+    async def scenario() -> None:
+        service = BrainService()
+        server, port = await create_server(service, "127.0.0.1:0")
+        config = AgentClientConfig(
+            brain_target=f"127.0.0.1:{port}",
+            heartbeat_interval_seconds=0.05,
+            reconnect_initial_seconds=0.01,
+            reconnect_max_seconds=0.05,
+        )
+        agents = [DeviceAgent(device, config) for device in _devices(2000)]
+        tasks = [asyncio.create_task(agent.run_forever()) for agent in agents]
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*(agent.registered.wait() for agent in agents)),
+                timeout=3,
+            )
+            async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as channel:
+                response = await pb_grpc.BrainControlStub(channel).SubmitTask(
+                    pb.SubmitTaskRequest(
+                        request_text="What is the capital of Japan?",
+                        preferred_mode="elastic",
+                        execution_mode="auto",
+                        origin_device_id="phone-01",
+                        timeout_ms=2_000,
+                    )
+                )
+            assert response.success
+            assert response.output_text == "xx"
+            assert response.device_id == "phone-01"
+            assert all(len(agent.pipeline_sessions) == 0 for agent in agents)
+        finally:
+            await asyncio.gather(*(agent.stop() for agent in agents))
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await stop_server(server, service)
+
+    asyncio.run(scenario())
+
+
+def test_autoregressive_pipeline_latency_is_end_to_end_wall_clock_not_last_stage():
+    """Physical 4+0 acceptance took ~29s wall clock but the recorded
+    latency_ms reflected only the final stage's single-call
+    execution_latency_ms (~1s, from the mock/physical metrics). latency_ms
+    must instead cover the whole request: every stage of every generation
+    step, not just the last one."""
+
+    async def scenario() -> None:
+        # The mock stage always reports execution_latency_ms=1 regardless of
+        # how long the overall request actually took (see
+        # DeviceAgent._run_mock_pipeline_stage). Inject a fake clock so the
+        # simulated request spans 29.4s end-to-end, mirroring the physical
+        # 4+0 acceptance run, and assert the recorded latency reflects that
+        # span rather than the single mocked stage call.
+        clock_values = iter([100.0, 129.4])
+        service = BrainService(clock=lambda: next(clock_values))
+        server, port = await create_server(service, "127.0.0.1:0")
+        config = AgentClientConfig(
+            brain_target=f"127.0.0.1:{port}",
+            heartbeat_interval_seconds=0.05,
+            reconnect_initial_seconds=0.01,
+            reconnect_max_seconds=0.05,
+        )
+        agents = [DeviceAgent(device, config) for device in _devices(2000)]
+        tasks = [asyncio.create_task(agent.run_forever()) for agent in agents]
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*(agent.registered.wait() for agent in agents)),
+                timeout=3,
+            )
+            async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as channel:
+                response = await pb_grpc.BrainControlStub(channel).SubmitTask(
+                    pb.SubmitTaskRequest(
+                        request_text="Analyze this complex quality trade-off.",
+                        preferred_mode="elastic",
+                        execution_mode="auto",
+                        origin_device_id="phone-01",
+                        timeout_ms=5_000,
+                    )
+                )
+            assert response.success
+            records = service.tasks.records()
+            parent = next(
+                record
+                for record in records
+                if record.result is not None and record.result.output_text == "xx"
+            )
+            assert parent.result.latency_ms == 29400
+            assert parent.result.latency_ms != 1
         finally:
             await asyncio.gather(*(agent.stop() for agent in agents))
             await asyncio.gather(*tasks, return_exceptions=True)

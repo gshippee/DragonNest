@@ -51,7 +51,7 @@ devices:
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s0-s25
         model_family: qwen3-1.7b
         role: pipeline_segment
-        task_classes: [reasoning_analysis]
+        task_classes: [chat_qa, reasoning_analysis]
         max_context_tokens: 512
         warm: false
         quality_score: 0.80
@@ -81,7 +81,7 @@ devices:
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s1-s25
         model_family: qwen3-1.7b
         role: pipeline_segment
-        task_classes: [reasoning_analysis]
+        task_classes: [chat_qa, reasoning_analysis]
         max_context_tokens: 512
         warm: false
         quality_score: 0.80
@@ -113,7 +113,7 @@ devices:
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s2-s25
         model_family: qwen3-1.7b
         role: pipeline_segment
-        task_classes: [reasoning_analysis]
+        task_classes: [chat_qa, reasoning_analysis]
         max_context_tokens: 512
         warm: false
         quality_score: 0.80
@@ -145,7 +145,7 @@ devices:
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s3-s25
         model_family: qwen3-1.7b
         role: pipeline_segment
-        task_classes: [reasoning_analysis]
+        task_classes: [chat_qa, reasoning_analysis]
         max_context_tokens: 512
         warm: false
         quality_score: 0.80
@@ -215,7 +215,7 @@ devices:
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s0-xelite
         model_family: qwen3-1.7b
         role: pipeline_segment
-        task_classes: [reasoning_analysis]
+        task_classes: [chat_qa, reasoning_analysis]
         max_context_tokens: 512
         warm: false
         quality_score: 0.80
@@ -245,7 +245,7 @@ devices:
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s1-xelite
         model_family: qwen3-1.7b
         role: pipeline_segment
-        task_classes: [reasoning_analysis]
+        task_classes: [chat_qa, reasoning_analysis]
         max_context_tokens: 512
         warm: false
         quality_score: 0.80
@@ -277,7 +277,7 @@ devices:
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s2-xelite
         model_family: qwen3-1.7b
         role: pipeline_segment
-        task_classes: [reasoning_analysis]
+        task_classes: [chat_qa, reasoning_analysis]
         max_context_tokens: 512
         warm: false
         quality_score: 0.80
@@ -309,7 +309,7 @@ devices:
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s3-xelite
         model_family: qwen3-1.7b
         role: pipeline_segment
-        task_classes: [reasoning_analysis]
+        task_classes: [chat_qa, reasoning_analysis]
         max_context_tokens: 512
         warm: false
         quality_score: 0.80
