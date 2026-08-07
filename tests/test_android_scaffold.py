@@ -78,7 +78,14 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "Scan enrollment QR" in app
     assert "EnrollmentCaptureActivity.scanIntent" in app
     assert "About you and your preferences" in app
-    assert "Keep on phone" in app
+    assert "Keep on phone" not in app
+    assert "ComputePreferenceSelector" in app
+    assert 'Text("Compute"' in app
+    for mode in ("AUTO", "LOCAL", "ELASTIC", "QUALITY"):
+        assert mode in (
+            sources / "ComputePreference.kt"
+        ).read_text(encoding="utf-8")
+    assert "compute_${preference.wireValue}" in app
     assert "Ran on" in app
     assert "UserProfileStore" in view_model
     assert "BrainTaskClient" in view_model

@@ -19,6 +19,19 @@ class ExecutionMode(StrEnum):
     LAYER_PIPELINE = "layer_pipeline"
 
 
+class ComputePreference(StrEnum):
+    """User intent for model/topology selection.
+
+    Legacy wire values remain accepted by the Brain, but these four values are
+    the product-facing contract used by PersonaCare.
+    """
+
+    AUTO = "auto"
+    LOCAL = "local"
+    ELASTIC = "elastic"
+    QUALITY = "quality"
+
+
 class ReducerMode(StrEnum):
     CONCAT = "concat"
     FIRST_SUCCESS = "first_success"
@@ -256,6 +269,8 @@ class ExecutionPlan:
     stages: tuple[PipelineStage, ...] = ()
     steering: SteeringSpec = field(default_factory=SteeringSpec)
     origin_device_id: str = ""
+    preferred_mode: str = ComputePreference.AUTO.value
+    pipeline_id: str = ""
     reducer: str = ReducerMode.MOCK_SYNTHESIS.value
     reasons: tuple[str, ...] = ()
 

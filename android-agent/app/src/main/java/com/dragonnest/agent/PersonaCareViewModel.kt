@@ -98,7 +98,7 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
         prompt: String,
         personaId: String,
         useProfile: Boolean,
-        keepOnPhone: Boolean,
+        computePreference: ComputePreference,
     ) {
         val text = prompt.trim()
         if (text.isEmpty() || mutableChat.value.sending) return
@@ -114,7 +114,7 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
                         text,
                         personaId,
                         useProfile,
-                        keepOnPhone,
+                        computePreference.wireValue,
                     )
                 }
             }
@@ -182,6 +182,8 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
         val message = when (response.errorCode) {
             "STEERING_UNAVAILABLE" -> "That persona is not available on a connected model."
             "NO_ELIGIBLE_FALLBACK" -> "No compatible DragonNest device is ready."
+            "LOCAL_UNAVAILABLE" -> "Local compute is not available with current device resources."
+            "ELASTIC_UNAVAILABLE" -> "Elastic compute is not available on the connected devices yet."
             "ORIGIN_DEVICE_REQUIRED" -> "This request cannot run privately yet."
             else -> response.errorMessage.ifBlank { "DragonNest could not complete the request." }
         }

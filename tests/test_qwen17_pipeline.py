@@ -237,8 +237,8 @@ def test_public_grpc_path_runs_prefill_decode_and_cleans_sessions():
                 response = await pb_grpc.BrainControlStub(channel).SubmitTask(
                     pb.SubmitTaskRequest(
                         request_text="Analyze this complex quality trade-off.",
-                        preferred_mode="quality",
-                        execution_mode="layer_pipeline",
+                        preferred_mode="elastic",
+                        execution_mode="auto",
                         origin_device_id="phone-01",
                         timeout_ms=2_000,
                     )

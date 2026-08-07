@@ -34,6 +34,7 @@ from ..scheduler import (
     SchedulerConfig,
 )
 from ..models import (
+    ComputePreference,
     Device,
     ExecutionMetrics,
     ExecutionMode,
@@ -737,6 +738,26 @@ class BrainService(pb_grpc.BrainControlServicer):
             and personal_profile.preferred_mode != "auto"
         ):
             preferred_mode = personal_profile.preferred_mode
+        preferred_mode = preferred_mode.strip().lower()
+        supported_preferred_modes = {
+            "auto",
+            "local",
+            "elastic",
+            "quality",
+            "fast",
+            "private",
+            "parallel",
+        }
+        if preferred_mode not in supported_preferred_modes:
+            return pb.SubmitTaskResponse(
+                state="FAILED",
+                error_code="INVALID_PREFERRED_MODE",
+                error_message=(
+                    f"unsupported preferred_mode {preferred_mode!r}; choose "
+                    f"{', '.join(sorted(supported_preferred_modes))}"
+                ),
+                origin_device_id=request.origin_device_id,
+            )
         execution_mode = request.execution_mode or "auto"
         reducer = request.reducer or ReducerMode.MOCK_SYNTHESIS.value
         supported_reducers = {item.value for item in ReducerMode}
@@ -770,13 +791,13 @@ class BrainService(pb_grpc.BrainControlServicer):
                 origin_device_id=request.origin_device_id,
                 reducer=reducer,
             )
-        private_reason = ""
-        if preferred_mode == "private":
+        placement_constraint_reason = ""
+        if preferred_mode in {"private", "local"}:
             if not request.origin_device_id:
                 return pb.SubmitTaskResponse(
                     state="FAILED",
                     error_code="ORIGIN_DEVICE_REQUIRED",
-                    error_message="private mode requires origin_device_id",
+                    error_message=f"{preferred_mode} mode requires origin_device_id",
                     reducer=reducer,
                 )
             devices = [
@@ -787,16 +808,21 @@ class BrainService(pb_grpc.BrainControlServicer):
             if not devices:
                 return pb.SubmitTaskResponse(
                     state="FAILED",
-                    error_code="NO_ELIGIBLE_FALLBACK",
+                    error_code=(
+                        "LOCAL_UNAVAILABLE"
+                        if preferred_mode == "local"
+                        else "NO_ELIGIBLE_FALLBACK"
+                    ),
                     error_message=(
-                        f"private origin device {request.origin_device_id!r} is not eligible"
+                        f"{preferred_mode} origin device "
+                        f"{request.origin_device_id!r} is not eligible"
                     ),
                     origin_device_id=request.origin_device_id,
                     reducer=reducer,
                 )
-            private_reason = (
-                f"Private mode restricted routing to origin {request.origin_device_id}; "
-                "remote devices were excluded by policy."
+            placement_constraint_reason = (
+                f"{preferred_mode.title()} mode restricted routing to origin "
+                f"{request.origin_device_id}; remote devices were excluded by policy."
             )
         steering = (
             steering_from_proto(request.steering)
@@ -871,21 +897,73 @@ class BrainService(pb_grpc.BrainControlServicer):
                 origin_device_id=request.origin_device_id,
                 reducer=reducer,
             )
-        try:
-            routed, decision = self.router.route(plan, profile, devices)
-        except ValueError as exc:
-            return pb.SubmitTaskResponse(
-                task_id=plan.task_id,
-                state="FAILED",
-                error_code="NO_ELIGIBLE_FALLBACK",
-                error_message=str(exc),
+        auto_pipeline_error = ""
+        routed = None
+        decision = None
+        if (
+            preferred_mode == ComputePreference.AUTO.value
+            and execution_mode == ExecutionMode.AUTO.value
+            and profile.complexity == "high"
+        ):
+            elastic_plan = self.planner.plan(
+                request.request_text,
+                profile,
+                preferred_mode=ComputePreference.ELASTIC.value,
+                requested_execution_mode=ExecutionMode.AUTO.value,
+                steering=steering,
                 origin_device_id=request.origin_device_id,
                 reducer=reducer,
             )
+            elastic_plan = replace(
+                elastic_plan,
+                task_id=plan.task_id,
+                preferred_mode=ComputePreference.AUTO.value,
+                reasons=(
+                    "Auto considered elastic execution because the deterministic "
+                    f"classifier marked {profile.task_class}/{profile.complexity}.",
+                ),
+            )
+            try:
+                routed, decision = self.router.route(elastic_plan, profile, devices)
+            except ValueError as exc:
+                auto_pipeline_error = str(exc)
 
-        if private_reason:
-            routed = replace(routed, reasons=(*routed.reasons, private_reason))
-            decision = replace(decision, reasons=(*decision.reasons, private_reason))
+        if routed is None or decision is None:
+            try:
+                routed, decision = self.router.route(plan, profile, devices)
+            except ValueError as exc:
+                error_code = "NO_ELIGIBLE_FALLBACK"
+                if preferred_mode == ComputePreference.ELASTIC.value:
+                    error_code = "ELASTIC_UNAVAILABLE"
+                elif preferred_mode == ComputePreference.LOCAL.value:
+                    error_code = "LOCAL_UNAVAILABLE"
+                return pb.SubmitTaskResponse(
+                    task_id=plan.task_id,
+                    state="FAILED",
+                    error_code=error_code,
+                    error_message=str(exc),
+                    origin_device_id=request.origin_device_id,
+                    reducer=reducer,
+                )
+
+        preference_reason = self._compute_preference_reason(
+            preferred_mode,
+            profile,
+            routed,
+            decision,
+            devices,
+            auto_pipeline_error,
+        )
+        routed = replace(routed, reasons=(*routed.reasons, preference_reason))
+        decision = replace(decision, reasons=(*decision.reasons, preference_reason))
+
+        if placement_constraint_reason:
+            routed = replace(
+                routed, reasons=(*routed.reasons, placement_constraint_reason)
+            )
+            decision = replace(
+                decision, reasons=(*decision.reasons, placement_constraint_reason)
+            )
         if exclusion_reasons:
             routed = replace(routed, reasons=(*routed.reasons, *exclusion_reasons))
             decision = replace(
@@ -914,7 +992,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             if use_profile_context and personal_profile is not None
             else ""
         )
-        if plan.execution_mode == ExecutionMode.DATA_PARALLEL:
+        if routed.execution_mode == ExecutionMode.DATA_PARALLEL:
             return await self._submit_data_parallel(
                 request,
                 routed,
@@ -922,7 +1000,7 @@ class BrainService(pb_grpc.BrainControlServicer):
                 timeout_ms,
                 profile_context,
             )
-        if plan.execution_mode == ExecutionMode.LAYER_PIPELINE:
+        if routed.execution_mode == ExecutionMode.LAYER_PIPELINE:
             return await self._submit_layer_pipeline(
                 request,
                 routed,
@@ -972,6 +1050,79 @@ class BrainService(pb_grpc.BrainControlServicer):
             task_id=routed.task_id,
         )
         return self._response_for_task(dispatched.task)
+
+    @staticmethod
+    def _compute_preference_reason(
+        preferred_mode: str,
+        profile: TaskProfile,
+        routed: ExecutionPlan,
+        decision,
+        devices: list[Device],
+        auto_pipeline_error: str = "",
+    ) -> str:
+        if preferred_mode == ComputePreference.ELASTIC.value:
+            return (
+                "Elastic selected the executable Qwen3-1.7B distributed pipeline; "
+                "the cut follows cumulative stage memory and live device telemetry."
+            )
+        if preferred_mode == ComputePreference.LOCAL.value:
+            return (
+                f"Local selected {decision.selected_model_id} on origin "
+                f"{routed.origin_device_id}; remote fallback is prohibited."
+            )
+        if preferred_mode == ComputePreference.QUALITY.value:
+            selected_quality = next(
+                (
+                    model.quality_score
+                    for device in devices
+                    if device.device_id == decision.selected_device_id
+                    for model in device.models
+                    if model.model_id == decision.selected_model_id
+                ),
+                0.0,
+            )
+            return (
+                f"Quality selected the strongest feasible full model: "
+                f"{decision.selected_model_id} on {decision.selected_device_id} "
+                f"(quality_score={selected_quality:.2f})."
+            )
+        if preferred_mode == ComputePreference.AUTO.value:
+            if routed.execution_mode == ExecutionMode.LAYER_PIPELINE:
+                return (
+                    "Auto selected elastic execution: request classified "
+                    f"{profile.task_class}/{profile.complexity} and the "
+                    "Qwen3-1.7B distributed pipeline is feasible."
+                )
+            local = bool(routed.origin_device_id) and (
+                decision.selected_device_id == routed.origin_device_id
+            )
+            if local:
+                suffix = (
+                    f" Elastic was unavailable ({auto_pipeline_error})."
+                    if auto_pipeline_error
+                    else ""
+                )
+                return (
+                    f"Auto selected local execution: {profile.task_class}/"
+                    f"{profile.complexity} uses a full model and compatible origin "
+                    f"capacity is available.{suffix}"
+                )
+            if auto_pipeline_error:
+                return (
+                    "Auto selected remote full model: origin has insufficient "
+                    "capacity and elastic pipeline is unavailable "
+                    f"({auto_pipeline_error})."
+                )
+            return (
+                f"Auto selected remote full model: {profile.task_class}/"
+                f"{profile.complexity} uses single execution and the origin has "
+                "insufficient compatible capacity."
+            )
+        if preferred_mode == "private":
+            return "Private retained its legacy hard origin-only placement semantics."
+        if preferred_mode == "parallel":
+            return "Parallel retained its legacy explicit data-parallel semantics."
+        return f"Legacy {preferred_mode} preference retained deterministic routing."
 
     async def _submit_data_parallel(
         self,

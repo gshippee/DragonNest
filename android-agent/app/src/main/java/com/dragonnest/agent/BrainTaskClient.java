@@ -21,7 +21,7 @@ public final class BrainTaskClient {
             String prompt,
             String personaId,
             boolean useProfileContext,
-            boolean keepOnPhone) {
+            String computePreference) {
         OkHttpChannelBuilder builder = OkHttpChannelBuilder.forAddress(
                 configuration.brainHost(), configuration.brainPort());
         if (configuration.useTls()) {
@@ -35,7 +35,8 @@ public final class BrainTaskClient {
                     .withDeadlineAfter(90, TimeUnit.SECONDS)
                     .submitTask(SubmitTaskRequest.newBuilder()
                             .setRequestText(prompt.trim())
-                            .setPreferredMode(keepOnPhone ? "private" : "auto")
+                            .setPreferredMode(ComputePreference.Companion
+                                    .fromWireValue(computePreference).getWireValue())
                             .setExecutionMode("auto")
                             .setOriginDeviceId(configuration.deviceId())
                             .setUseProfileSteering(true)

@@ -43,7 +43,10 @@ class DeterministicRouter:
             profile,
             devices,
             plan.steering,
-            origin_device_id=plan.origin_device_id,
+            origin_device_id=(
+                "" if plan.preferred_mode == "quality" else plan.origin_device_id
+            ),
+            prefer_quality=plan.preferred_mode in {"local", "private", "quality"},
         )
         if not ranked:
             raise ValueError("no eligible device/model for task")
@@ -299,6 +302,8 @@ class DeterministicRouter:
         ] = []
         for key, records in sorted(groups.items()):
             pipeline_id, stage_count, *_identity = key
+            if plan.pipeline_id and pipeline_id != plan.pipeline_id:
+                continue
             by_device: dict[str, dict[int, ModelCapability]] = {}
             device_by_id: dict[str, Device] = {}
             for device, model in records:
@@ -519,6 +524,7 @@ class DeterministicRouter:
         steering: SteeringSpec,
         require_data_parallel: bool = False,
         origin_device_id: str = "",
+        prefer_quality: bool = False,
     ) -> list[tuple[float, Device, ModelCapability, str]]:
         ranked = []
         for device in devices:
@@ -550,14 +556,24 @@ class DeterministicRouter:
                     f"memory={device.health.available_memory_mb} MB; {steering_reason}"
                 )
                 ranked.append((score, device, model, reason))
-        ranked.sort(
-            key=lambda item: (
-                item[1].device_id != origin_device_id,
-                -item[0],
-                item[1].device_id,
-                item[2].model_id,
+        if prefer_quality:
+            ranked.sort(
+                key=lambda item: (
+                    -item[2].quality_score,
+                    -item[0],
+                    item[1].device_id,
+                    item[2].model_id,
+                )
             )
-        )
+        else:
+            ranked.sort(
+                key=lambda item: (
+                    item[1].device_id != origin_device_id,
+                    -item[0],
+                    item[1].device_id,
+                    item[2].model_id,
+                )
+            )
         return ranked
 
     @staticmethod

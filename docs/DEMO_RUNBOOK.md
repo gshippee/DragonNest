@@ -64,7 +64,7 @@ Preconditions:
 
 - X Elite Brain and the real `pc-01` worker are connected.
 - S25 PersonaCare is enrolled.
-- **Keep on phone** is OFF.
+- Compute preference is **Auto**.
 - Persona is **Balanced** and no steering is active.
 - PersonaCare **Demo controls** has simulated low RAM disabled/reset.
 
@@ -101,8 +101,9 @@ the phone-origin routing and live RAM-pressure transition, not phone NPU
 execution. Do not claim phone NPU execution until a real Android runtime
 artifact is integrated and physically verified.
 
-Turning **Keep on phone** ON sends `preferred_mode=private`. Under 64 MB that
-request must fail on the phone rather than fall back to the laptop.
+Choosing **Local** sends `preferred_mode=local`. Under 64 MB that request must
+fail on the phone rather than fall back to the laptop. Legacy callers that send
+`preferred_mode=private` retain the same hard origin-only placement semantics.
 
 ## 3. Control-plane fallback: Brain + two simulated agents + dashboard
 
@@ -276,14 +277,20 @@ explicit prefill/decode passes, and cleans stage-local sessions. Desktop tests
 prove the 2+2, 3+1, and 4+0 cuts through the public gRPC path. This remains
 mock/control-plane evidence until both targets execute their real QNN contexts.
 
-The classifier only marks
-a task as a layer-pipeline candidate when `preferred_mode == "quality"` and
-complexity is high. PersonaCare currently sends only `auto`, or `private` via
-**Keep on phone**, so the phone UI cannot yet request the quality/pipeline
-path automatically. Do not change the classifier in this milestone; use an
-explicit quality submission for physical bring-up. The exact artifact staging,
-evidence boundary, and acceptance commands are in
-`docs/QWEN3_1_7B_HANDOFF.md`.
+PersonaCare exposes compute intent independently from its behavior persona:
+
+- **Auto** uses the deterministic task classifier. High-complexity requests use
+  the pipeline only when its complete executable chain is advertised; otherwise
+  Auto falls back to the best feasible full model.
+- **Local** is hard origin-only single-model execution.
+- **Elastic** explicitly requests `qwen3-1.7b-w4a16-demo-v1` and returns
+  `ELASTIC_UNAVAILABLE` rather than silently substituting the 4B model.
+- **Quality** selects the highest-quality feasible full model and never treats
+  pipeline stages as complete models.
+
+The exact artifact staging, evidence boundary, and acceptance commands are in
+`docs/QWEN3_1_7B_HANDOFF.md`. These preferences make the control-plane decision
+inspectable; they do not upgrade the 1.7B pipeline to physical evidence.
 
 The eventual UI milestone is: phone request -> Brain selects complex quality
 mode -> fixed S0-S3 cut -> prompt pass -> repeated decode passes -> final text

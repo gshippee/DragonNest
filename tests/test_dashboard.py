@@ -47,6 +47,15 @@ def test_dashboard_serves_demo_control_room_and_registry_api():
         ):
             assert panel in admin_page.text
         assert "index\">01" not in admin_page.text
+        admin_script = (
+            ROOT / "src" / "dragon_nest" / "web" / "admin" / "app.js"
+        ).read_text(encoding="utf-8")
+        assert "Compute preference" in admin_script
+        assert "Classification" in admin_script
+        assert "Model selected" in admin_script
+        assert "Execution topology" in admin_script
+        for preference in ("Auto", "Local", "Elastic", "Quality"):
+            assert preference in admin_script
         assert user_page.status_code == 200
         assert "Personal AI" in user_page.text
         assert "Answer style" in user_page.text
@@ -464,6 +473,7 @@ def test_dashboard_private_submission_preserves_origin_and_reducer():
             assert submitted.json()["origin_device_id"] == "phone-01"
             assert submitted.json()["reducer"] == "concat"
             assert task["origin_device_id"] == "phone-01"
+            assert task["preferred_mode"] == "private"
             assert task["reducer"] == "concat"
             assert task["result"]["device_id"] == "phone-01"
         finally:

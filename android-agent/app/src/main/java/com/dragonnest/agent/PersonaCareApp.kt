@@ -349,7 +349,9 @@ private fun ChatScreen(
         mutableStateOf(profile?.personaId() ?: UserProfile.PERSONA_BALANCED)
     }
     var useProfile by rememberSaveable { mutableStateOf(true) }
-    var keepOnPhone by rememberSaveable { mutableStateOf(false) }
+    var computePreference by rememberSaveable {
+        mutableStateOf(ComputePreference.AUTO.wireValue)
+    }
     var showDemoControls by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
@@ -394,14 +396,19 @@ private fun ChatScreen(
                 onPersonaChange = { persona = it },
                 useProfile = useProfile,
                 onUseProfileChange = { useProfile = it },
-                keepOnPhone = keepOnPhone,
-                onKeepOnPhoneChange = { keepOnPhone = it },
+                computePreference = computePreference,
+                onComputePreferenceChange = { computePreference = it },
                 sending = chat.sending,
                 canSend = status.state == AgentConnectionState.CONNECTED,
                 onSend = {
                     val sent = prompt.trim()
                     if (sent.isNotEmpty()) {
-                        viewModel.submit(sent, persona, useProfile, keepOnPhone)
+                        viewModel.submit(
+                            sent,
+                            persona,
+                            useProfile,
+                            ComputePreference.fromWireValue(computePreference),
+                        )
                         prompt = ""
                     }
                 },
@@ -510,8 +517,8 @@ private fun ChatComposer(
     onPersonaChange: (String) -> Unit,
     useProfile: Boolean,
     onUseProfileChange: (Boolean) -> Unit,
-    keepOnPhone: Boolean,
-    onKeepOnPhoneChange: (Boolean) -> Unit,
+    computePreference: String,
+    onComputePreferenceChange: (String) -> Unit,
     sending: Boolean,
     canSend: Boolean,
     onSend: () -> Unit,
@@ -526,13 +533,16 @@ private fun ChatComposer(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         PersonaSelector(selected = persona, onSelected = onPersonaChange)
+        ComputePreferenceSelector(
+            selected = computePreference,
+            onSelected = onComputePreferenceChange,
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CompactToggle("Use profile", useProfile, onUseProfileChange)
-            CompactToggle("Keep on phone", keepOnPhone, onKeepOnPhoneChange)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -556,6 +566,38 @@ private fun ChatComposer(
                 Icon(Icons.AutoMirrored.Outlined.Send, "Send")
             }
         }
+    }
+}
+
+@Composable
+private fun ComputePreferenceSelector(
+    selected: String,
+    onSelected: (String) -> Unit,
+) {
+    val selectedPreference = ComputePreference.fromWireValue(selected)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Compute", style = MaterialTheme.typography.labelMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ComputePreference.entries.forEach { preference ->
+                FilterChip(
+                    selected = preference.wireValue == selectedPreference.wireValue,
+                    onClick = { onSelected(preference.wireValue) },
+                    label = { Text(preference.displayName, maxLines = 1) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("compute_${preference.wireValue}"),
+                )
+            }
+        }
+        Text(
+            selectedPreference.description,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("compute_description"),
+        )
     }
 }
 

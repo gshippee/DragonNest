@@ -1024,6 +1024,8 @@ def _task_dict(service: BrainService, task: TaskRecord) -> dict[str, Any]:
         "error_message": task.error_message,
         "profile": asdict(profile) if profile else None,
         "execution_mode": plan.execution_mode.value if plan else "internal",
+        "preferred_mode": plan.preferred_mode if plan else "auto",
+        "pipeline_id": plan.pipeline_id if plan else "",
         "origin_device_id": plan.origin_device_id if plan else "",
         "reducer": plan.reducer if plan else "",
         "route_reasons": service._route_reasons.get(task.task_id, ()),

@@ -571,7 +571,7 @@ def test_grpc_layer_pipeline_transfers_boundary_between_agents():
                 response = await pb_grpc.BrainControlStub(channel).SubmitTask(
                     pb.SubmitTaskRequest(
                         request_text="Analyze this complex trade-off.",
-                        preferred_mode="quality",
+                        preferred_mode="auto",
                         execution_mode="layer_pipeline",
                         timeout_ms=2_000,
                     )
@@ -617,7 +617,7 @@ def test_grpc_layer_pipeline_retries_compatible_stage_after_disconnect():
                 response = await pb_grpc.BrainControlStub(channel).SubmitTask(
                     pb.SubmitTaskRequest(
                         request_text="Analyze this complex trade-off.",
-                        preferred_mode="quality",
+                        preferred_mode="auto",
                         execution_mode="layer_pipeline",
                         timeout_ms=2_000,
                     )
@@ -707,7 +707,7 @@ def test_grpc_pipeline_steering_is_assigned_to_owning_stage():
                 response = await pb_grpc.BrainControlStub(channel).SubmitTask(
                     pb.SubmitTaskRequest(
                         request_text="Analyze this concisely.",
-                        preferred_mode="quality",
+                        preferred_mode="auto",
                         execution_mode="layer_pipeline",
                         steering=pb.SteeringSpec(
                             enabled=True,

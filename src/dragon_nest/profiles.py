@@ -265,7 +265,15 @@ def _validated_values(
     positions = steering_positions.strip()
     if not name or len(name) > 120:
         raise ProfileError("person_name must contain 1 to 120 characters")
-    if mode not in {"auto", "fast", "private", "quality", "parallel"}:
+    if mode not in {
+        "auto",
+        "local",
+        "elastic",
+        "quality",
+        "fast",
+        "private",
+        "parallel",
+    }:
         raise ProfileError("preferred_mode is invalid")
     if not math.isfinite(steering_alpha):
         raise ProfileError("steering_alpha must be finite")

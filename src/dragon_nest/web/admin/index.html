@@ -79,7 +79,7 @@
       <form id="task-form" class="task-form">
         <label class="field">Request<textarea id="request" rows="4" required>Compare both options and recommend one.</textarea></label>
         <div class="control-grid">
-          <label class="field">Mode<select id="preferred-mode"><option value="auto">Auto</option><option value="fast">Fast</option><option value="private">Private</option><option value="quality">Quality</option><option value="parallel">Parallel</option></select></label>
+          <label class="field">Compute preference<select id="preferred-mode"><option value="auto">Auto</option><option value="local">Local</option><option value="elastic">Elastic</option><option value="quality">Quality</option><option value="fast">Fast (legacy)</option><option value="private">Private (legacy)</option><option value="parallel">Parallel (legacy)</option></select></label>
           <label class="field">Execution<select id="execution-mode"><option value="auto">Auto</option><option value="single">Single</option><option value="data_parallel">Data Parallel</option><option value="layer_pipeline">Layer Pipeline</option></select></label>
           <label class="field">Origin device<select id="origin-device"><option value="">None</option></select></label>
           <label class="field">Reducer<select id="reducer"><option value="mock_synthesis">Mock synthesis</option><option value="concat">Concatenate</option><option value="first_success">First success</option></select></label>

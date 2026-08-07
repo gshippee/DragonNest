@@ -73,7 +73,7 @@ function renderLiveRequests() {
   $("recent-requests").innerHTML = state.tasks.length ? state.tasks.map((task) => {
     const destination = requestDestination(task);
     const selected = task.task_id === state.selectedTask?.task_id;
-    return `<button type="button" class="request-row ${selected ? "selected" : ""}" data-task="${esc(task.task_id)}"><time>${formatTaskTime(task.created_at)}</time><span class="request-copy"><strong>${esc(shortPrompt(task.request))}</strong><small>${esc(deviceName(task.origin_device_id) || "Admin")} → ${esc(destination)}</small></span><span class="request-mode">${esc(task.execution_mode)}</span><span class="status-pill ${statusClass(task.state)}">${esc(task.state)}</span><span class="request-latency">${task.result?.latency_ms ? `${task.result.latency_ms} ms` : ""}</span></button>`;
+    return `<button type="button" class="request-row ${selected ? "selected" : ""}" data-task="${esc(task.task_id)}"><time>${formatTaskTime(task.created_at)}</time><span class="request-copy"><strong>${esc(shortPrompt(task.request))}</strong><small>${esc(deviceName(task.origin_device_id) || "Admin")} → ${esc(destination)}</small></span><span class="request-mode">${esc(preferenceLabel(task.preferred_mode))} · ${esc(task.execution_mode)}</span><span class="status-pill ${statusClass(task.state)}">${esc(task.state)}</span><span class="request-latency">${task.result?.latency_ms ? `${task.result.latency_ms} ms` : ""}</span></button>`;
   }).join("") : '<div class="empty">No requests yet</div>';
   document.querySelectorAll(".request-row").forEach((button) => button.addEventListener("click", () => selectTask(button.dataset.task, true)));
 }
@@ -81,7 +81,7 @@ function renderLiveRequests() {
 function renderTask(task) {
   const profile = task.profile;
   $("selected-prompt").innerHTML = `<span>User request</span><strong>${esc(task.request)}</strong>`;
-  $("profile-strip").innerHTML = profile ? `<span class="profile-item">Class <strong>${esc(profile.task_class)}</strong></span><span class="profile-item">Confidence <strong>${Math.round(profile.confidence * 100)}%</strong></span><span class="profile-item">Mode <strong>${esc(task.execution_mode)}</strong></span><span class="profile-item">Privacy <strong>${esc(profile.privacy_tier)}</strong></span><span class="profile-item">Reducer <strong>${esc(task.reducer)}</strong></span>${task.origin_device_id ? `<span class="profile-item">Origin <strong>${esc(task.origin_device_id)}</strong></span>` : ""}${task.steering?.enabled ? `<span class="profile-item">Steering <strong>${esc(task.steering.vector_id)} @ ${task.steering.alpha}</strong></span>` : ""}` : "";
+  $("profile-strip").innerHTML = profile ? `<span class="profile-item">Compute preference <strong>${esc(preferenceLabel(task.preferred_mode))}</strong></span><span class="profile-item">Classification <strong>${esc(profile.task_class)} / ${esc(profile.complexity)}</strong></span><span class="profile-item">Model selected <strong>${esc(task.result?.metrics?.model_id || task.progress?.[0]?.model_id || "pending")}</strong></span><span class="profile-item">Execution topology <strong>${esc(task.execution_mode)}</strong></span><span class="profile-item">Confidence <strong>${Math.round(profile.confidence * 100)}%</strong></span><span class="profile-item">Privacy <strong>${esc(profile.privacy_tier)}</strong></span><span class="profile-item">Reducer <strong>${esc(task.reducer)}</strong></span>${task.origin_device_id ? `<span class="profile-item">Origin <strong>${esc(task.origin_device_id)}</strong></span>` : ""}${task.steering?.enabled ? `<span class="profile-item">Steering <strong>${esc(task.steering.vector_id)} @ ${task.steering.alpha}</strong></span>` : ""}` : "";
   $("route-trace").innerHTML = task.route_reasons?.length ? task.route_reasons.map((reason) => `<li>${esc(reason)}</li>`).join("") : '<li class="empty">No route trace available</li>';
   $("route-topology").innerHTML = renderTopology(task);
   $("progress").textContent = JSON.stringify(task.progress || []);
@@ -120,6 +120,11 @@ function renderVectors() {
 
 function deviceName(deviceId) {
   return state.devices.find((device) => device.device_id === deviceId)?.display_name || "";
+}
+
+function preferenceLabel(value) {
+  const labels = { auto: "Auto", local: "Local", elastic: "Elastic", quality: "Quality", private: "Private", fast: "Fast", parallel: "Parallel" };
+  return labels[value] || value || "Auto";
 }
 
 function shortPrompt(value) {
