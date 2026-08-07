@@ -184,6 +184,47 @@ artifacts:
     build_provenance: PersonaCare android_static_steering release static-steering-v1 concise layer-7 alpha -4 bundle
     readiness: ready
 
+  - artifact_id: qwen3-0.6b-s25-detailed
+    base_model_id: qwen3-0.6b
+    base_model_family: qwen3
+    model_version: c1899de289a04d12100db370d81485cdf75e47ca
+    behavior_profile_id: detailed
+    steering_realization: baked_profile
+    vector_id: concise-vs-verbose-layer-7
+    compatibility_classes: [snapdragon-8-elite]
+    runtime: genie
+    runtime_version: QAIRT-2.45 / GenieX-0.3.5
+    quantization: w4a16
+    max_context_tokens: 512
+    topology: full_model
+    artifact_size_mb: 601
+    estimated_memory_mb: 2048
+    build_provenance: PersonaCare layer-7 alpha +4 bake; QAIRT 2.45 prompt+token contexts physically verified on SM-S938U1 HTP
+    readiness: ready
+
+  # Runtime activation steering on the forked GenieX closure. Carries no
+  # behavior_profile_id: alpha realizes Concise or Detailed per request, so
+  # this one artifact serves both and must not be mistaken for a baked bake.
+  - artifact_id: qwen3-0.6b-s25-runtime-steerable
+    base_model_id: qwen3-0.6b
+    base_model_family: qwen3
+    model_version: c1899de289a04d12100db370d81485cdf75e47ca
+    steering_realization: runtime_vector
+    vector_id: concise-vs-verbose-layer-7
+    compatibility_classes: [snapdragon-8-elite]
+    runtime: genie_aux
+    runtime_version: GenieX-fork-aux-0.3.5 / QAIRT-2.45
+    quantization: w4a16
+    max_context_tokens: 512
+    topology: full_model
+    artifact_size_mb: 685
+    estimated_memory_mb: 2048
+    build_provenance: >-
+      SteerLab dual-phase runtime-steering export (AI Hub links jpeyz0605 /
+      jgznmqz6g); alpha + steering_vector aux inputs at layer 7 on both prompt
+      and decode graphs
+    readiness: ready
+
   # Unsupported 4B S25 target retained only as an explicit non-routable record.
   - artifact_id: qwen3-4b-qnn-s25
     base_model_id: qwen3-4b

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
+import shutil
+import subprocess
 
 import httpx
 
@@ -16,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVICE_WORKER = ROOT / "src" / "dragon_nest" / "web" / "sw.js"
 
 
-def test_dashboard_serves_six_panel_ui_and_registry_api():
+def test_dashboard_serves_demo_control_room_and_registry_api():
     async def scenario() -> None:
         steering = SteeringRegistry.from_yaml(ROOT / "configs/steering-vectors.yaml")
         service = BrainService(steering_registry=steering)
@@ -35,15 +38,24 @@ def test_dashboard_serves_six_panel_ui_and_registry_api():
 
         assert admin_page.status_code == 200
         for panel in (
+            "DragonNest Fabric",
             "Device Registry",
-            "Add device",
-            "Task Submission",
-            "Routing Trace",
-            "Parallel Progress",
-            "Result",
-            "Live Event Log",
+            "Live Requests",
+            "Selected Request",
+            "Advanced",
+            "Event log",
         ):
             assert panel in admin_page.text
+        assert "index\">01" not in admin_page.text
+        admin_script = (
+            ROOT / "src" / "dragon_nest" / "web" / "admin" / "app.js"
+        ).read_text(encoding="utf-8")
+        assert "Compute preference" in admin_script
+        assert "Classification" in admin_script
+        assert "Model selected" in admin_script
+        assert "Execution topology" in admin_script
+        for preference in ("Auto", "Local", "Elastic", "Quality"):
+            assert preference in admin_script
         assert user_page.status_code == 200
         assert "Personal AI" in user_page.text
         assert "Answer style" in user_page.text
@@ -57,6 +69,58 @@ def test_dashboard_serves_six_panel_ui_and_registry_api():
         assert vectors[0]["vector_id"] == "concise-vs-verbose-layer-7"
 
     asyncio.run(scenario())
+
+
+def test_dashboard_follows_latest_then_preserves_manual_pin():
+    node = shutil.which("node")
+    if node is None:
+        raise AssertionError("Node.js is required for the dashboard state regression")
+    helper = ROOT / "src" / "dragon_nest" / "web" / "admin" / "selection.js"
+    request_a = {
+        "task_id": "request-a",
+        "created_at": 100,
+        "origin_device_id": "phone-01",
+        "state": "SUCCEEDED",
+        "result": {"device_id": "phone-01"},
+        "model_id": "android-mock-v1",
+    }
+    request_b = {
+        "task_id": "request-b",
+        "created_at": 200,
+        "origin_device_id": "phone-01",
+        "state": "SUCCEEDED",
+        "result": {
+            "device_id": "pc-01",
+            "metrics": {
+                "model_id": "qwen3-4b-genie",
+                "runtime_name": "genie",
+                "accelerator": "htp",
+            },
+        },
+    }
+    script = """
+const helper = require(process.argv[1]);
+const tasks = JSON.parse(process.argv[2]);
+const followed = helper.reconcileSelection(tasks, '', true);
+const pinned = helper.reconcileSelection(tasks, 'request-a', false);
+const resumed = helper.reconcileSelection(tasks, pinned.selectedTaskId, true);
+process.stdout.write(JSON.stringify({ followed, pinned, resumed }));
+"""
+    completed = subprocess.run(
+        [node, "-e", script, str(helper), json.dumps([request_a, request_b])],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+
+    assert [task["task_id"] for task in result["followed"]["tasks"]] == [
+        "request-b",
+        "request-a",
+    ]
+    assert result["followed"]["selectedTaskId"] == "request-b"
+    assert result["pinned"]["selectedTaskId"] == "request-a"
+    assert result["resumed"]["selectedTaskId"] == "request-b"
 
 
 def test_service_worker_uses_network_first_shell_updates():
@@ -191,7 +255,7 @@ def test_personal_profile_supplies_default_mode_and_steering():
             )
             assert result["steering"]["alpha"] == -1.5
             assert any(
-                "Applied personal profile 'Alex'" in reason
+                "Applied legacy personal profile 'Alex'" in reason
                 for reason in result["route_reasons"]
             )
             assert devices[0]["display_name"] == "Alex's Phone"
@@ -220,6 +284,40 @@ def test_dashboard_simulation_updates_registry_health():
         assert response.status_code == 200
         assert response.json()["status"] == "UNHEALTHY"
         assert response.json()["health"]["network_rtt_ms"] == 180
+        assert set(response.json()["simulated_fields"]) == {
+            "network_rtt_ms",
+            "thermal_level",
+        }
+
+    asyncio.run(scenario())
+
+
+def test_dashboard_can_remove_a_device_and_its_profile_association():
+    async def scenario() -> None:
+        service = BrainService()
+        device = load_devices(ROOT / "configs/dev-fabric.yaml")[0]
+        service.registry.register(device)
+        profile = service.profiles.create(person_name="Alex")
+        service.profiles.associate_device(
+            device.device_id, profile.profile_id, device.display_name
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=create_dashboard_app(service)),
+            base_url="http://test",
+        ) as client:
+            removed = await client.delete(f"/api/devices/{device.device_id}")
+            devices = (await client.get("/api/devices")).json()
+            missing = await client.delete(f"/api/devices/{device.device_id}")
+
+        assert removed.status_code == 200
+        assert removed.json() == {
+            "device_id": device.device_id,
+            "status": "REMOVED",
+        }
+        assert devices == []
+        assert service.profiles.association_for_device(device.device_id) is None
+        assert device.device_id in service.removed_device_ids
+        assert missing.status_code == 404
 
     asyncio.run(scenario())
 
@@ -375,6 +473,7 @@ def test_dashboard_private_submission_preserves_origin_and_reducer():
             assert submitted.json()["origin_device_id"] == "phone-01"
             assert submitted.json()["reducer"] == "concat"
             assert task["origin_device_id"] == "phone-01"
+            assert task["preferred_mode"] == "private"
             assert task["reducer"] == "concat"
             assert task["result"]["device_id"] == "phone-01"
         finally:

@@ -51,7 +51,13 @@ param(
 
     [string]$EnrollmentToken,
 
-    [string]$ExpectedChecksum = "sha256-tree:940ab2c9958a4f0a53b6964fa96fc427f1f4d33dd1046584e040ec6f2298c929"
+    [string]$ExpectedChecksum = "sha256-tree:940ab2c9958a4f0a53b6964fa96fc427f1f4d33dd1046584e040ec6f2298c929",
+
+    [switch]$EnableQwen17Pipeline,
+
+    [string]$Qairt245Root = $env:QAIRT_ROOT,
+
+    [string]$Qwen17Tokenizer = $env:DRAGONNEST_QWEN17_TOKENIZER
 )
 
 $ErrorActionPreference = "Stop"
@@ -109,6 +115,37 @@ if ($checksum -ne $ExpectedChecksum) {
 $env:GENIE_DIR = $GenieDir
 $env:QWEN3_4B_GENIE_SHA256_TREE = $checksum
 
+if ($EnableQwen17Pipeline) {
+    if (-not $Qairt245Root -or -not (Test-Path -LiteralPath $Qairt245Root -PathType Container)) {
+        Fail "Qwen3-1.7B requires -Qairt245Root (or `$env:QAIRT_ROOT) pointing at the physically verified QAIRT 2.45 install."
+    }
+    $env:QAIRT_ROOT = (Resolve-Path -LiteralPath $Qairt245Root).Path
+    $contextUtility = Join-Path $env:QAIRT_ROOT "bin\aarch64-windows-msvc\qnn-context-binary-utility.exe"
+    $netRun = Join-Path $env:QAIRT_ROOT "bin\aarch64-windows-msvc\qnn-net-run.exe"
+    if (-not (Test-Path -LiteralPath $contextUtility) -or -not (Test-Path -LiteralPath $netRun)) {
+        Fail "QAIRT 2.45 root is missing qnn-context-binary-utility.exe or qnn-net-run.exe: $env:QAIRT_ROOT"
+    }
+    foreach ($index in 0..3) {
+        $name = "QWEN3_1_7B_S${index}_XELITE_QNN"
+        $path = [Environment]::GetEnvironmentVariable($name)
+        if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Fail "$name must point at the checksummed S$index context binary."
+        }
+    }
+    & $Python -c "import torch, transformers, sentencepiece" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Qwen3-1.7B Python dependencies are missing. Run: .\.venv\Scripts\python.exe -m pip install -e `".[dev,xelite]`""
+    }
+    if (-not $Qwen17Tokenizer) {
+        $Qwen17Tokenizer = "Qwen/Qwen3-1.7B"
+    }
+    $env:DRAGONNEST_QWEN17_TOKENIZER = $Qwen17Tokenizer
+    & $Python -c "from transformers import AutoConfig, AutoTokenizer; import sys; AutoConfig.from_pretrained(sys.argv[1]); AutoTokenizer.from_pretrained(sys.argv[1], is_fast=False)" $Qwen17Tokenizer
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Qwen3-1.7B tokenizer/config is unavailable. Connect once to fetch Qwen/Qwen3-1.7B or pass -Qwen17Tokenizer <local-directory>."
+    }
+}
+
 $validation = & $Python "scripts\check_artifacts.py" 2>&1
 $genieLine = $validation | Where-Object { $_ -match "qwen3-4b-genie" }
 if (-not ($genieLine -match "^READY")) {
@@ -142,17 +179,30 @@ Write-Host "Runtime:         Genie / $RuntimeVersion"
 Write-Host "Execution:       HTP"
 Write-Host "Steering:        none"
 Write-Host "Artifact state:  installed / cold"
+if ($EnableQwen17Pipeline) {
+    Write-Host "Elastic stages:  qwen3-1.7b S0-S3 / QNN / QAIRT-2.45 / HTP"
+    Write-Host "Elastic state:   production provider enabled; physical Agent acceptance pending"
+}
 Write-Host "Brain:           $Brain"
 Write-Host "Connecting..."
 Write-Host ""
 
-& $Python "scripts\run_agent.py" `
-    --device-id $DeviceId `
-    --brain $Brain `
-    --enrollment-token $EnrollmentToken `
-    --fabric "configs\hardware-fabric.yaml" `
-    --artifact-manifest "configs\model-artifacts.yaml" `
-    --compatibility-key $CompatibilityKey `
-    --runtime-name genie `
-    --runtime-version $RuntimeVersion `
-    --accelerator-available
+$agentArguments = @(
+    "scripts\run_agent.py",
+    "--device-id", $DeviceId,
+    "--brain", $Brain,
+    "--enrollment-token", $EnrollmentToken,
+    "--fabric", "configs\hardware-fabric.yaml",
+    "--artifact-manifest", "configs\model-artifacts.yaml",
+    "--compatibility-key", $CompatibilityKey,
+    "--runtime-name", "genie",
+    "--runtime-version", $RuntimeVersion,
+    "--accelerator-available"
+)
+if ($EnableQwen17Pipeline) {
+    $agentArguments += @(
+        "--compatible-target-class", "windows-arm64-x1e-v73-qairt-2.45",
+        "--enable-qwen17-pipeline"
+    )
+}
+& $Python @agentArguments

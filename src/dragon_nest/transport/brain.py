@@ -8,13 +8,13 @@ import ssl
 import time
 import uuid
 from dataclasses import dataclass, field, replace
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable
 from urllib.parse import urlsplit
 
 import grpc
 import httpx
 
-from ..behavior import BehaviorProfileRegistry
+from ..behavior import BehaviorProfileRegistry, SteeringRealizationMode
 from ..classifier import RuleBasedTaskClassifier
 from ..deployments import (
     ArtifactCatalog,
@@ -34,6 +34,7 @@ from ..scheduler import (
     SchedulerConfig,
 )
 from ..models import (
+    ComputePreference,
     Device,
     ExecutionMetrics,
     ExecutionMode,
@@ -43,6 +44,7 @@ from ..models import (
     PipelineStage,
     ReducerMode,
     RuntimeName,
+    SteeringMode,
     SteeringSpec,
     TaskProfile,
     TaskResult,
@@ -68,12 +70,7 @@ from .conversion import (
 )
 
 
-PERSONA_STEERING: dict[str, float | None] = {
-    "balanced": None,
-    "concise": -2.0,
-    "detailed": 2.0,
-}
-PERSONA_VECTOR_ID = "concise-vs-verbose-layer-7"
+PERSONA_IDS = frozenset({"balanced", "concise", "detailed"})
 
 
 @dataclass(frozen=True)
@@ -81,9 +78,18 @@ class BrainServiceConfig:
     brain_id: str = "dragon-nest-brain"
     enrollment_token: str = "dev-token"
     heartbeat_interval_ms: int = 2000
-    default_task_timeout_ms: int = 30_000
+    # Must stay above the slowest single attempt a routed device can legitimately
+    # take, or the Brain aborts work that was still progressing. The binding case
+    # is the X Elite 4B, whose Genie generation budget is 240s (the qwen3-4b-genie
+    # runtime_options.timeout_sec in configs/model-artifacts.yaml) because it pays
+    # a full ~3.1GB context load before emitting a token. 270s leaves that 30s of
+    # headroom so Genie is always the layer that gives up first and can report a
+    # real error. At the original 30s the Brain killed those attempts every time
+    # and the origin device saw a generic failure it had not itself timed out on.
+    default_task_timeout_ms: int = 270_000
     sweep_interval_seconds: float = 1.0
     max_boundary_bytes: int = 32 * 1024 * 1024
+    pipeline_max_new_tokens: int = 8
     dev_mode: bool = True
     tls_server_certificate_path: str = ""
     tls_server_key_path: str = ""
@@ -106,6 +112,9 @@ class PipelineAttemptResult:
     error_code: str = ""
     error_message: str = ""
     metrics: ExecutionMetrics | None = None
+    next_token_id: int | None = None
+    eos: bool = False
+    token_text: str = ""
 
 
 class AgentSession:
@@ -233,10 +242,12 @@ class BrainService(pb_grpc.BrainControlServicer):
         artifact_catalog: ArtifactCatalog | None = None,
         behavior_registry: BehaviorProfileRegistry | None = None,
         scheduler_config: SchedulerConfig | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.config = config or BrainServiceConfig()
         self.registry = registry or DeviceRegistry()
         self.tasks = tasks or TaskStore()
+        self._clock = clock
         self.dispatch = DispatchManager(self.registry, self.tasks)
         self.sessions = SessionRegistry()
         self.classifier = RuleBasedTaskClassifier()
@@ -269,6 +280,7 @@ class BrainService(pb_grpc.BrainControlServicer):
         self._device_simulations: dict[str, dict[str, float | bool | int]] = {}
         self.certificate_fingerprints: dict[str, str] = {}
         self.revoked_certificate_fingerprints: set[str] = set()
+        self.removed_device_ids: set[str] = set()
         self.enrollment = EnrollmentManager(
             default_ttl_seconds=self.config.enrollment_session_ttl_seconds
         )
@@ -522,6 +534,29 @@ class BrainService(pb_grpc.BrainControlServicer):
             self.dispatch.handle_device_offline(device_id)
             self.registry.deregister(device_id)
 
+    async def remove_device(self, device_id: str) -> None:
+        """Remove a device from this fabric until it is explicitly re-enrolled."""
+        self.registry.get(device_id)
+        session = await self.sessions.get(device_id)
+        if session is not None and session.transport == "http_endpoint":
+            await self.deregister_http_device(device_id)
+        else:
+            self.removed_device_ids.add(device_id)
+            fingerprint = self.certificate_fingerprints.pop(device_id, "")
+            if fingerprint:
+                self.revoked_certificate_fingerprints.add(fingerprint)
+            await self.sessions.close_device(device_id)
+            self.dispatch.handle_device_offline(device_id)
+            with contextlib.suppress(KeyError):
+                self.registry.deregister(device_id)
+        self.enrollment.revoke_device_credential(device_id)
+        self.profiles.disassociate_device(device_id)
+        self._device_simulations.pop(device_id, None)
+        self.runtime_steering_disabled.discard(device_id)
+        for key in tuple(self.deployment_overrides):
+            if key[0] == device_id:
+                del self.deployment_overrides[key]
+
     async def fetch_http_endpoint_info(
         self, base_url: str, credential_env: str = ""
     ) -> dict[str, object]:
@@ -709,6 +744,26 @@ class BrainService(pb_grpc.BrainControlServicer):
             and personal_profile.preferred_mode != "auto"
         ):
             preferred_mode = personal_profile.preferred_mode
+        preferred_mode = preferred_mode.strip().lower()
+        supported_preferred_modes = {
+            "auto",
+            "local",
+            "elastic",
+            "quality",
+            "fast",
+            "private",
+            "parallel",
+        }
+        if preferred_mode not in supported_preferred_modes:
+            return pb.SubmitTaskResponse(
+                state="FAILED",
+                error_code="INVALID_PREFERRED_MODE",
+                error_message=(
+                    f"unsupported preferred_mode {preferred_mode!r}; choose "
+                    f"{', '.join(sorted(supported_preferred_modes))}"
+                ),
+                origin_device_id=request.origin_device_id,
+            )
         execution_mode = request.execution_mode or "auto"
         reducer = request.reducer or ReducerMode.MOCK_SYNTHESIS.value
         supported_reducers = {item.value for item in ReducerMode}
@@ -742,13 +797,13 @@ class BrainService(pb_grpc.BrainControlServicer):
                 origin_device_id=request.origin_device_id,
                 reducer=reducer,
             )
-        private_reason = ""
-        if preferred_mode == "private":
+        placement_constraint_reason = ""
+        if preferred_mode in {"private", "local"}:
             if not request.origin_device_id:
                 return pb.SubmitTaskResponse(
                     state="FAILED",
                     error_code="ORIGIN_DEVICE_REQUIRED",
-                    error_message="private mode requires origin_device_id",
+                    error_message=f"{preferred_mode} mode requires origin_device_id",
                     reducer=reducer,
                 )
             devices = [
@@ -759,16 +814,21 @@ class BrainService(pb_grpc.BrainControlServicer):
             if not devices:
                 return pb.SubmitTaskResponse(
                     state="FAILED",
-                    error_code="NO_ELIGIBLE_FALLBACK",
+                    error_code=(
+                        "LOCAL_UNAVAILABLE"
+                        if preferred_mode == "local"
+                        else "NO_ELIGIBLE_FALLBACK"
+                    ),
                     error_message=(
-                        f"private origin device {request.origin_device_id!r} is not eligible"
+                        f"{preferred_mode} origin device "
+                        f"{request.origin_device_id!r} is not eligible"
                     ),
                     origin_device_id=request.origin_device_id,
                     reducer=reducer,
                 )
-            private_reason = (
-                f"Private mode restricted routing to origin {request.origin_device_id}; "
-                "remote devices were excluded by policy."
+            placement_constraint_reason = (
+                f"{preferred_mode.title()} mode restricted routing to origin "
+                f"{request.origin_device_id}; remote devices were excluded by policy."
             )
         steering = (
             steering_from_proto(request.steering)
@@ -783,12 +843,14 @@ class BrainService(pb_grpc.BrainControlServicer):
         persona_id = request.persona_id or (
             personal_profile.persona_id if personal_profile is not None else "balanced"
         )
-        if persona_id not in PERSONA_STEERING:
+        if persona_id not in PERSONA_IDS:
             return pb.SubmitTaskResponse(
                 state="FAILED",
                 error_code="INVALID_PERSONA",
                 error_message=f"unsupported persona {persona_id!r}",
             )
+        behavior_profile_id = persona_id
+        profile_realization = SteeringMode.NONE.value
         profile_steering_reason = ""
         if (
             not steering.enabled
@@ -799,25 +861,40 @@ class BrainService(pb_grpc.BrainControlServicer):
         ):
             steering = self._steering_for_profile(personal_profile)
             profile_steering_reason = (
-                f"Applied personal profile {personal_profile.person_name!r}: "
-                f"steering {steering.vector_id} at alpha {steering.alpha}."
+                f"Applied legacy personal profile {personal_profile.person_name!r}: "
+                f"runtime activation steering {steering.vector_id} at alpha "
+                f"{steering.alpha}."
             )
-        elif not steering.enabled and use_profile_steering:
-            try:
-                steering = self._steering_for_persona(persona_id)
-            except ProfileError as exc:
-                return pb.SubmitTaskResponse(
-                    state="FAILED",
-                    error_code="STEERING_UNAVAILABLE",
-                    error_message=str(exc),
-                    origin_device_id=request.origin_device_id,
-                    reducer=reducer,
-                )
-            if steering.enabled:
+            profile_realization = SteeringMode.RUNTIME_VECTOR.value
+        elif not steering.enabled and use_profile_steering and persona_id != "balanced":
+            # Preference ladder for the *same* profile: bind the calibrated
+            # vector at runtime when some enrolled device actually exposes the
+            # aux inputs, otherwise run the separately compiled baked artifact.
+            # Both realize the requested persona; neither is prompt conditioning.
+            runtime_vector = self._runtime_vector_for_persona(
+                persona_id, request.origin_device_id
+            )
+            if runtime_vector is not None:
+                profile_realization = SteeringMode.RUNTIME_VECTOR.value
+                steering = runtime_vector
                 profile_steering_reason = (
-                    f"Applied persona {persona_id!r}: steering "
-                    f"{steering.vector_id} at alpha {steering.alpha}."
+                    f"Profile requested {persona_id!r}; Brain bound steering "
+                    f"vector {steering.vector_id} at layer {steering.target_layer} "
+                    f"as a runtime activation input."
                 )
+            else:
+                profile_realization = SteeringMode.BAKED_PROFILE.value
+                steering = SteeringSpec(
+                    enabled=False,
+                    mode=SteeringMode.BAKED_PROFILE.value,
+                    behavior_profile_id=persona_id,
+                )
+                profile_steering_reason = (
+                    f"Profile requested {persona_id!r}; Brain selected a separately "
+                    "executable baked activation profile and sent no runtime vector."
+                )
+        elif steering.enabled:
+            profile_realization = SteeringMode.RUNTIME_VECTOR.value
         if steering.enabled and self.steering_registry is None:
             return pb.SubmitTaskResponse(
                 state="FAILED",
@@ -832,8 +909,26 @@ class BrainService(pb_grpc.BrainControlServicer):
             requested_execution_mode=execution_mode,
             steering=steering,
             origin_device_id=request.origin_device_id,
+            behavior_profile_id=behavior_profile_id,
+            profile_realization=profile_realization,
             reducer=reducer,
         )
+        if (
+            plan.execution_mode == ExecutionMode.LAYER_PIPELINE
+            and profile_realization == SteeringMode.BAKED_PROFILE.value
+        ):
+            return pb.SubmitTaskResponse(
+                task_id=plan.task_id,
+                state="FAILED",
+                error_code="PROFILE_UNAVAILABLE",
+                error_message=(
+                    f"{persona_id} has no executable realization for the requested "
+                    "distributed pipeline"
+                ),
+                origin_device_id=request.origin_device_id,
+                reducer=reducer,
+                steering=steering_to_proto(steering),
+            )
         if reducer == ReducerMode.FIRST_SUCCESS and plan.execution_mode != ExecutionMode.DATA_PARALLEL:
             return pb.SubmitTaskResponse(
                 task_id=plan.task_id,
@@ -843,21 +938,105 @@ class BrainService(pb_grpc.BrainControlServicer):
                 origin_device_id=request.origin_device_id,
                 reducer=reducer,
             )
-        try:
-            routed, decision = self.router.route(plan, profile, devices)
-        except ValueError as exc:
-            return pb.SubmitTaskResponse(
-                task_id=plan.task_id,
-                state="FAILED",
-                error_code="NO_ELIGIBLE_FALLBACK",
-                error_message=str(exc),
+        auto_pipeline_error = ""
+        routed = None
+        decision = None
+        if (
+            preferred_mode == ComputePreference.AUTO.value
+            and execution_mode == ExecutionMode.AUTO.value
+            and profile.complexity == "high"
+            and profile_realization != SteeringMode.BAKED_PROFILE.value
+        ):
+            elastic_plan = self.planner.plan(
+                request.request_text,
+                profile,
+                preferred_mode=ComputePreference.ELASTIC.value,
+                requested_execution_mode=ExecutionMode.AUTO.value,
+                steering=steering,
                 origin_device_id=request.origin_device_id,
+                behavior_profile_id=behavior_profile_id,
+                profile_realization=profile_realization,
                 reducer=reducer,
             )
+            elastic_plan = replace(
+                elastic_plan,
+                task_id=plan.task_id,
+                preferred_mode=ComputePreference.AUTO.value,
+                reasons=(
+                    "Auto considered elastic execution because the deterministic "
+                    f"classifier marked {profile.task_class}/{profile.complexity}.",
+                ),
+            )
+            try:
+                routed, decision = self.router.route(elastic_plan, profile, devices)
+            except ValueError as exc:
+                auto_pipeline_error = str(exc)
 
-        if private_reason:
-            routed = replace(routed, reasons=(*routed.reasons, private_reason))
-            decision = replace(decision, reasons=(*decision.reasons, private_reason))
+        route_error = ""
+        if routed is None or decision is None:
+            try:
+                routed, decision = self.router.route(plan, profile, devices)
+            except ValueError as exc:
+                route_error = str(exc)
+                # Nothing could realize the requested behavior -- typically the
+                # only steerable bundle is on a device that just became
+                # ineligible (memory, thermal, disconnect). Rather than fail
+                # the request outright, drop to an unsteered base model when
+                # the profile's own policy admits it, and report the
+                # realization as none so the downgrade is never hidden.
+                unsteered = self._unsteered_fallback_plan(plan, behavior_profile_id)
+                if unsteered is not None:
+                    try:
+                        routed, decision = self.router.route(
+                            unsteered, profile, devices
+                        )
+                    except ValueError:
+                        routed, decision = None, None
+                    else:
+                        plan = unsteered
+                        steering = unsteered.steering
+                        profile_realization = SteeringMode.NONE.value
+                        profile_steering_reason = (
+                            f"No eligible device could realize {behavior_profile_id!r}; "
+                            "its fallback policy admits an unsteered realization, so "
+                            "DragonNest answered with a base model and reports the "
+                            "realization as none."
+                        )
+            if routed is None or decision is None:
+                error_code = "NO_ELIGIBLE_FALLBACK"
+                if preferred_mode == ComputePreference.ELASTIC.value:
+                    error_code = "ELASTIC_UNAVAILABLE"
+                elif preferred_mode == ComputePreference.LOCAL.value:
+                    error_code = "LOCAL_UNAVAILABLE"
+                if profile_realization == SteeringMode.BAKED_PROFILE.value:
+                    error_code = "PROFILE_UNAVAILABLE"
+                return pb.SubmitTaskResponse(
+                    task_id=plan.task_id,
+                    state="FAILED",
+                    error_code=error_code,
+                    error_message=route_error,
+                    origin_device_id=request.origin_device_id,
+                    reducer=reducer,
+                )
+
+        preference_reason = self._compute_preference_reason(
+            preferred_mode,
+            profile,
+            routed,
+            decision,
+            devices,
+            auto_pipeline_error,
+        )
+        routed = replace(routed, reasons=(*routed.reasons, preference_reason))
+        decision = replace(decision, reasons=(*decision.reasons, preference_reason))
+
+        if placement_constraint_reason:
+            routed = replace(
+                routed, reasons=(*routed.reasons, placement_constraint_reason)
+            )
+            decision = replace(
+                decision, reasons=(*decision.reasons, placement_constraint_reason)
+            )
         if exclusion_reasons:
             routed = replace(routed, reasons=(*routed.reasons, *exclusion_reasons))
             decision = replace(
@@ -872,7 +1051,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             )
 
         self._route_reasons[plan.task_id] = decision.reasons
-        self._steering_specs[plan.task_id] = steering
+        self._steering_specs[plan.task_id] = routed.steering
         self.task_profiles[plan.task_id] = profile
         self.execution_plans[plan.task_id] = routed
         timeout_ms = request.timeout_ms or self.config.default_task_timeout_ms
@@ -886,7 +1065,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             if use_profile_context and personal_profile is not None
             else ""
         )
-        if plan.execution_mode == ExecutionMode.DATA_PARALLEL:
+        if routed.execution_mode == ExecutionMode.DATA_PARALLEL:
             return await self._submit_data_parallel(
                 request,
                 routed,
@@ -894,7 +1073,7 @@ class BrainService(pb_grpc.BrainControlServicer):
                 timeout_ms,
                 profile_context,
             )
-        if plan.execution_mode == ExecutionMode.LAYER_PIPELINE:
+        if routed.execution_mode == ExecutionMode.LAYER_PIPELINE:
             return await self._submit_layer_pipeline(
                 request,
                 routed,
@@ -916,7 +1095,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             model_id = model_by_device.get(device.device_id)
             if model_id is None:
                 fallback_plan, fallback_decision = self.router.route(
-                    plan, profile, [device]
+                    routed, profile, [device]
                 )
                 model_id = fallback_decision.selected_model_id
                 model_by_device[device.device_id] = model_id
@@ -944,6 +1123,79 @@ class BrainService(pb_grpc.BrainControlServicer):
             task_id=routed.task_id,
         )
         return self._response_for_task(dispatched.task)
+
+    @staticmethod
+    def _compute_preference_reason(
+        preferred_mode: str,
+        profile: TaskProfile,
+        routed: ExecutionPlan,
+        decision,
+        devices: list[Device],
+        auto_pipeline_error: str = "",
+    ) -> str:
+        if preferred_mode == ComputePreference.ELASTIC.value:
+            return (
+                "Elastic selected the executable Qwen3-1.7B distributed pipeline; "
+                "the cut follows cumulative stage memory and live device telemetry."
+            )
+        if preferred_mode == ComputePreference.LOCAL.value:
+            return (
+                f"Local selected {decision.selected_model_id} on origin "
+                f"{routed.origin_device_id}; remote fallback is prohibited."
+            )
+        if preferred_mode == ComputePreference.QUALITY.value:
+            selected_quality = next(
+                (
+                    model.quality_score
+                    for device in devices
+                    if device.device_id == decision.selected_device_id
+                    for model in device.models
+                    if model.model_id == decision.selected_model_id
+                ),
+                0.0,
+            )
+            return (
+                f"Quality selected the strongest feasible full model: "
+                f"{decision.selected_model_id} on {decision.selected_device_id} "
+                f"(quality_score={selected_quality:.2f})."
+            )
+        if preferred_mode == ComputePreference.AUTO.value:
+            if routed.execution_mode == ExecutionMode.LAYER_PIPELINE:
+                return (
+                    "Auto selected elastic execution: request classified "
+                    f"{profile.task_class}/{profile.complexity} and the "
+                    "Qwen3-1.7B distributed pipeline is feasible."
+                )
+            local = bool(routed.origin_device_id) and (
+                decision.selected_device_id == routed.origin_device_id
+            )
+            if local:
+                suffix = (
+                    f" Elastic was unavailable ({auto_pipeline_error})."
+                    if auto_pipeline_error
+                    else ""
+                )
+                return (
+                    f"Auto selected local execution: {profile.task_class}/"
+                    f"{profile.complexity} uses a full model and compatible origin "
+                    f"capacity is available.{suffix}"
+                )
+            if auto_pipeline_error:
+                return (
+                    "Auto selected remote full model: origin has insufficient "
+                    "capacity and elastic pipeline is unavailable "
+                    f"({auto_pipeline_error})."
+                )
+            return (
+                f"Auto selected remote full model: {profile.task_class}/"
+                f"{profile.complexity} uses single execution and the origin has "
+                "insufficient compatible capacity."
+            )
+        if preferred_mode == "private":
+            return "Private retained its legacy hard origin-only placement semantics."
+        if preferred_mode == "parallel":
+            return "Parallel retained its legacy explicit data-parallel semantics."
+        return f"Legacy {preferred_mode} preference retained deterministic routing."
 
     async def _submit_data_parallel(
         self,
@@ -1271,7 +1523,12 @@ class BrainService(pb_grpc.BrainControlServicer):
         timeout_ms: int,
         profile_context: str = "",
     ) -> pb.SubmitTaskResponse:
+        if routed.stages and all(stage.stage_count > 0 for stage in routed.stages):
+            return await self._submit_autoregressive_pipeline(
+                request, routed, timeout_ms, profile_context
+            )
         parent = self.tasks.create(request.request_text, task_id=routed.task_id)
+        pipeline_start = self._clock()
         boundary: pb.BoundaryTensor | None = None
         final_result: PipelineAttemptResult | None = None
 
@@ -1399,19 +1656,280 @@ class BrainService(pb_grpc.BrainControlServicer):
                 )
             ),
             device_id=final_result.device_id,
-            latency_ms=(
-                final_result.metrics.execution_latency_ms if final_result.metrics else 0
-            ),
+            latency_ms=int((self._clock() - pipeline_start) * 1000),
             metrics=final_result.metrics,
         )
         self.tasks.record_result(accepted.attempt_id, result)
         return self._response_for_task(self.tasks.get(parent.task_id))
+
+    async def _submit_autoregressive_pipeline(
+        self,
+        request: pb.SubmitTaskRequest,
+        routed: ExecutionPlan,
+        timeout_ms: int,
+        profile_context: str,
+    ) -> pb.SubmitTaskResponse:
+        parent = self.tasks.create(request.request_text, task_id=routed.task_id)
+        pipeline_start = self._clock()
+        token_ids: list[int] = []
+        token_text: list[str] = []
+        final_result: PipelineAttemptResult | None = None
+        failure: tuple[str, str, str] | None = None
+        try:
+            next_input_token = 0
+            for generation_step in range(self.config.pipeline_max_new_tokens):
+                operation = (
+                    pb.PIPELINE_PREFILL
+                    if generation_step == 0
+                    else pb.PIPELINE_DECODE
+                )
+                final_result = await self._execute_pipeline_pass(
+                    parent.task_id,
+                    request,
+                    routed,
+                    timeout_ms,
+                    profile_context,
+                    operation,
+                    next_input_token,
+                    generation_step,
+                )
+                if not final_result.success:
+                    failure = (
+                        routed.stages[-1].stage_id,
+                        final_result.error_code or "PIPELINE_STAGE_FAILED",
+                        final_result.error_message,
+                    )
+                    break
+                if final_result.next_token_id is None:
+                    failure = (
+                        routed.stages[-1].stage_id,
+                        "NEXT_TOKEN_MISSING",
+                        "final pipeline stage did not return an explicit next_token_id",
+                    )
+                    break
+                token_ids.append(final_result.next_token_id)
+                token_text.append(final_result.token_text)
+                if final_result.eos:
+                    break
+                next_input_token = final_result.next_token_id
+        except Exception as exc:
+            failure = ("", "PIPELINE_GENERATION_FAILED", str(exc))
+        finally:
+            await self._reset_pipeline_sessions(parent.task_id, routed, timeout_ms)
+
+        if failure is not None:
+            stage_id, error_code, error_message = failure
+            return self._fail_pipeline_parent(
+                parent.task_id, stage_id, error_code, error_message
+            )
+        if final_result is None or not token_ids:
+            return self._fail_pipeline_parent(
+                parent.task_id,
+                "",
+                "PIPELINE_GENERATION_FAILED",
+                "pipeline produced no tokens",
+            )
+
+        accepted = self.tasks.assign(parent.task_id, "brain-pipeline")
+        self.tasks.mark_running(accepted.attempt_id)
+        pipeline_id = routed.stages[0].pipeline_id
+        self._attempt_models[accepted.attempt_id] = pipeline_id
+        decoded = "".join(token_text)
+        if not decoded:
+            decoded = " ".join(f"<token:{token_id}>" for token_id in token_ids)
+        result = TaskResult(
+            task_id=parent.task_id,
+            attempt_id=accepted.attempt_id,
+            success=True,
+            output_text=decoded,
+            device_id=final_result.device_id,
+            latency_ms=int((self._clock() - pipeline_start) * 1000),
+            metrics=final_result.metrics,
+        )
+        self.tasks.record_result(accepted.attempt_id, result)
+        return self._response_for_task(self.tasks.get(parent.task_id))
+
+    async def _execute_pipeline_pass(
+        self,
+        parent_task_id: str,
+        request: pb.SubmitTaskRequest,
+        routed: ExecutionPlan,
+        timeout_ms: int,
+        profile_context: str,
+        operation: int,
+        token_id: int,
+        generation_step: int,
+    ) -> PipelineAttemptResult:
+        boundary: pb.BoundaryTensor | None = None
+        final_result: PipelineAttemptResult | None = None
+        operation_name = pb.PipelineOperation.Name(operation).lower()
+        for index, stage in enumerate(routed.stages):
+            child_task_id = (
+                f"{parent_task_id}:{operation_name}:{generation_step}:{stage.stage_id}"
+            )
+            candidates, models_by_device = self._pipeline_stage_candidates(stage)
+
+            async def execute_attempt(
+                internal_task_id: str,
+                attempt_id: str,
+                device: Device,
+                current_stage: PipelineStage = stage,
+                input_boundary: pb.BoundaryTensor | None = boundary,
+                final_stage: bool = index == len(routed.stages) - 1,
+            ) -> PipelineAttemptResult:
+                session = await self._resolve_session(device.device_id)
+                model_id = models_by_device[device.device_id]
+                self._attempt_models[attempt_id] = model_id
+                owns_steering_layer = (
+                    current_stage.start_layer is not None
+                    and current_stage.end_layer is not None
+                    and current_stage.start_layer
+                    <= routed.steering.target_layer
+                    <= current_stage.end_layer
+                )
+                stage_steering = (
+                    routed.steering
+                    if routed.steering.enabled and owns_steering_layer
+                    else SteeringSpec()
+                )
+                result = await session.execute_pipeline_stage(
+                    pb.ExecutePipelineStage(
+                        task_id=parent_task_id,
+                        attempt_id=attempt_id,
+                        stage_id=current_stage.stage_id,
+                        stage_index=current_stage.stage_index,
+                        request_text=(
+                            self._request_text_for_session(
+                                session, request.request_text, profile_context
+                            )
+                            if operation == pb.PIPELINE_PREFILL
+                            else ""
+                        ),
+                        model_id=model_id,
+                        input_boundary=input_boundary,
+                        final_stage=final_stage,
+                        timeout_ms=timeout_ms,
+                        steering=steering_to_proto(stage_steering),
+                        operation=operation,
+                        pipeline_id=current_stage.pipeline_id,
+                        stage_count=current_stage.stage_count,
+                        token_id=token_id,
+                        max_new_tokens=self.config.pipeline_max_new_tokens,
+                    ),
+                    timeout_seconds=timeout_ms / 1000,
+                )
+                internal = pipeline_result_from_proto(result)
+                output_boundary = (
+                    result.output_boundary
+                    if result.HasField("output_boundary")
+                    and result.output_boundary.data
+                    else None
+                )
+                if internal.success and not final_stage:
+                    if output_boundary is None:
+                        return PipelineAttemptResult(
+                            False,
+                            "",
+                            device.device_id,
+                            error_code="BOUNDARY_TENSOR_MISSING",
+                            error_message=(
+                                f"{current_stage.stage_id} returned no boundary tensor"
+                            ),
+                            metrics=internal.metrics,
+                        )
+                    error = self._boundary_error(output_boundary)
+                    if error:
+                        return PipelineAttemptResult(
+                            False,
+                            "",
+                            device.device_id,
+                            error_code="INVALID_BOUNDARY_TENSOR",
+                            error_message=error,
+                            metrics=internal.metrics,
+                        )
+                return PipelineAttemptResult(
+                    success=internal.success,
+                    output_text=internal.output_text,
+                    device_id=device.device_id,
+                    boundary=output_boundary,
+                    error_code=internal.error_code,
+                    error_message=internal.error_message,
+                    metrics=internal.metrics,
+                    next_token_id=(
+                        result.next_token_id
+                        if result.HasField("next_token_id")
+                        else None
+                    ),
+                    eos=result.eos,
+                    token_text=result.token_text,
+                )
+
+            dispatched = await self.dispatch.submit(
+                request.request_text,
+                candidates,
+                execute_attempt,
+                task_id=child_task_id,
+            )
+            if dispatched.task.state.value != "SUCCEEDED" or not isinstance(
+                dispatched.task.result, PipelineAttemptResult
+            ):
+                return PipelineAttemptResult(
+                    False,
+                    "",
+                    stage.selected_device_id,
+                    error_code=(
+                        dispatched.task.error_code or "PIPELINE_STAGE_FAILED"
+                    ),
+                    error_message=dispatched.task.error_message,
+                )
+            final_result = dispatched.task.result
+            boundary = final_result.boundary
+        if final_result is None:
+            return PipelineAttemptResult(
+                False,
+                "",
+                "",
+                error_code="PIPELINE_STAGE_FAILED",
+                error_message="pipeline contained no stages",
+            )
+        return final_result
+
+    async def _reset_pipeline_sessions(
+        self, task_id: str, routed: ExecutionPlan, timeout_ms: int
+    ) -> None:
+        for stage in routed.stages:
+            try:
+                session = await self._resolve_session(stage.selected_device_id)
+                attempt_id = f"reset-{uuid.uuid4()}"
+                await session.execute_pipeline_stage(
+                    pb.ExecutePipelineStage(
+                        task_id=task_id,
+                        attempt_id=attempt_id,
+                        stage_id=stage.stage_id,
+                        stage_index=stage.stage_index,
+                        model_id=stage.selected_model_id,
+                        timeout_ms=timeout_ms,
+                        operation=pb.PIPELINE_RESET,
+                        pipeline_id=stage.pipeline_id,
+                        stage_count=stage.stage_count,
+                    ),
+                    timeout_seconds=timeout_ms / 1000,
+                )
+            except Exception:
+                # The Agent also clears every pipeline session when its stream
+                # closes, so a failed reset cannot leak state across reconnect.
+                continue
 
     def _pipeline_stage_candidates(
         self, stage: PipelineStage
     ) -> tuple[tuple[str, ...], dict[str, str]]:
         candidates = [stage.selected_device_id]
         models = {stage.selected_device_id: stage.selected_model_id}
+        # Indexed pipelines are routed as a cumulative-memory placement. A
+        # per-stage failover could violate that placement or introduce a
+        # second device transition, so it must be re-routed as a whole.
+        if stage.stage_count > 0:
+            return tuple(candidates), models
         for device in self.registry.eligible():
             if device.device_id == stage.selected_device_id:
                 continue
@@ -1613,9 +2131,18 @@ class BrainService(pb_grpc.BrainControlServicer):
         if not registration.models:
             return "at least one model capability is required", ""
         issued_credential = ""
+        bootstrap_session = (
+            self.enrollment.session_for_bootstrap(registration.enrollment_token)
+            if self.config.dev_mode
+            else None
+        )
+        if (
+            registration.device_id in self.removed_device_ids
+            and bootstrap_session is None
+        ):
+            return "device was removed from this fabric; enroll it again", ""
         if self.config.dev_mode:
             credential = registration.enrollment_token
-            bootstrap_session = self.enrollment.session_for_bootstrap(credential)
             profile_values: dict[str, object] | None = None
             if registration.HasField("personal_profile"):
                 try:
@@ -1708,6 +2235,8 @@ class BrainService(pb_grpc.BrainControlServicer):
                     )
                 except ProfileError as exc:
                     return f"personal profile association failed: {exc}", ""
+        if bootstrap_session is not None:
+            self.removed_device_ids.discard(registration.device_id)
         return "", issued_credential
 
     def _profile_values_from_registration(
@@ -1727,16 +2256,8 @@ class BrainService(pb_grpc.BrainControlServicer):
             ),
         }
         persona_id = str(values["persona_id"])
-        if persona_id not in PERSONA_STEERING:
+        if persona_id not in PERSONA_IDS:
             raise ProfileError(f"unsupported persona {persona_id!r}")
-        persona_alpha = PERSONA_STEERING[persona_id]
-        if persona_alpha is None:
-            values["steering_vector_id"] = ""
-            values["steering_alpha"] = 0.0
-        else:
-            values["steering_vector_id"] = PERSONA_VECTOR_ID
-            values["steering_alpha"] = persona_alpha
-            values["steering_positions"] = "last"
         vector_id = str(values["steering_vector_id"])
         if vector_id:
             if self.steering_registry is None:
@@ -1760,6 +2281,87 @@ class BrainService(pb_grpc.BrainControlServicer):
         # ProfileStore performs the canonical string and numeric validation.
         return values
 
+    def _unsteered_fallback_plan(
+        self, plan: ExecutionPlan, behavior_profile_id: str
+    ) -> ExecutionPlan | None:
+        """``plan`` with its behavior realization dropped, or None to fail closed.
+
+        Returned only when the profile's own declared fallback policy admits an
+        unsteered realization. Degrading is never inferred: a profile declared
+        ``exact_only`` or ``reject`` still fails rather than quietly answering
+        from a model that does not carry its behavior.
+
+        Clearing the steering spec is what widens the candidate set -- the
+        router refuses to serve an unsteered request from a baked artifact or
+        from a bundle whose only steering mode is ``runtime_vector``, so the
+        degraded plan lands on a genuine base model rather than silently
+        borrowing a behavior-specific one.
+        """
+        if plan.profile_realization == SteeringMode.NONE.value:
+            return None
+        if self.behavior_registry is None or not behavior_profile_id:
+            return None
+        try:
+            behavior = self.behavior_registry.get(behavior_profile_id)
+        except KeyError:
+            return None
+        if SteeringRealizationMode.NONE not in behavior.allowed_modes():
+            return None
+        return replace(
+            plan,
+            steering=SteeringSpec(),
+            profile_realization=SteeringMode.NONE.value,
+        )
+
+    def _runtime_vector_for_persona(
+        self, persona_id: str, origin_device_id: str
+    ) -> SteeringSpec | None:
+        """Build a runtime-vector spec if a device can genuinely honour it.
+
+        Returns ``None`` whenever anything is missing -- no behavior registry,
+        no steering registry, a profile that does not declare a runtime vector,
+        or no enrolled device advertising the exact vector and layer. Callers
+        then fall back to the baked realization of the same profile. This
+        deliberately never *approximates*: an unrunnable runtime vector must
+        become a baked bake or a refusal, never a quietly unsteered answer.
+        """
+        if self.behavior_registry is None or self.steering_registry is None:
+            return None
+        try:
+            profile = self.behavior_registry.get(persona_id)
+        except Exception:
+            return None
+        if SteeringRealizationMode.RUNTIME_VECTOR not in profile.allowed_modes():
+            return None
+        realization = profile.realization_for(
+            SteeringRealizationMode.RUNTIME_VECTOR
+        )
+        if realization is None or not realization.vector_id:
+            return None
+        spec = SteeringSpec(
+            enabled=True,
+            vector_id=realization.vector_id,
+            model_family=profile.base_model_family,
+            target_layer=realization.injection_layer,
+            alpha=realization.alpha,
+            positions=realization.positions,
+            mode=SteeringMode.RUNTIME_VECTOR.value,
+            behavior_profile_id=persona_id,
+        )
+        for record in self.registry.records():
+            device = record.device
+            if origin_device_id and device.device_id != origin_device_id:
+                # A Local/origin-pinned request can only be served by the
+                # origin device, so another device's capability must not
+                # decide this request's realization.
+                continue
+            for model in device.models:
+                if not model.supports_steering:
+                    continue
+                if self.steering_registry.validate(spec, model)[0]:
+                    return spec
+        return None
+
     def _steering_for_profile(self, profile: PersonalProfile) -> SteeringSpec:
         if self.steering_registry is None:
             return SteeringSpec()
@@ -1772,20 +2374,6 @@ class BrainService(pb_grpc.BrainControlServicer):
                 default.allow_remote_vector and profile.allow_remote_vector
             ),
         )
-
-    def _steering_for_persona(self, persona_id: str) -> SteeringSpec:
-        alpha = PERSONA_STEERING[persona_id]
-        if alpha is None:
-            return SteeringSpec()
-        if self.steering_registry is None:
-            raise ProfileError(f"Persona {persona_id!r} requires steering")
-        try:
-            default = self.steering_registry.default_spec(PERSONA_VECTOR_ID)
-        except KeyError as exc:
-            raise ProfileError(
-                f"Persona {persona_id!r} is not available on this Brain"
-            ) from exc
-        return replace(default, alpha=alpha, positions="last")
 
     @staticmethod
     def _persona_from_steering(vector_id: str, alpha: float) -> str:

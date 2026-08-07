@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.List;
 
 public final class AndroidArtifactRegistryTest {
     @Test
@@ -40,6 +41,51 @@ public final class AndroidArtifactRegistryTest {
         assertEquals("qwen-s25", parsed.capability().getModelId());
         assertEquals("qnn", parsed.capability().getRuntimeName());
         assertEquals("htp", parsed.capability().getSupportedAccelerators(0));
+        assertFalse(parsed.capability().getWarm());
+    }
+
+    @Test
+    public void advertisesExactBakedProfileWithoutRuntimeSteering() throws Exception {
+        Path root = Files.createTempDirectory("dragonnest-baked-profile");
+        Path artifact = root.resolve("concise/model.bin");
+        Files.createDirectories(artifact.getParent());
+        Files.write(artifact, "baked concise".getBytes(StandardCharsets.UTF_8));
+        String manifest = """
+                {"models":[{
+                  "model_id":"qwen3-0.6b-s25-concise", "model_version":"s25-v1",
+                  "runtime":"genie", "artifact_path":"concise/model.bin",
+                  "checksum":"sha256:%s", "tokenizer_id":"Qwen/Qwen3-0.6B",
+                  "precision":"w4a16", "supported_accelerators":["htp"],
+                  "min_memory_mb":2048, "max_context_tokens":512,
+                  "supports_steering":false, "supports_data_parallel":false,
+                  "supports_layer_pipeline":false, "model_family":"qwen3",
+                  "role":"small_chat", "task_classes":["chat_qa"],
+                  "artifact_id":"qwen3-0.6b-s25-concise-qairt245",
+                  "steering_mode":"baked_profile", "behavior_profile_id":"concise",
+                  "target_compatibility_class":"android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5"
+                }]}""".formatted(sha256(Files.readAllBytes(artifact)));
+
+        AndroidModelArtifact parsed = AndroidArtifactRegistry.fromJson(manifest, root)
+                .all().get(0);
+
+        assertTrue(AndroidArtifactRegistry.fromJson(manifest, root).isVerified(parsed));
+        assertEquals("baked_profile", parsed.capability().getSteeringModes(0));
+        assertEquals("concise", parsed.capability().getBehaviorProfileIds(0));
+        assertFalse(parsed.capability().getSupportsSteering());
+        assertFalse(parsed.capability().getWarm());
+        assertEquals(
+                "android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5",
+                AndroidRuntimeCatalog.resolveCompatibilityKey(
+                        List.of(parsed.capability()),
+                        "android-arm64-v8a-sm8750-api35"));
+    }
+
+    @Test
+    public void genericCompatibilityRemainsWhenNoPhysicalRuntimeIsReady() {
+        assertEquals(
+                "android-arm64-v8a-sm8750-api35",
+                AndroidRuntimeCatalog.resolveCompatibilityKey(
+                        List.of(), "android-arm64-v8a-sm8750-api35"));
     }
 
     @Test
@@ -64,6 +110,39 @@ public final class AndroidArtifactRegistryTest {
         String mismatch = pathEscape.replace("../outside.bin", "model.bin");
         AndroidArtifactRegistry registry = AndroidArtifactRegistry.fromJson(mismatch, root);
         assertFalse(registry.isVerified(registry.all().get(0)));
+    }
+
+    @Test
+    public void acceptsEmbeddingOnlyIndexedPipelineStage() throws Exception {
+        Path root = Files.createTempDirectory("dragonnest-pipeline");
+        Path artifact = root.resolve("stage0.bin");
+        Files.write(artifact, "stage-0".getBytes(StandardCharsets.UTF_8));
+        String manifest = """
+                {"models":[{
+                  "model_id":"qwen3-1.7b-s0-s25", "model_version":"demo-v1",
+                  "runtime":"qnn", "artifact_path":"stage0.bin",
+                  "checksum":"sha256:%s", "tokenizer_id":"Qwen/Qwen3-1.7B",
+                  "precision":"w4a16-name-w8a16-compile-observed",
+                  "supported_accelerators":["htp"], "min_memory_mb":1024,
+                  "max_context_tokens":512, "supports_steering":false,
+                  "supports_data_parallel":false, "supports_layer_pipeline":true,
+                  "model_family":"qwen3-1.7b", "role":"pipeline_segment",
+                  "task_classes":["reasoning_analysis"],
+                  "split_boundary":{"pipeline_id":"qwen3-1.7b-w4a16-demo-v1",
+                    "stage_index":0, "stage_count":4, "total_layers":28,
+                    "input_tensor":"input_ids", "output_tensor":"embedding",
+                    "includes_embedding":true, "includes_lm_head":false,
+                    "boundary_format":"qnn-raw-tensor-v1"}
+                }]}""".formatted(sha256(Files.readAllBytes(artifact)));
+
+        AndroidModelArtifact parsed = AndroidArtifactRegistry.fromJson(manifest, root)
+                .all().get(0);
+
+        assertEquals(0, parsed.segment().stageIndex());
+        assertEquals(4, parsed.segment().stageCount());
+        assertEquals(null, parsed.segment().transformerStartLayer());
+        assertFalse(parsed.capability().getSegment().hasTransformerStartLayer());
+        assertTrue(parsed.capability().getSegment().getIncludesEmbedding());
     }
 
     private static String sha256(byte[] source) throws Exception {

@@ -63,7 +63,13 @@
     </section>
 
     <section id="result-card" class="card" aria-labelledby="result-title" hidden>
-      <div class="card-head"><h2 id="result-title">Response</h2><span id="result-state" class="status-pill neutral">Waiting</span></div>
+      <div class="card-head">
+        <h2 id="result-title">Response</h2>
+        <div class="result-actions">
+          <button id="speak-button" class="icon-btn" type="button" aria-label="Read this response aloud" title="Read aloud" disabled><i data-lucide="volume-2"></i></button>
+          <span id="result-state" class="status-pill neutral">Waiting</span>
+        </div>
+      </div>
       <pre id="result-output" class="result-output">No response yet.</pre>
     </section>
   </main>

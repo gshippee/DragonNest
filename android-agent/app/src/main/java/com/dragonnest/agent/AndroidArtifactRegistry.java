@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,19 +27,44 @@ public final class AndroidArtifactRegistry {
     public static final String MODEL_DIRECTORY = "dragonnest-models";
     private static final Pattern CHECKSUM = Pattern.compile(
             "^sha256(?:-tree)?:[0-9a-fA-F]{64}$");
+    /**
+     * Runtimes this build can actually execute. genie_aux is the forked GenieX
+     * closure that binds runtime steering vectors as auxiliary tensors; it is a
+     * separate runtime name rather than a flag on genie, so the stock runtime
+     * keeps serving its artifacts exactly as they were physically accepted.
+     */
+    private static final java.util.Set<String> SUPPORTED_RUNTIMES =
+            java.util.Set.of("qnn", "genie", "genie_aux");
     private final Path root;
+    private final List<String> skipped;
     private final Map<String, AndroidModelArtifact> artifacts;
 
-    private AndroidArtifactRegistry(Path root, Map<String, AndroidModelArtifact> artifacts) {
+    private AndroidArtifactRegistry(
+            Path root,
+            Map<String, AndroidModelArtifact> artifacts,
+            List<String> skipped) {
         this.root = root;
-        this.artifacts = Map.copyOf(artifacts);
+        this.artifacts = Collections.unmodifiableMap(new LinkedHashMap<>(artifacts));
+        this.skipped = List.copyOf(skipped);
+    }
+
+    /**
+     * Manifest entries this build could not parse, as "model_id: reason".
+     *
+     * Reported rather than thrown: a manifest naming a runtime this APK does
+     * not implement is a normal consequence of provisioning a newer artifact
+     * onto an older build, and it must not take the device's working models
+     * down with it.
+     */
+    public List<String> skippedEntries() {
+        return skipped;
     }
 
     public static AndroidArtifactRegistry loadInstalled(Context context) {
-        Path root = context.getFilesDir().toPath().resolve(MODEL_DIRECTORY);
+        Path root = modelRoot(context);
         Path manifest = root.resolve("manifest.json");
         if (!Files.isRegularFile(manifest)) {
-            return new AndroidArtifactRegistry(root, Map.of());
+            return new AndroidArtifactRegistry(root, Map.of(), List.of());
         }
         try {
             return fromJson(
@@ -46,6 +72,19 @@ public final class AndroidArtifactRegistry {
         } catch (IOException failure) {
             throw new IllegalStateException("Unable to read Android model manifest", failure);
         }
+    }
+
+    /**
+     * GenieX/QNN must mmap context binaries from a real filesystem path that is
+     * visible to the HTP runtime. The scoped external-files directory remains
+     * app-private, but unlike /data/user/0 it is accepted by the physical S25
+     * QAIRT 2.45 runtime.
+     */
+    static Path modelRoot(Context context) {
+        if (context.getExternalFilesDir(null) == null) {
+            throw new IllegalStateException("App-private external model storage is unavailable");
+        }
+        return context.getExternalFilesDir(null).toPath().resolve(MODEL_DIRECTORY);
     }
 
     static AndroidArtifactRegistry fromJson(String source, Path modelRoot) {
@@ -57,10 +96,25 @@ public final class AndroidArtifactRegistry {
             }
             Path root = modelRoot.toAbsolutePath().normalize();
             Map<String, AndroidModelArtifact> artifacts = new LinkedHashMap<>();
+            List<String> skipped = new ArrayList<>();
             for (int index = 0; index < models.length(); index++) {
                 JSONObject item = models.optJSONObject(index);
                 if (item == null) {
                     throw new IllegalArgumentException("Model manifest entry must be an object");
+                }
+                // Forward compatibility, and *only* that: an entry naming a
+                // runtime this APK does not implement is skipped so it cannot
+                // take the device's working models down with it. Every other
+                // defect -- a path escaping the model directory, a malformed
+                // checksum, a duplicate id -- still rejects the whole manifest,
+                // because those indicate tampering or corruption rather than a
+                // newer artifact meeting an older build.
+                String declaredRuntime =
+                        item.optString("runtime", "").toLowerCase(Locale.ROOT);
+                if (!SUPPORTED_RUNTIMES.contains(declaredRuntime)) {
+                    skipped.add(item.optString("model_id", "(unnamed)")
+                            + ": unsupported Android runtime " + declaredRuntime);
+                    continue;
                 }
                 AndroidModelArtifact artifact = parse(item, root);
                 if (artifacts.putIfAbsent(artifact.modelId(), artifact) != null) {
@@ -68,7 +122,7 @@ public final class AndroidArtifactRegistry {
                             "Duplicate model_id in Android manifest: " + artifact.modelId());
                 }
             }
-            return new AndroidArtifactRegistry(root, artifacts);
+            return new AndroidArtifactRegistry(root, artifacts, skipped);
         } catch (JSONException failure) {
             throw new IllegalArgumentException("Invalid Android model manifest JSON", failure);
         }
@@ -113,7 +167,7 @@ public final class AndroidArtifactRegistry {
     private static AndroidModelArtifact parse(JSONObject item, Path root) throws JSONException {
         String modelId = requiredString(item, "model_id");
         String runtime = requiredString(item, "runtime").toLowerCase(Locale.ROOT);
-        if (!runtime.equals("qnn") && !runtime.equals("genie")) {
+        if (!SUPPORTED_RUNTIMES.contains(runtime)) {
             throw new IllegalArgumentException("Unsupported Android runtime: " + runtime);
         }
         String relativePath = requiredString(item, "artifact_path");
@@ -198,19 +252,45 @@ public final class AndroidArtifactRegistry {
         if (item == null) {
             return null;
         }
-        int start = item.getInt("start_layer");
-        int end = item.getInt("end_layer");
-        int total = item.getInt("total_layers");
-        if (start < 0 || start >= end || end > total) {
-            throw new IllegalArgumentException("Invalid split-layer range");
+        int stageCount = item.optInt("stage_count", 0);
+        int stageIndex = stageCount > 0 ? item.getInt("stage_index") : -1;
+        Integer start = null;
+        if (item.has("transformer_start_layer")) {
+            start = Integer.valueOf(item.getInt("transformer_start_layer"));
+        } else if (item.has("start_layer")) {
+            start = Integer.valueOf(item.getInt("start_layer"));
+        }
+        Integer end = null;
+        if (item.has("transformer_end_layer")) {
+            end = Integer.valueOf(item.getInt("transformer_end_layer"));
+        } else if (item.has("end_layer")) {
+            end = Integer.valueOf(item.getInt("end_layer"));
+        }
+        int total = item.optInt("total_layers", 0);
+        if (stageCount > 0 && (stageIndex < 0 || stageIndex >= stageCount)) {
+            throw new IllegalArgumentException("Invalid pipeline stage index");
+        }
+        if ((start == null) != (end == null)) {
+            throw new IllegalArgumentException("Incomplete transformer-layer range");
+        }
+        if (start != null && (start < 0 || start > end || (total > 0 && end > total))) {
+            throw new IllegalArgumentException("Invalid transformer-layer range");
+        }
+        boolean includesEmbedding = item.optBoolean("includes_embedding", false);
+        if (start == null && !includesEmbedding) {
+            throw new IllegalArgumentException("Layerless stage must own embeddings");
         }
         return new AndroidModelSegment(
                 requiredString(item, "pipeline_id"),
+                stageIndex,
+                stageCount,
                 start,
                 end,
                 total,
-                item.optBoolean("includes_embedding", false),
+                includesEmbedding,
                 item.optBoolean("includes_lm_head", false),
+                item.optString("input_tensor", ""),
+                item.optString("output_tensor", ""),
                 requiredString(item, "boundary_format"));
     }
 

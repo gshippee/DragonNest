@@ -24,7 +24,7 @@ devices:
       npu_status: available
       npu_name: Hexagon v79 HTP
       qnn_runtime_version: 2.45.41.260507231357
-      compatibility_key: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+      compatibility_key: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
     models:
       - model_id: qwen3-0.6b-s25-base
         artifact_id: qwen3-0.6b-w4a16-sm8750-base-qairt245
@@ -35,7 +35,7 @@ devices:
         warm: false
         quality_score: 0.70
         steering_modes: [none]
-        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+        target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
       - model_id: qwen3-0.6b-s25-concise
         artifact_id: qwen3-0.6b-w4a16-sm8750-concise-l7-am4-qairt245
         model_family: qwen3
@@ -45,8 +45,134 @@ devices:
         warm: false
         quality_score: 0.70
         steering_modes: [baked_profile]
-        behavior_profile_ids: [concise-l7-alpha-m4]
-        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+        behavior_profile_ids: [concise]
+        target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
+      - model_id: qwen3-1.7b-s0-s25
+        artifact_id: qwen3-1.7b-w4a16-demo-v1-s0-s25
+        model_family: qwen3-1.7b
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.80
+        model_version: qwen3-1.7b-demo-v1-unpinned-main
+        tokenizer_id: Qwen/Qwen3-1.7B
+        precision: w4a16-name-w8a16-compile-observed
+        boundary_format: qnn-raw-tensor-v1
+        runtime_name: qnn
+        runtime_version: QAIRT-2.45
+        supported_accelerators: [htp]
+        min_memory_mb: 1024
+        supports_data_parallel: false
+        supports_layer_pipeline: true
+        steering_modes: [none]
+        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+        segment:
+          pipeline_id: qwen3-1.7b-w4a16-demo-v1
+          stage_index: 0
+          stage_count: 4
+          total_layers: 28
+          input_tensor: input_ids
+          output_tensor: embedding
+          includes_embedding: true
+          includes_lm_head: false
+          boundary_format: qnn-raw-tensor-v1
+      - model_id: qwen3-1.7b-s1-s25
+        artifact_id: qwen3-1.7b-w4a16-demo-v1-s1-s25
+        model_family: qwen3-1.7b
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.80
+        model_version: qwen3-1.7b-demo-v1-unpinned-main
+        tokenizer_id: Qwen/Qwen3-1.7B
+        precision: w4a16-name-w8a16-compile-observed
+        boundary_format: qnn-raw-tensor-v1
+        runtime_name: qnn
+        runtime_version: QAIRT-2.45
+        supported_accelerators: [htp]
+        min_memory_mb: 768
+        supports_data_parallel: false
+        supports_layer_pipeline: true
+        steering_modes: [none]
+        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+        segment:
+          pipeline_id: qwen3-1.7b-w4a16-demo-v1
+          stage_index: 1
+          stage_count: 4
+          total_layers: 28
+          transformer_start_layer: 0
+          transformer_end_layer: 9
+          input_tensor: embedding
+          output_tensor: add_21844
+          includes_embedding: false
+          includes_lm_head: false
+          boundary_format: qnn-raw-tensor-v1
+      - model_id: qwen3-1.7b-s2-s25
+        artifact_id: qwen3-1.7b-w4a16-demo-v1-s2-s25
+        model_family: qwen3-1.7b
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.80
+        model_version: qwen3-1.7b-demo-v1-unpinned-main
+        tokenizer_id: Qwen/Qwen3-1.7B
+        precision: w4a16-name-w8a16-compile-observed
+        boundary_format: qnn-raw-tensor-v1
+        runtime_name: qnn
+        runtime_version: QAIRT-2.45
+        supported_accelerators: [htp]
+        min_memory_mb: 768
+        supports_data_parallel: false
+        supports_layer_pipeline: true
+        steering_modes: [none]
+        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+        segment:
+          pipeline_id: qwen3-1.7b-w4a16-demo-v1
+          stage_index: 2
+          stage_count: 4
+          total_layers: 28
+          transformer_start_layer: 10
+          transformer_end_layer: 19
+          input_tensor: add_21844
+          output_tensor: add_42314
+          includes_embedding: false
+          includes_lm_head: false
+          boundary_format: qnn-raw-tensor-v1
+      - model_id: qwen3-1.7b-s3-s25
+        artifact_id: qwen3-1.7b-w4a16-demo-v1-s3-s25
+        model_family: qwen3-1.7b
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.80
+        model_version: qwen3-1.7b-demo-v1-unpinned-main
+        tokenizer_id: Qwen/Qwen3-1.7B
+        precision: w4a16-name-w8a16-compile-observed
+        boundary_format: qnn-raw-tensor-v1
+        runtime_name: qnn
+        runtime_version: QAIRT-2.45
+        supported_accelerators: [htp]
+        min_memory_mb: 1152
+        supports_data_parallel: false
+        supports_layer_pipeline: true
+        steering_modes: [none]
+        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+        segment:
+          pipeline_id: qwen3-1.7b-w4a16-demo-v1
+          stage_index: 3
+          stage_count: 4
+          total_layers: 28
+          transformer_start_layer: 20
+          transformer_end_layer: 27
+          input_tensor: add_42314
+          output_tensor: logits
+          includes_embedding: false
+          includes_lm_head: true
+          boundary_format: qnn-raw-tensor-v1
 
   - device_id: pc-01
     display_name: Snapdragon X Elite Laptop
@@ -85,3 +211,129 @@ devices:
         quality_score: 0.85
         steering_modes: [none]
         target_compatibility_class: windows-arm64-x1e-v73-qairt-2.48
+      - model_id: qwen3-1.7b-s0-xelite
+        artifact_id: qwen3-1.7b-w4a16-demo-v1-s0-xelite
+        model_family: qwen3-1.7b
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.80
+        model_version: qwen3-1.7b-demo-v1-unpinned-main
+        tokenizer_id: Qwen/Qwen3-1.7B
+        precision: w4a16-name-w8a16-compile-observed
+        boundary_format: qnn-raw-tensor-v1
+        runtime_name: qnn
+        runtime_version: QAIRT-2.45
+        supported_accelerators: [htp]
+        min_memory_mb: 1024
+        supports_data_parallel: false
+        supports_layer_pipeline: true
+        steering_modes: [none]
+        target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+        segment:
+          pipeline_id: qwen3-1.7b-w4a16-demo-v1
+          stage_index: 0
+          stage_count: 4
+          total_layers: 28
+          input_tensor: input_ids
+          output_tensor: embedding
+          includes_embedding: true
+          includes_lm_head: false
+          boundary_format: qnn-raw-tensor-v1
+      - model_id: qwen3-1.7b-s1-xelite
+        artifact_id: qwen3-1.7b-w4a16-demo-v1-s1-xelite
+        model_family: qwen3-1.7b
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.80
+        model_version: qwen3-1.7b-demo-v1-unpinned-main
+        tokenizer_id: Qwen/Qwen3-1.7B
+        precision: w4a16-name-w8a16-compile-observed
+        boundary_format: qnn-raw-tensor-v1
+        runtime_name: qnn
+        runtime_version: QAIRT-2.45
+        supported_accelerators: [htp]
+        min_memory_mb: 768
+        supports_data_parallel: false
+        supports_layer_pipeline: true
+        steering_modes: [none]
+        target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+        segment:
+          pipeline_id: qwen3-1.7b-w4a16-demo-v1
+          stage_index: 1
+          stage_count: 4
+          total_layers: 28
+          transformer_start_layer: 0
+          transformer_end_layer: 9
+          input_tensor: embedding
+          output_tensor: add_21844
+          includes_embedding: false
+          includes_lm_head: false
+          boundary_format: qnn-raw-tensor-v1
+      - model_id: qwen3-1.7b-s2-xelite
+        artifact_id: qwen3-1.7b-w4a16-demo-v1-s2-xelite
+        model_family: qwen3-1.7b
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.80
+        model_version: qwen3-1.7b-demo-v1-unpinned-main
+        tokenizer_id: Qwen/Qwen3-1.7B
+        precision: w4a16-name-w8a16-compile-observed
+        boundary_format: qnn-raw-tensor-v1
+        runtime_name: qnn
+        runtime_version: QAIRT-2.45
+        supported_accelerators: [htp]
+        min_memory_mb: 768
+        supports_data_parallel: false
+        supports_layer_pipeline: true
+        steering_modes: [none]
+        target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+        segment:
+          pipeline_id: qwen3-1.7b-w4a16-demo-v1
+          stage_index: 2
+          stage_count: 4
+          total_layers: 28
+          transformer_start_layer: 10
+          transformer_end_layer: 19
+          input_tensor: add_21844
+          output_tensor: add_42314
+          includes_embedding: false
+          includes_lm_head: false
+          boundary_format: qnn-raw-tensor-v1
+      - model_id: qwen3-1.7b-s3-xelite
+        artifact_id: qwen3-1.7b-w4a16-demo-v1-s3-xelite
+        model_family: qwen3-1.7b
+        role: pipeline_segment
+        task_classes: [chat_qa, reasoning_analysis]
+        max_context_tokens: 512
+        warm: false
+        quality_score: 0.80
+        model_version: qwen3-1.7b-demo-v1-unpinned-main
+        tokenizer_id: Qwen/Qwen3-1.7B
+        precision: w4a16-name-w8a16-compile-observed
+        boundary_format: qnn-raw-tensor-v1
+        runtime_name: qnn
+        runtime_version: QAIRT-2.45
+        supported_accelerators: [htp]
+        min_memory_mb: 1152
+        supports_data_parallel: false
+        supports_layer_pipeline: true
+        steering_modes: [none]
+        target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+        segment:
+          pipeline_id: qwen3-1.7b-w4a16-demo-v1
+          stage_index: 3
+          stage_count: 4
+          total_layers: 28
+          transformer_start_layer: 20
+          transformer_end_layer: 27
+          input_tensor: add_42314
+          output_tensor: logits
+          includes_embedding: false
+          includes_lm_head: true
+          boundary_format: qnn-raw-tensor-v1

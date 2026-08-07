@@ -229,6 +229,12 @@ class DeploymentScheduler:
                     target_layer=realization.injection_layer,
                     alpha=realization.alpha,
                     positions=realization.positions,
+                    # Stated explicitly rather than left to the field default:
+                    # the device bridge refuses any mode it was not compiled
+                    # for, so this must describe the realization, not a default
+                    # that happens to be right.
+                    mode=SteeringRealizationMode.RUNTIME_VECTOR.value,
+                    behavior_profile_id=profile.profile_id if profile else "",
                 )
             elif chosen.realization_mode == SteeringRealizationMode.PROMPT_PROFILE:
                 prompt_prefix = realization.prompt_template
@@ -271,10 +277,24 @@ class DeploymentScheduler:
         # runtime_vector / prompt_profile / none all execute an unbaked base
         # artifact. Baked variants of *other* profiles are never candidates:
         # substituting them would silently switch behavior.
-        return tuple(
+        unbaked = tuple(
             artifact
             for artifact in self.catalog.full_models(request.base_model_family)
             if not artifact.behavior_profile_id
+        )
+        if mode == SteeringRealizationMode.RUNTIME_VECTOR:
+            # Whether a device can actually inject a runtime vector is decided
+            # by its advertised capability in _runtime_vector_reasons, not here.
+            return unbaked
+        # An artifact that exists to be steered must not serve an unsteered or
+        # prompt-conditioned profile. Balanced asks for the plain base model;
+        # answering it from the steering bundle would quietly move the request
+        # onto a different artifact and a different runtime while still
+        # reporting "none".
+        return tuple(
+            artifact
+            for artifact in unbaked
+            if artifact.steering_realization != SteeringRealizationMode.RUNTIME_VECTOR.value
         )
 
     def _evaluate(
@@ -307,6 +327,8 @@ class DeploymentScheduler:
                 f"artifact targets {'/'.join(artifact.compatibility_classes)}; "
                 f"device compatibility classes are {'/'.join(classes)}"
             )
+
+        reasons.extend(self._realization_compatibility_reasons(artifact, realization))
 
         if artifact.readiness != "ready":
             reasons.append(
@@ -376,6 +398,40 @@ class DeploymentScheduler:
             memory=memory,
             cost=cost,
         )
+
+    @staticmethod
+    def _realization_compatibility_reasons(
+        artifact: ArtifactSpec, realization: SteeringRealization
+    ) -> list[str]:
+        """Enforce the compatibility a realization declares for itself.
+
+        A profile states which model families, runtimes, and quantizations a
+        given realization was actually validated against. Those declarations
+        were previously parsed but never checked, so a realization calibrated
+        for one runtime could be applied to another and reported as the
+        genuine profile. An empty list means "unconstrained", which keeps
+        profiles that never declared a boundary behaving as before.
+        """
+        reasons: list[str] = []
+        for label, declared, actual in (
+            (
+                "model family",
+                realization.compatible_model_families,
+                artifact.base_model_family,
+            ),
+            ("runtime", realization.compatible_runtimes, artifact.runtime),
+            (
+                "quantization",
+                realization.compatible_quantizations,
+                artifact.quantization,
+            ),
+        ):
+            if declared and actual not in declared:
+                reasons.append(
+                    f"{realization.mode.value} realization is validated for "
+                    f"{label} {'/'.join(declared)}; this artifact is {actual}"
+                )
+        return reasons
 
     def _runtime_vector_reasons(
         self,

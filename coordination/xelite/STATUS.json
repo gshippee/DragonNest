@@ -44,9 +44,7 @@
     "python": "148 passed on desktop after integration; physical worker session recorded the known Windows heartbeat timing failure separately",
     "demo_scenarios": "All scenarios passed"
   },
-  "blockers": [
-    "The complete S25 PersonaCare normal-RAM phone route followed by 64 MB low-RAM reroute to same-host pc-01 is not yet physically verified."
-  ],
+  "blockers": [],
   "next_command": ".\\scripts\\run_xelite_demo.ps1",
-  "notes": "Physical Genie/HTP, HardwareRuntimeAdapter, local gRPC, and same-host LAN-interface execution are verified. The stage topology runs Brain and pc-01 on this laptop and accepts PersonaCare requests from the S25 over LAN. Runtime steering is disabled. No secrets or proprietary paths are recorded."
+  "notes": "Physical Genie/HTP, HardwareRuntimeAdapter, local gRPC, and same-host LAN-interface execution are verified. The complete PersonaCare normal-RAM phone-mock request followed by immediate 64 MB low-RAM reroute to pc-01 and real Genie/HTP is verified, including the result returning to PersonaCare. Runtime steering is disabled. No secrets or proprietary paths are recorded."
 }

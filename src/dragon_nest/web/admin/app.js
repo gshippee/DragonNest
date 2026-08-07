@@ -1,4 +1,4 @@
-const state = { devices: [], tasks: [], vectors: [], selectedTask: null, enrollment: null, behaviorProfiles: [], lastPlan: null, provisioning: [] };
+const state = { devices: [], tasks: [], vectors: [], selectedTask: null, followLatest: true, enrollment: null, behaviorProfiles: [], lastPlan: null, provisioning: [] };
 
 const $ = (id) => document.getElementById(id);
 
@@ -8,7 +8,9 @@ async function refresh() {
       api("/api/health"), api("/api/devices"), api("/api/tasks"), api("/api/events?limit=120"), api("/api/provisioning")
     ]);
     state.devices = devices;
-    state.tasks = tasks;
+    const selection = DragonNestAdminSelection.reconcileSelection(
+      tasks, state.selectedTask?.task_id || "", state.followLatest);
+    state.tasks = selection.tasks;
     state.provisioning = provisioning;
     for (const id of ["origin-device", "behavior-origin"]) {
       const origin = $(id);
@@ -19,11 +21,10 @@ async function refresh() {
     renderProvisioning();
     $("brain-dot").classList.add("online");
     $("brain-state").textContent = `${health.brain_id} online`;
-    renderDevices(); renderTaskSelect(); renderEvents(events);
-    if (state.selectedTask) {
-      const updated = tasks.find((task) => task.task_id === state.selectedTask.task_id);
-      if (updated) { state.selectedTask = updated; renderTask(updated); }
-    }
+    renderDevices(); renderLiveRequests(); renderEvents(events); renderFabricSummary();
+    const updated = state.tasks.find((task) => task.task_id === selection.selectedTaskId);
+    state.selectedTask = updated || null;
+    if (updated) { renderTask(updated); renderLiveRequests(); }
   } catch (error) {
     $("brain-dot").classList.remove("online");
     $("brain-state").textContent = "Brain unavailable";
@@ -35,46 +36,78 @@ function renderDevices() {
   $("device-count").textContent = `${state.devices.length} device${state.devices.length === 1 ? "" : "s"}`;
   $("devices").innerHTML = state.devices.length ? state.devices.map((device) => {
     const h = device.health;
-    const models = device.models.map((model) => `<span class="chip">${esc(model.role)} / ${esc(model.model_id)}</span>`).join("");
     const personal = device.personal_profile;
     const inventory = device.hardware || {};
-    const hardware = [
-      [inventory.manufacturer, inventory.model].filter(Boolean).join(" "),
-      inventory.soc_model,
-      inventory.cpu_core_count ? `${inventory.cpu_core_count} CPU cores` : "",
-      inventory.npu_status ? `NPU ${inventory.npu_status}` : ""
-    ].filter(Boolean).map((value) => `<span class="chip">${esc(value)}</span>`).join("");
-    const isHttpEndpoint = device.transport === "http_endpoint";
-    const endpointLabel = device.endpoint_provider === "openai_chat" ? "OpenAI-compatible" : isHttpEndpoint ? "HTTP endpoint" : "";
-    const steeringModes = (device.steering_realization_modes || []).filter((mode) => mode !== "none").map((mode) => `<span class="chip chip-mode">${esc(mode)}</span>`).join("");
-    const deployments = (device.deployments || []).filter((item) => item.state !== "absent").map((item) => `<span class="chip chip-${esc(item.state)}">${esc(item.artifact_id)} · ${esc(item.state)}</span>`).join("");
+    const advertised = new Set((device.models || []).map((model) => model.model_id));
+    const modelInventory = (device.models || []).map((model) => `<li><span class="artifact-dot ${model.warm ? "warm" : "installed"}"></span><span><strong>${esc(model.model_id)}</strong><small>${esc(model.runtime || "runtime unknown")} · ${esc((model.accelerators || []).join("+") || "accelerator unknown")}</small></span><em>${model.warm ? "warm" : "installed · cold"}</em></li>`).join("");
+    const deployedInventory = (device.deployments || []).filter((item) => item.state !== "absent" && !advertised.has(item.artifact_id)).map((item) => `<li><span class="artifact-dot ${esc(item.state)}"></span><span><strong>${esc(item.artifact_id)}</strong><small>deployed artifact</small></span><em>${esc(item.state)}</em></li>`).join("");
+    const runtimeNames = [...new Set((device.models || []).map((model) => model.runtime).filter(Boolean))];
+    const memoryLabel = h.available_memory_mb === 0 ? "Unknown" : fmt(h.available_memory_mb, " MB");
+    const simulatedFields = device.simulated_fields || [];
+    const memoryIsSimulated = simulatedFields.includes("available_memory_mb")
+      || (device.simulated_constraint && simulatedFields.length === 0);
+    const memoryFlag = memoryIsSimulated ? '<span class="simulated-tag">SIMULATED</span>' : "";
+    const hardwareLabel = [inventory.soc_model, inventory.npu_status ? `NPU ${inventory.npu_status}` : ""].filter(Boolean).join(" · ") || device.platform;
     return `<article class="device-card ${statusClass(device.status)}">
-      <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(device.platform)} · ${device.connected ? "stream connected" : "disconnected"}</p></div><div><span class="status-pill ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-btn simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button>${isHttpEndpoint ? ` <button class="icon-btn remove-endpoint" data-device="${esc(device.device_id)}" title="Remove endpoint" aria-label="Remove ${esc(device.display_name)}"><i data-lucide="trash-2"></i></button>` : ""}</div></div>
-      <div class="metrics"><div class="metric"><span>Battery</span><strong>${h.battery_pct < 0 ? "Unknown" : `${decimal(h.battery_pct, 0)}%${h.charging ? " charging" : ""}`}</strong></div><div class="metric"><span>Thermal</span><strong>${decimal(h.thermal_level)}</strong></div><div class="metric"><span>Memory</span><strong>${h.available_memory_mb === 0 ? "Unknown" : fmt(h.available_memory_mb, " MB")}</strong></div><div class="metric"><span>CPU</span><strong>${h.cpu_utilization < 0 ? "Unknown" : `${decimal(h.cpu_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>GPU</span><strong>${(h.gpu_utilization ?? -1) < 0 ? "Unknown" : `${decimal(h.gpu_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>NPU</span><strong>${(h.npu_utilization ?? -1) < 0 ? "Unknown" : `${decimal(h.npu_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>Network RTT</span><strong>${h.network_rtt_ms < 0 ? "Unknown" : `${decimal(h.network_rtt_ms, 0)} ms`}</strong></div><div class="metric"><span>Active</span><strong>${device.active_tasks.length}</strong></div></div>
-      <div class="model-list">${endpointLabel ? `<span class="chip">${esc(endpointLabel)}</span>` : ""}${hardware}${steeringModes}${deployments}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
+      <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(hardwareLabel)}</p></div><div><span class="status-pill ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-btn simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button><button class="icon-btn remove-device" data-device="${esc(device.device_id)}" title="Remove device" aria-label="Remove ${esc(device.display_name)}"><i data-lucide="trash-2"></i></button></div></div>
+      <div class="device-facts"><div><span>RAM available</span><strong>${memoryLabel} ${memoryFlag}</strong></div><div><span>Thermal</span><strong>${h.thermal_level < 0 ? "Unknown" : decimal(h.thermal_level)}</strong></div><div><span>CPU / GPU / NPU</span><strong>${utilizationTriplet(h)}</strong></div><div><span>Active / runtime</span><strong>${device.active_tasks.length} / ${esc(runtimeNames.join(", ") || "idle")}</strong></div></div>
+      <div class="artifact-heading"><span>Available models & artifacts</span><span>${(device.models || []).length}</span></div>
+      <ul class="artifact-inventory">${modelInventory}${deployedInventory}${!modelInventory && !deployedInventory ? '<li class="empty">No advertised models</li>' : ""}</ul>
+      ${personal ? `<div class="device-owner">Profile: ${esc(personal.person_name)}</div>` : ""}
     </article>`;
   }).join("") : '<div class="empty">No registered devices</div>';
   document.querySelectorAll(".simulate").forEach((button) => button.addEventListener("click", () => openSimulation(button.dataset.device)));
-  document.querySelectorAll(".remove-endpoint").forEach((button) => button.addEventListener("click", () => removeEndpoint(button.dataset.device)));
+  document.querySelectorAll(".remove-device").forEach((button) => button.addEventListener("click", () => removeDevice(button.dataset.device)));
 }
 
-function renderTaskSelect() {
-  const select = $("task-select");
-  const current = state.selectedTask?.task_id;
-  select.innerHTML = state.tasks.length ? state.tasks.map((task) => `<option value="${esc(task.task_id)}" ${task.task_id === current ? "selected" : ""}>${esc(task.task_id)} · ${esc(task.state)}</option>`).join("") : "<option>No tasks</option>";
-  if (!state.selectedTask && state.tasks.length) selectTask(state.tasks[0].task_id);
+function renderFabricSummary() {
+  const healthy = state.devices.filter((device) => device.connected && device.status === "HEALTHY").length;
+  const models = new Set(state.devices.flatMap((device) => (device.models || []).map((model) => model.model_id)));
+  $("fabric-summary").textContent = `${state.devices.length} devices · ${models.size} active models · ${healthy} healthy`;
+}
+
+function renderLiveRequests() {
+  $("follow-state").textContent = state.followLatest ? "Following latest" : `Pinned to ${state.selectedTask?.task_id || "request"}`;
+  $("follow-state").classList.toggle("pinned", !state.followLatest);
+  $("follow-latest").hidden = state.followLatest;
+  $("recent-requests").innerHTML = state.tasks.length ? state.tasks.map((task) => {
+    const destination = requestDestination(task);
+    const selected = task.task_id === state.selectedTask?.task_id;
+    return `<button type="button" class="request-row ${selected ? "selected" : ""}" data-task="${esc(task.task_id)}"><time>${formatTaskTime(task.created_at)}</time><span class="request-copy"><strong>${esc(shortPrompt(task.request))}</strong><small>${esc(deviceName(task.origin_device_id) || "Admin")} → ${esc(destination)}</small></span><span class="request-mode">${esc(preferenceLabel(task.preferred_mode))} · ${esc(task.execution_mode)}</span><span class="status-pill ${statusClass(task.state)}">${esc(task.state)}</span><span class="request-latency">${task.result?.latency_ms ? `${task.result.latency_ms} ms` : ""}</span></button>`;
+  }).join("") : '<div class="empty">No requests yet</div>';
+  document.querySelectorAll(".request-row").forEach((button) => button.addEventListener("click", () => selectTask(button.dataset.task, true)));
 }
 
 function renderTask(task) {
   const profile = task.profile;
-  $("profile-strip").innerHTML = profile ? `<span class="profile-item">Class <strong>${esc(profile.task_class)}</strong></span><span class="profile-item">Confidence <strong>${Math.round(profile.confidence * 100)}%</strong></span><span class="profile-item">Mode <strong>${esc(task.execution_mode)}</strong></span><span class="profile-item">Privacy <strong>${esc(profile.privacy_tier)}</strong></span><span class="profile-item">Reducer <strong>${esc(task.reducer)}</strong></span>${task.origin_device_id ? `<span class="profile-item">Origin <strong>${esc(task.origin_device_id)}</strong></span>` : ""}${task.steering?.enabled ? `<span class="profile-item">Steering <strong>${esc(task.steering.vector_id)} @ ${task.steering.alpha}</strong></span>` : ""}` : "";
+  $("selected-prompt").innerHTML = `<span>User request</span><strong>${esc(task.request)}</strong>`;
+  $("profile-strip").innerHTML = profile ? `<span class="profile-item">Compute preference <strong>${esc(preferenceLabel(task.preferred_mode))}</strong></span><span class="profile-item">Profile requested <strong>${esc(profileLabel(task.behavior_profile_id || "balanced"))}</strong></span><span class="profile-item">Profile realization <strong>${esc(realizationLabel(task.profile_realization))}</strong></span><span class="profile-item">Classification <strong>${esc(profile.task_class)} / ${esc(profile.complexity)}</strong></span><span class="profile-item">Model selected <strong>${esc(task.result?.metrics?.model_id || task.progress?.[0]?.model_id || "pending")}</strong></span><span class="profile-item">Artifact <strong>${esc(task.selected_artifact_id || "pending")}</strong></span><span class="profile-item">Execution topology <strong>${esc(task.execution_mode)}</strong></span><span class="profile-item">Confidence <strong>${Math.round(profile.confidence * 100)}%</strong></span><span class="profile-item">Privacy <strong>${esc(profile.privacy_tier)}</strong></span><span class="profile-item">Reducer <strong>${esc(task.reducer)}</strong></span>${task.origin_device_id ? `<span class="profile-item">Origin <strong>${esc(task.origin_device_id)}</strong></span>` : ""}${task.steering?.enabled ? `<span class="profile-item">Runtime steering <strong>${esc(task.steering.vector_id)}</strong></span>` : ""}` : "";
   $("route-trace").innerHTML = task.route_reasons?.length ? task.route_reasons.map((reason) => `<li>${esc(reason)}</li>`).join("") : '<li class="empty">No route trace available</li>';
-  $("progress").innerHTML = task.progress?.length ? task.progress.map((item) => `<tr><td>${esc(item.id)}</td><td>${esc(item.device_id)}${item.winner ? " · winner" : ""}</td><td>${esc(item.model_id)}</td><td><span class="status-pill ${statusClass(item.state)}">${esc(item.state)}</span></td><td>${fmt(item.latency_ms, " ms")}</td><td>${item.retry_count}</td></tr>`).join("") : '<tr><td colspan="6" class="empty">No shards or pipeline stages</td></tr>';
+  $("route-topology").innerHTML = renderTopology(task);
+  $("progress").textContent = JSON.stringify(task.progress || []);
   $("result-state").className = `status-pill ${statusClass(task.state)}`;
   $("result-state").textContent = task.state;
   $("result-output").textContent = task.result?.output_text || task.error_message || "No result available.";
   const metrics = task.result?.metrics;
   $("result-meta").innerHTML = task.result ? `<span>Device: <strong>${esc(task.result.device_id)}</strong></span><span>Latency: <strong>${task.result.latency_ms} ms</strong></span>${metrics ? `<span>Runtime: <strong>${esc(metrics.runtime_name)} ${esc(metrics.runtime_version)}</strong></span><span>Accelerator: <strong>${esc(metrics.accelerator)}</strong></span>` : ""}` : "";
+}
+
+function renderTopology(task) {
+  if (task.progress?.length && task.execution_mode === "layer_pipeline") {
+    const groups = [];
+    for (const stage of task.progress) {
+      const latest = groups[groups.length - 1];
+      if (!latest || latest.deviceId !== stage.device_id) groups.push({ deviceId: stage.device_id, stages: [] });
+      groups[groups.length - 1].stages.push(stage);
+    }
+    return `<div class="pipeline-label">Qwen3-1.7B · one-cut pipeline</div><div class="pipeline-route">${groups.map((group, index) => `${index ? '<span class="route-arrow">→<small>hidden boundary</small></span>' : ""}<div class="stage-device"><strong>${esc(deviceName(group.deviceId) || group.deviceId)}</strong><div class="stage-blocks">${group.stages.map((stage) => `<span title="${esc(stage.model_id)}">${esc(stageLabel(stage.id))}</span>`).join("")}</div></div>`).join("")}</div>`;
+  }
+  const origin = deviceName(task.origin_device_id) || task.origin_device_id || "Application";
+  const result = task.result;
+  const destination = deviceName(result?.device_id) || result?.device_id || "Awaiting route";
+  const metrics = result?.metrics;
+  const rejected = (task.route_reasons || []).find((reason) => /rejected|no eligible compatible local capacity|insufficient|exceeds available|below .*memory/i.test(reason));
+  return `<div class="single-route"><div class="route-node origin"><span>Origin</span><strong>${esc(origin)}</strong></div><div class="route-arrow">→${rejected ? `<small>${esc(rejected)}</small>` : ""}</div><div class="route-node destination"><span>Selected execution</span><strong>${esc(destination)}</strong><small>${esc(metrics?.model_id || "model pending")}${metrics ? ` · ${esc(metrics.runtime_name)} · ${esc(metrics.accelerator)}` : ""}</small></div></div>`;
 }
 
 function renderEvents(events) {
@@ -85,10 +118,78 @@ function renderVectors() {
   $("vector-list").innerHTML = state.vectors.length ? state.vectors.map((vector) => `<div class="vector-item"><strong>${esc(vector.vector_id)}</strong><span>${esc(vector.model_family)} · alpha ${vector.alpha_min} to ${vector.alpha_max} (default ${vector.default_alpha}) · ${esc(vector.positions.join(", "))}</span></div>`).join("") : '<div class="empty">No steering vectors configured</div>';
 }
 
-function selectTask(taskId) {
+function deviceName(deviceId) {
+  return state.devices.find((device) => device.device_id === deviceId)?.display_name || "";
+}
+
+function preferenceLabel(value) {
+  const labels = { auto: "Auto", local: "Local", elastic: "Elastic", quality: "Quality", private: "Private", fast: "Fast", parallel: "Parallel" };
+  return labels[value] || value || "Auto";
+}
+
+function profileLabel(value) {
+  const labels = { balanced: "Balanced", concise: "Concise", detailed: "Detailed" };
+  return labels[value] || value || "Balanced";
+}
+
+function realizationLabel(value) {
+  const labels = {
+    none: "Base model",
+    baked_profile: "Baked activation profile",
+    prompt_profile: "Prompt conditioning",
+    runtime_vector: "Runtime activation steering",
+  };
+  return labels[value] || value || "Base model";
+}
+
+function shortPrompt(value) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  return normalized.length > 64 ? `${normalized.slice(0, 61)}...` : normalized || "Untitled request";
+}
+
+function formatTaskTime(timestamp) {
+  if (!timestamp) return "--:--:--";
+  return new Date(Number(timestamp) * 1000).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function stageLabel(stageId) {
+  const match = String(stageId || "").match(/(?:stage[-_ ]?|s)(\d+)/i);
+  return match ? `S${match[1]}` : stageId;
+}
+
+function requestDestination(task) {
+  if (task.progress?.length) {
+    const groups = [];
+    for (const item of task.progress) {
+      const label = deviceName(item.device_id) || item.device_id;
+      const latest = groups[groups.length - 1];
+      if (!latest || latest.label !== label) groups.push({ label, stages: [] });
+      groups[groups.length - 1].stages.push(stageLabel(item.id));
+    }
+    return groups.map((group) => `${group.label}${group.stages.length ? ` [${group.stages.join(",")}]` : ""}`).join(" → ");
+  }
+  const result = task.result;
+  const destination = deviceName(result?.device_id) || result?.device_id || "routing";
+  const model = result?.metrics?.model_id;
+  return model ? `${destination} / ${model}` : destination;
+}
+
+function utilizationTriplet(health) {
+  const value = (amount) => (amount == null || amount < 0 ? "?" : `${decimal(amount * 100, 0)}%`);
+  return `${value(health.cpu_utilization)} / ${value(health.gpu_utilization)} / ${value(health.npu_utilization)}`;
+}
+
+function selectTask(taskId, pin = false) {
   const task = state.tasks.find((item) => item.task_id === taskId);
   if (!task) return;
-  state.selectedTask = task; renderTask(task);
+  if (pin) state.followLatest = false;
+  state.selectedTask = task; renderTask(task); renderLiveRequests();
+}
+
+function resumeFollowLatest() {
+  state.followLatest = true;
+  if (state.tasks.length) selectTask(state.tasks[0].task_id);
+  else renderLiveRequests();
 }
 
 async function loadVectors() {
@@ -392,8 +493,11 @@ async function registerEndpoint(event) {
   finally { button.disabled = false; }
 }
 
-async function removeEndpoint(deviceId) {
-  try { await api(`/api/rest-devices/${encodeURIComponent(deviceId)}`, {method: "DELETE", headers: endpointHeaders()}); toast(`Endpoint ${deviceId} removed`); await refresh(); }
+async function removeDevice(deviceId) {
+  const device = state.devices.find((item) => item.device_id === deviceId);
+  const name = device?.display_name || deviceId;
+  if (!window.confirm(`Remove ${name} from this DragonNest fabric? The device must be enrolled again before it can rejoin.`)) return;
+  try { await api(`/api/devices/${encodeURIComponent(deviceId)}`, {method: "DELETE"}); toast(`${name} removed`); await refresh(); }
   catch (error) { toast(error.message); }
 }
 
@@ -478,7 +582,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("task-form").addEventListener("submit", submitTask);
   $("behavior-form").addEventListener("submit", executeBehaviorTask);
   $("behavior-preview").addEventListener("click", previewBehaviorRoute);
-  $("task-select").addEventListener("change", (event) => selectTask(event.target.value));
+  $("follow-latest").addEventListener("click", resumeFollowLatest);
   $("steering-enabled").addEventListener("change", (event) => $("steering-controls").hidden = !event.target.checked);
   $("vector-id").addEventListener("change", applyVectorDefaults);
   $("alpha").addEventListener("input", () => $("alpha-value").value = $("alpha").value);

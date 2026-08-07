@@ -5,34 +5,98 @@
 # different profile. Prompt realizations are prompt conditioning only and are
 # never described as activation steering.
 profiles:
+  - profile_id: balanced
+    display_name: Balanced
+    description: The unmodified base model with no behavior intervention.
+    base_model_family: qwen3
+    version: "1"
+    policy_tags: [style]
+    fallback_policy: exact_only
+    provenance: Qwen/Qwen3-0.6B base deployment
+    evaluation_status: validated
+    realizations:
+      - mode: none
+        compatible_model_families: [qwen3, mock]
+        verification_status: verified
+
   - profile_id: concise
     display_name: Concise
     description: Short, direct answers with minimal elaboration.
-    base_model_family: mock
-    version: "1"
+    base_model_family: qwen3
+    version: "3"
     policy_tags: [style]
-    fallback_policy: allow_baked_equivalent
-    provenance: PersonaCare-Steering-Research concise-vs-verbose extraction
+    # allow_unsteered, not exact_only: the runtime vector is preferred, and the
+    # already-verified baked bake is an acceptable second realization of the
+    # *same* profile. Neither is prompt conditioning, and neither switches to a
+    # different profile.
+    #
+    # The final rung is a plain base model. Every steerable realization of this
+    # profile lives on the phone, so when that device becomes ineligible -- low
+    # memory, thermal, disconnect -- there is nothing left that carries the
+    # behavior. Answering from a base model beats failing the request, and the
+    # downgrade is never hidden: the response reports profile_realization
+    # "none" and the route reasons say why.
+    fallback_policy: allow_unsteered
+    provenance: >-
+      SteerLab layer-7 runtime vector physically proven on SM-S938U1;
+      PersonaCare static-steering-v1 baked bundle retained as fallback
     evaluation_status: validated
     realizations:
       - mode: runtime_vector
         vector_id: concise-vs-verbose-layer-7
-        alpha: -2.0
-        alpha_min: -4.0
-        alpha_max: 4.0
+        alpha: -8.0
+        alpha_min: -10.0
+        alpha_max: 10.0
         injection_layer: 7
-        positions: last
-        compatible_model_families: [mock, qwen3]
-        compatible_runtimes: [mock, genie]
-        compatible_quantizations: [none, w4a16]
+        positions: all
+        compatible_model_families: [qwen3]
+        compatible_runtimes: [genie_aux]
+        compatible_quantizations: [w4a16]
         verification_status: verified
       - mode: baked_profile
-        baked_artifact_id: small-chat-v1-concise-baked
-        compatible_model_families: [mock]
+        baked_artifact_id: qwen3-0.6b-s25-concise
+        # Concise has a baked artifact on both the real S25 (qwen3/genie/w4a16)
+        # and the portable mock fleet (small-chat-v1-concise-baked). Both are
+        # listed because these declarations are enforced: omitting the mock
+        # bake would make the SDK-free demo fleet unable to realize a profile
+        # it demonstrably holds.
+        compatible_model_families: [qwen3, mock]
+        compatible_runtimes: [genie, mock]
+        compatible_quantizations: [w4a16, none]
         verification_status: verified
-      - mode: prompt_profile
-        prompt_template: "Answer as briefly as possible. Prefer one short paragraph."
-        verification_status: calibrated
+
+  - profile_id: detailed
+    display_name: Detailed
+    description: More expansive answers with additional explanation.
+    base_model_family: qwen3
+    version: "2"
+    policy_tags: [style]
+    # allow_unsteered for the same reason as concise: a base-model answer is
+    # better than no answer when no eligible device can carry the behavior,
+    # and the realization is reported honestly as "none".
+    fallback_policy: allow_unsteered
+    provenance: >-
+      SteerLab layer-7 runtime vector physically proven on SM-S938U1;
+      PersonaCare layer-7 alpha +4 baked bundle retained as fallback
+    evaluation_status: validated
+    realizations:
+      - mode: runtime_vector
+        vector_id: concise-vs-verbose-layer-7
+        alpha: 8.0
+        alpha_min: -10.0
+        alpha_max: 10.0
+        injection_layer: 7
+        positions: all
+        compatible_model_families: [qwen3]
+        compatible_runtimes: [genie_aux]
+        compatible_quantizations: [w4a16]
+        verification_status: verified
+      - mode: baked_profile
+        baked_artifact_id: qwen3-0.6b-s25-detailed
+        compatible_model_families: [qwen3]
+        compatible_runtimes: [genie]
+        compatible_quantizations: [w4a16]
+        verification_status: verified
 
   - profile_id: friendly
     display_name: Friendly

@@ -52,16 +52,19 @@ validated `runtime/genie_runner.py`):
 ## 3. S25 Ultra: QNN/Genie execution in the Android Agent
 
 Behind `AndroidTaskExecutor` (the packaged `GenieAndroidTaskExecutor` /
-`QnnAndroidTaskExecutor` and the QAIRT 2.48 Genie JNI bridge):
+`QnnAndroidTaskExecutor`, the Genie JNI bridge, and the direct-QNN JNI
+scaffold):
 
 - load the verified S25 bundle (`qwen3-4b-qnn-s25` target), validate
   checksums via `AndroidArtifactRegistry`, and only then advertise it;
 - execute tasks/shards on the Hexagon NPU, mapping failures to the existing
   error codes; keep the mock executor as the fallback path;
 - report warm state transitions to the heartbeat `warm_model_ids`;
-- pipeline stages: implement real boundary-tensor I/O for
-  `qwen3-0.6b-part-a` using the existing checksummed `BoundaryTensor`
-  contract (the Python `QnnPipelineExecutor` is the host reference);
+- pipeline stages: the Qwen3-1.7B control plane now uses explicit
+  PREFILL/DECODE/RESET/CANCEL, indexed stages, named boundary tensors, and
+  task-local KV lifecycle. The physical gate is binding the checked-in JNI
+  context/session methods to licensed QAIRT 2.45 libraries and validating all
+  four prompt/decode graphs on the S25;
 - runtime steering on QNN requires the steering-input graphs from
   `PersonaCare-Steering-Research/src/steering_poc/export_onnx.py`; until a
   compiled steering-enabled graph is validated on-device, do not advertise

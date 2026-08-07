@@ -5,6 +5,7 @@ import re
 import uuid
 
 from .models import (
+    ComputePreference,
     ExecutionMode,
     ExecutionPlan,
     PlannedTask,
@@ -12,6 +13,9 @@ from .models import (
     SteeringSpec,
     TaskProfile,
 )
+
+
+ELASTIC_PIPELINE_ID = "qwen3-1.7b-w4a16-demo-v1"
 
 
 class ExecutionPlanner:
@@ -23,6 +27,8 @@ class ExecutionPlanner:
         requested_execution_mode: str = "auto",
         steering: SteeringSpec | None = None,
         origin_device_id: str = "",
+        behavior_profile_id: str = "",
+        profile_realization: str = "none",
         reducer: str = ReducerMode.MOCK_SYNTHESIS.value,
     ) -> ExecutionPlan:
         mode = self._choose_mode(profile, preferred_mode, requested_execution_mode)
@@ -52,18 +58,33 @@ class ExecutionPlanner:
                 tasks=tasks,
                 steering=steering,
                 origin_device_id=origin_device_id,
+                preferred_mode=preferred_mode,
+                behavior_profile_id=behavior_profile_id,
+                profile_realization=profile_realization,
                 reducer=reducer,
                 reasons=tuple(reasons),
             )
 
         if mode == ExecutionMode.LAYER_PIPELINE:
-            reasons.append("Selected layer_pipeline: request prefers quality and can use split model segments.")
+            pipeline_id = (
+                ELASTIC_PIPELINE_ID
+                if preferred_mode == ComputePreference.ELASTIC.value
+                else ""
+            )
+            reasons.append(
+                f"Selected layer_pipeline: {preferred_mode} requested the "
+                f"{pipeline_id or 'compatible'} distributed pipeline."
+            )
             return ExecutionPlan(
                 task_id=task_id,
                 execution_mode=mode,
                 request_text=request_text,
                 steering=steering,
                 origin_device_id=origin_device_id,
+                preferred_mode=preferred_mode,
+                pipeline_id=pipeline_id,
+                behavior_profile_id=behavior_profile_id,
+                profile_realization=profile_realization,
                 reducer=reducer,
                 reasons=tuple(reasons),
             )
@@ -76,6 +97,9 @@ class ExecutionPlanner:
             tasks=(PlannedTask(shard_id="shard-1", request_text=request_text),),
             steering=steering,
             origin_device_id=origin_device_id,
+            preferred_mode=preferred_mode,
+            behavior_profile_id=behavior_profile_id,
+            profile_realization=profile_realization,
             reducer=reducer,
             reasons=tuple(reasons),
         )
@@ -86,14 +110,14 @@ class ExecutionPlanner:
         preferred_mode: str,
         requested_execution_mode: str,
     ) -> ExecutionMode:
+        if preferred_mode in {"private", "local", "quality"}:
+            return ExecutionMode.SINGLE
+        if preferred_mode == "elastic":
+            return ExecutionMode.LAYER_PIPELINE
+        if preferred_mode == "parallel":
+            return ExecutionMode.DATA_PARALLEL
         if requested_execution_mode != "auto":
             return ExecutionMode(requested_execution_mode)
-        if preferred_mode == "private":
-            return ExecutionMode.SINGLE
-        if profile.data_parallelizable:
-            return ExecutionMode.DATA_PARALLEL
-        if profile.layer_parallel_candidate:
-            return ExecutionMode.LAYER_PIPELINE
         return ExecutionMode.SINGLE
 
     def _split_shards(self, request_text: str) -> list[str]:

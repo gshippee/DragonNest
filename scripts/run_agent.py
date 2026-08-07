@@ -32,6 +32,7 @@ async def run(args) -> None:
         adapter = HardwareRuntimeAdapter(
             artifacts,
             compatibility_key=args.compatibility_key,
+            compatible_target_classes=tuple(args.compatible_target_class),
             runtime_name=args.runtime_name,
             runtime_version=args.runtime_version,
             accelerator_available=args.accelerator_available,
@@ -39,6 +40,13 @@ async def run(args) -> None:
             artifact_store=args.artifact_store,
         )
         telemetry = AdapterTelemetry(adapter)
+    pipeline_provider = None
+    if args.enable_qwen17_pipeline:
+        if artifacts is None:
+            raise RuntimeError("--enable-qwen17-pipeline requires --artifact-manifest")
+        from dragon_nest.runtime.qwen17_provider import Qwen17PipelineProvider
+
+        pipeline_provider = Qwen17PipelineProvider(artifacts)
     agent = DeviceAgent(
         device,
         AgentClientConfig(
@@ -51,6 +59,7 @@ async def run(args) -> None:
         artifacts=artifacts,
         executor=adapter,
         telemetry=telemetry,
+        pipeline_provider=pipeline_provider,
     )
     print(f"Starting {args.device_id}; connecting to {args.brain}")
     try:
@@ -81,6 +90,15 @@ def main() -> None:
         "--compatibility-key",
         help="exact target class, for example windows-arm64-x1e-v73-qairt-2.48",
     )
+    parser.add_argument(
+        "--compatible-target-class",
+        action="append",
+        default=[],
+        help=(
+            "Additional artifact target proven compatible with this runtime; "
+            "repeatable and never inferred automatically."
+        ),
+    )
     parser.add_argument("--runtime-name", default="genie")
     parser.add_argument("--runtime-version", default="unknown")
     parser.add_argument(
@@ -92,6 +110,14 @@ def main() -> None:
         "--artifact-store",
         type=Path,
         default=Path.home() / ".dragonnest" / "artifacts",
+    )
+    parser.add_argument(
+        "--enable-qwen17-pipeline",
+        action="store_true",
+        help=(
+            "Enable the fail-closed physical Qwen3-1.7B QNN stage provider; "
+            "requires the four checksummed X Elite artifacts and QAIRT 2.45"
+        ),
     )
     parser.set_defaults(artifact_manifest=Path("configs/model-artifacts.yaml"))
     args = parser.parse_args()

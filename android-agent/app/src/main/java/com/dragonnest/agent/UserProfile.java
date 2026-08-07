@@ -2,12 +2,24 @@ package com.dragonnest.agent;
 
 import com.dragonnest.proto.PersonalProfileRegistration;
 
-/** User-facing profile values. Technical steering fields remain an implementation detail. */
-public record UserProfile(String personName, String profileText, String personaId) {
+/** User-facing profile values, including the steering strength the user chose. */
+public record UserProfile(
+        String personName, String profileText, String personaId, float steeringAlpha) {
     public static final String PERSONA_BALANCED = "balanced";
     public static final String PERSONA_CONCISE = "concise";
     public static final String PERSONA_DETAILED = "detailed";
-    private static final String STYLE_VECTOR = "concise-vs-verbose-layer-7";
+    /**
+     * Bounds of the profile steering slider. These match the validated alpha
+     * range of concise-vs-verbose-layer-7; Brain rejects anything outside it,
+     * so the UI must not offer a value that would fail at routing time.
+     */
+    public static final float ALPHA_MIN = -10.0f;
+    public static final float ALPHA_MAX = 10.0f;
+
+    /** Backwards-compatible constructor: no explicit strength means profile default. */
+    public UserProfile(String personName, String profileText, String personaId) {
+        this(personName, profileText, personaId, 0.0f);
+    }
 
     public UserProfile {
         personName = personName == null ? "" : personName.trim();
@@ -24,21 +36,38 @@ public record UserProfile(String personName, String profileText, String personaI
                 && !personaId.equals(PERSONA_DETAILED)) {
             throw new IllegalArgumentException("Choose an available persona");
         }
+        if (Float.isNaN(steeringAlpha) || steeringAlpha < ALPHA_MIN || steeringAlpha > ALPHA_MAX) {
+            throw new IllegalArgumentException("Steering strength is out of range");
+        }
+    }
+
+    /** True when the user moved the slider off centre and wants an explicit alpha. */
+    public boolean hasExplicitSteering() {
+        return Math.abs(steeringAlpha) > 0.01f;
+    }
+
+    /**
+     * The semantic profile a slider position represents.
+     *
+     * The slider is the single response-style control, so the persona is
+     * derived rather than chosen separately -- two controls over the same axis
+     * let the user express a contradiction (Balanced *and* strongly steered)
+     * that has no coherent realization. Centre is exactly Balanced, which is
+     * what keeps an unsteered request on the stock base artifact.
+     */
+    public static String personaForAlpha(float alpha) {
+        if (Math.abs(alpha) <= 0.01f) {
+            return PERSONA_BALANCED;
+        }
+        return alpha < 0 ? PERSONA_CONCISE : PERSONA_DETAILED;
     }
 
     public PersonalProfileRegistration registration() {
-        PersonalProfileRegistration.Builder registration = PersonalProfileRegistration.newBuilder()
+        return PersonalProfileRegistration.newBuilder()
                 .setPersonName(personName)
                 .setPreferredMode("auto")
                 .setNotes(profileText)
                 .setPersonaId(personaId)
-                .setSteeringPositions("last")
-                .setAllowRemoteVector(false);
-        if (personaId.equals(PERSONA_CONCISE)) {
-            registration.setSteeringVectorId(STYLE_VECTOR).setSteeringAlpha(-2.0f);
-        } else if (personaId.equals(PERSONA_DETAILED)) {
-            registration.setSteeringVectorId(STYLE_VECTOR).setSteeringAlpha(2.0f);
-        }
-        return registration.build();
+                .build();
     }
 }

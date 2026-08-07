@@ -10,4 +10,6 @@ public interface AndroidTaskExecutor {
     TaskExecutionResult executeShard(ExecuteShard command) throws Exception;
 
     TaskExecutionResult executePipelineStage(ExecutePipelineStage command) throws Exception;
+
+    default void cleanupTask(String taskId) { }
 }

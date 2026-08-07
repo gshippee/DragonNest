@@ -31,7 +31,7 @@ class HttpEndpoint:
     device: Device
     base_url: str
     credential_env: str = ""
-    request_timeout_seconds: float = 30.0
+    request_timeout_seconds: float = 270.0
     health_timeout_seconds: float = 5.0
     poll_interval_seconds: float = 5.0
     allow_profile_context: bool = False

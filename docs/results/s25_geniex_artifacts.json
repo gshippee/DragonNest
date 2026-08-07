@@ -1,0 +1,125 @@
+{
+  "format": "dragonnest-s25-geniex-inventory-v1",
+  "artifacts": [
+    {
+      "model_id": "qwen3-0.6b-s25-base",
+      "artifact_id": "qwen3-0.6b-w4a16-sm8750-base-qairt245",
+      "model_version": "c1899de289a04d12100db370d81485cdf75e47ca",
+      "tokenizer_id": "Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca",
+      "behavior_profile_id": "",
+      "source_directory": "base",
+      "bundle_directory_name": "qwen3-0.6b-base-sm8750",
+      "sha256_tree": "efc5728ba3ac7ee4a5bc2ee7fc8aaad8e875d66625234d71180dcec74a695827",
+      "graph_names": [
+        "prompt_ar128_cl512_1_of_2",
+        "token_ar1_cl512_1_of_2",
+        "prompt_ar128_cl512_2_of_2",
+        "token_ar1_cl512_2_of_2"
+      ],
+      "geniex_autoregressive_ready": true,
+      "files": {
+        "config.json": "99e69702e0e668dead9b075d8fd6d2f9c0ffd2dce60be44dc2a90bfe0d81dfbc",
+        "genie_config.json": "93cffc4dbe0ebbfa83bd6992aea9d89bd2785ffff22ff8a48db6996a80f673e5",
+        "htp_backend_ext_config.json": "09d3b915c784116f96fa4d612d8c1f2fac0e32952e5eb2f1a8f79bf48a9cda94",
+        "metadata.json": "63c475986735d7e18241e4dd74964ea5321d020c12eda90e97f9cddb21f84f73",
+        "part1_of_2.bin": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978",
+        "part2_of_2.bin": "6fbfa220a305bf3df27bf943a5c86e0885518ce8e11027c098aa32ab5dd25c75",
+        "sample_prompt.txt": "b7935afc0362ae0ad7d4ab936b5fda678cef6c318df048b32604d11bf6d80c2f",
+        "tokenizer.json": "be75606093db2094d7cd20f3c2f385c212750648bd6ea4fb2bf507a6a4c55506",
+        "tokenizer_config.json": "b9f46e272142a3ee7a3aaab260bf44c6ed37eb1db981dcdd8f85583e61c68f89"
+      }
+    },
+    {
+      "model_id": "qwen3-0.6b-s25-concise",
+      "artifact_id": "qwen3-0.6b-w4a16-sm8750-concise-l7-am4-qairt245",
+      "model_version": "c1899de289a04d12100db370d81485cdf75e47ca",
+      "tokenizer_id": "Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca",
+      "behavior_profile_id": "concise",
+      "source_directory": "concise-l7-alpha-m4",
+      "bundle_directory_name": "qwen3_0_6b-geniex_qairt-w4a16-qualcomm_snapdragon_8_elite_for_galaxy",
+      "sha256_tree": "eaa310354020e460d0b7862de4871a031fad8d48c0c2551241a2c78a82f4eb0e",
+      "graph_names": [
+        "prompt_ar128_cl512_1_of_2",
+        "token_ar1_cl512_1_of_2",
+        "prompt_ar128_cl512_2_of_2",
+        "token_ar1_cl512_2_of_2"
+      ],
+      "geniex_autoregressive_ready": true,
+      "files": {
+        "config.json": "99e69702e0e668dead9b075d8fd6d2f9c0ffd2dce60be44dc2a90bfe0d81dfbc",
+        "genie_config.json": "93cffc4dbe0ebbfa83bd6992aea9d89bd2785ffff22ff8a48db6996a80f673e5",
+        "htp_backend_ext_config.json": "09d3b915c784116f96fa4d612d8c1f2fac0e32952e5eb2f1a8f79bf48a9cda94",
+        "metadata.json": "325211c4663c5e8b30f18b78e7254d6aac42ca8f3d6e08af686b6572566a5331",
+        "part1_of_2.bin": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978",
+        "part2_of_2.bin": "4d91bc6c65150cfc4e52875ad224aa2f7cfd0f1246bf71caab37db6ac0a7782c",
+        "sample_prompt.txt": "b7935afc0362ae0ad7d4ab936b5fda678cef6c318df048b32604d11bf6d80c2f",
+        "tokenizer.json": "be75606093db2094d7cd20f3c2f385c212750648bd6ea4fb2bf507a6a4c55506",
+        "tokenizer_config.json": "b9f46e272142a3ee7a3aaab260bf44c6ed37eb1db981dcdd8f85583e61c68f89"
+      }
+    },
+    {
+      "model_id": "qwen3-0.6b-s25-detailed",
+      "artifact_id": "qwen3-0.6b-w4a16-sm8750-detailed-l7-ap4-qairt245",
+      "model_version": "c1899de289a04d12100db370d81485cdf75e47ca",
+      "tokenizer_id": "Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca",
+      "behavior_profile_id": "detailed",
+      "source_directory": "detailed-l7-alpha-p4",
+      "bundle_directory_name": "detailed-l7-alpha-p4",
+      "sha256_tree": "460e2c1cbff39607210ef0a6c9ac0fd603729d39046327dce7dc9405f1cf93eb",
+      "graph_names": [
+        "prompt_ar128_cl512_1_of_2",
+        "token_ar1_cl512_1_of_2",
+        "prompt_ar128_cl512_2_of_2",
+        "token_ar1_cl512_2_of_2"
+      ],
+      "geniex_autoregressive_ready": true,
+      "files": {
+        "config.json": "f4cf2e6b25181578265205d4373303769702851a8b88cc9eb2b45a250595bbc9",
+        "genie_config.json": "4e07311f1ad346f99a48b8f4f20fe6fa8370c8ddf56326e50c7ee2c5c977873b",
+        "htp_backend_ext_config.json": "09d3b915c784116f96fa4d612d8c1f2fac0e32952e5eb2f1a8f79bf48a9cda94",
+        "metadata.json": "628b51e968b511947f104e101bcb32642bf4bf494069ae82dacfb4b49ec6cce9",
+        "part1_of_2.bin": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978",
+        "part2_of_2.bin": "b7eb9b0db2a2711fe69bcb2438114b756dbc9d28b6872c69958c2ed35fdeac6b",
+        "sample_prompt.txt": "f1f4e38e1f39968d4cfa6515d84cc144f3a5ba438429bf53ed7cb8fcc48de01c",
+        "tokenizer.json": "be75606093db2094d7cd20f3c2f385c212750648bd6ea4fb2bf507a6a4c55506",
+        "tokenizer_config.json": "40d1fbd86f2b8600724575315e9fa543f2cae298317a7107b1b63df85e0fc2f3"
+      }
+    },
+    {
+      "model_id": "qwen3-0.6b-s25-runtime-steerable",
+      "artifact_id": "qwen3-0.6b-w4a16-sm8750-runtime-vector-l7-qairt245",
+      "model_version": "c1899de289a04d12100db370d81485cdf75e47ca",
+      "tokenizer_id": "Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca",
+      "behavior_profile_id": "",
+      "steering_mode": "runtime_vector",
+      "steering_vector_ids": [
+        "concise-vs-verbose-layer-7"
+      ],
+      "supported_steering_layers": [
+        7
+      ],
+      "source_directory": "runtime-steerable",
+      "bundle_directory_name": "qwen3-0.6b-runtime-steerable-sm8750",
+      "sha256_tree": "e7ae40e91db941a7d3c68db01abf35c6a1a91248f0d32eb9481974d6aba9afae",
+      "graph_names": [
+        "prompt_ar128_cl512_1_of_2",
+        "token_ar1_cl512_1_of_2",
+        "prompt_ar128_cl512_2_of_2",
+        "token_ar1_cl512_2_of_2"
+      ],
+      "geniex_autoregressive_ready": true,
+      "files": {
+        "aux_inputs.json": "0394473f5db7a9c3e23089b27d19c7563fb1e08abc63e71615eae4bc1acee8c6",
+        "config.json": "660db3b73d788119c04535e48cf9be5f55bc3100841a718637ae695b442f27dd",
+        "genie_config.json": "6ddc9ba81608fe47afba7572441ece4f73caaba6525c5c753e57a11d1e53208d",
+        "htp_backend_ext_config.json": "09d3b915c784116f96fa4d612d8c1f2fac0e32952e5eb2f1a8f79bf48a9cda94",
+        "metadata.json": "5dd35f066018d98dc896aacd094bb4ea54700352293c74a8490a715909cff50e",
+        "part1_of_2.bin": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978",
+        "part2_of_2.bin": "c189fe74ae05b44695534191fbdeaed9f23f577d9e9d1695882fec206b6c863e",
+        "steering_vector_layer7_unit.bin": "800f3248289f97164d0936a567a16b93e16ecbfabbb5d0ec08a811ca0cb76305",
+        "tokenizer.json": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "tokenizer_config.json": "d5d09f07b48c3086c508b30d1c9114bd1189145b74e982a265350c923acd8101"
+      }
+    }
+  ]
+}

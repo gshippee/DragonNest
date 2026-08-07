@@ -5,8 +5,8 @@ X Elite laptop. The physical worker is now verified and the mailbox is kept as
 a sanitized audit trail.
 
 - `AGENT_PROMPT.md` is now the no-reasoning operator handoff for the worker.
-- `STATUS.json` summarizes the completed worker proof and remaining
-  PersonaCare two-request stage claim.
+- `STATUS.json` summarizes the completed worker and PersonaCare two-request
+  stage proof.
 - `docs/results/xelite_worker_status.md` contains the detailed sanitized proof.
 - Full logs and `dragonnest-xelite-proof.json` stay outside Git under `%TEMP%`.
 - `STATUS.json` records only sanitized facts and the proof file's SHA-256.

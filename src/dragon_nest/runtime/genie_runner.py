@@ -32,6 +32,8 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from . import npu_lease
+
 GENIE_DIR = Path(
     os.environ.get(
         "GENIE_DIR",
@@ -75,7 +77,12 @@ def build_chatml_prompt(system: str, user: str) -> str:
     )
 
 
-def _parse_response(stdout: str) -> str:
+def _parse_response(stdout: str | None) -> str:
+    # subprocess.run's .stdout can come back None (observed on Windows under
+    # NPU/DSP session contention) even when returncode == 0, outside the
+    # already-handled TimeoutExpired path. Fall through to the existing
+    # "no [BEGIN]:...[END] response" error instead of a raw regex TypeError.
+    stdout = stdout or ""
     match = _RESPONSE_RE.search(stdout)
     if not match:
         raise RuntimeError(
@@ -122,19 +129,30 @@ def run_genie(
     try:
         prompt_file.write_text(prompt, encoding="utf-8")
         try:
-            result = subprocess.run(
-                [
-                    str(executable),
-                    "-c",
-                    str(config_path),
-                    "--prompt_file",
-                    str(prompt_file.resolve()),
-                ],
-                cwd=bundle_dir,
-                capture_output=True,
-                text=True,
-                timeout=timeout_sec,
-            )
+            # Announce that this host's NPU is in use so speech synthesis
+            # stands down rather than opening a competing DSP session. This is
+            # deliberately fail-open (required=False): the pinned language
+            # model is the priority workload and must never be blocked, or
+            # made to fail, by the lease.
+            with npu_lease.lease(
+                "qwen3-4b-genie",
+                hold_sec=timeout_sec,
+                wait_sec=0.0,
+                required=False,
+            ):
+                result = subprocess.run(
+                    [
+                        str(executable),
+                        "-c",
+                        str(config_path),
+                        "--prompt_file",
+                        str(prompt_file.resolve()),
+                    ],
+                    cwd=bundle_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_sec,
+                )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
                 f"genie-t2t-run.exe timed out after {timeout_sec}s. This usually means "

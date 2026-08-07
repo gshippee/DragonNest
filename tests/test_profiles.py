@@ -106,7 +106,8 @@ def test_authenticated_registration_creates_and_updates_persona_profile():
     created = service.profiles.profile_for_device("phone-01")
     assert created is not None
     assert created.persona_id == "concise"
-    assert created.steering_alpha == -2.0
+    assert created.steering_vector_id == ""
+    assert created.steering_alpha == 0.0
 
     updated = pb.RegisterDevice()
     updated.CopyFrom(first)
@@ -119,17 +120,15 @@ def test_authenticated_registration_creates_and_updates_persona_profile():
     assert loaded.profile_id == created.profile_id
     assert loaded.notes == "Prefers implementation details"
     assert loaded.persona_id == "detailed"
-    assert loaded.steering_alpha == 2.0
+    assert loaded.steering_vector_id == ""
+    assert loaded.steering_alpha == 0.0
 
 
-def test_persona_resolution_and_profile_prompt_are_explicit():
+def test_profile_prompt_is_explicit_and_semantic_personas_do_not_create_vectors():
     steering = SteeringRegistry.from_yaml(ROOT / "configs/steering-vectors.yaml")
     service = BrainService(steering_registry=steering)
 
-    concise = service._steering_for_persona("concise")
-    assert concise.enabled
-    assert concise.alpha == -2.0
-    assert service._steering_for_persona("balanced").enabled is False
+    assert not hasattr(service, "_steering_for_persona")
     assert service._with_profile_context("Help me plan.", "I prefer short lists.") == (
         "About the user:\nI prefer short lists.\n\nRequest:\nHelp me plan."
     )

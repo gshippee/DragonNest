@@ -1,6 +1,9 @@
 const STORAGE_KEY = "dragonnest.myDevice";
 const STYLE_VECTOR = "concise-vs-verbose-layer-7";
 const state = { myDevice: loadMyDevice(), enrollment: null };
+// Synthesized audio for the response currently on screen. Kept so replaying an
+// answer costs nothing -- synthesis runs on the NPU and takes real seconds.
+const speech = { text: "", url: "", audio: null };
 const $ = (id) => document.getElementById(id);
 
 function loadMyDevice() {
@@ -98,6 +101,8 @@ async function saveProfile(event) {
 async function submitTask(event) {
   event.preventDefault();
   const button = $("submit-button"); button.disabled = true;
+  clearSpeech();
+  $("speak-button").disabled = true;
   $("result-card").hidden = false;
   $("result-state").className = "status-pill running";
   $("result-state").textContent = "Thinking";
@@ -123,10 +128,89 @@ async function submitTask(event) {
 
 function renderResult(task) {
   const succeeded = task.state === "SUCCEEDED";
+  const output = task.result?.output_text
+    || "DragonNest could not complete that request. Please try again.";
   $("result-state").className = `status-pill ${succeeded ? "healthy" : "failed"}`;
   $("result-state").textContent = succeeded ? "Done" : "Try again";
-  $("result-output").textContent = task.result?.output_text
-    || "DragonNest could not complete that request. Please try again.";
+  $("result-output").textContent = output;
+  if (speech.text !== output) clearSpeech();
+  $("speak-button").disabled = !succeeded;
+}
+
+function setSpeakIcon(name) {
+  // lucide swaps <i data-lucide> for an <svg> in place, so changing the icon
+  // means restoring the placeholder and re-running the converter.
+  $("speak-button").innerHTML = `<i data-lucide="${name}"></i>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+function stopSpeech() {
+  if (speech.audio) {
+    speech.audio.pause();
+    speech.audio = null;
+  }
+  $("speak-button").classList.remove("busy");
+  setSpeakIcon("volume-2");
+}
+
+function clearSpeech() {
+  stopSpeech();
+  if (speech.url) URL.revokeObjectURL(speech.url);
+  speech.url = "";
+  speech.text = "";
+}
+
+async function requestSpeech(text) {
+  // Not the shared api() helper: this response is a .wav body, not JSON.
+  const response = await fetch("/api/speech", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    // 409 is the NPU being busy with the language model, not a failure --
+    // speech yields to it rather than competing for the same DSP session.
+    let detail = { 409: "DragonNest is thinking. Try the speaker again in a moment.",
+                   503: "This DragonNest host isn't set up for speech yet." }[response.status]
+                 || "DragonNest could not read that aloud.";
+    try { detail = (await response.json()).detail || detail; } catch { /* non-JSON error body */ }
+    throw new Error(detail);
+  }
+  return response.blob();
+}
+
+function playSpeech() {
+  const button = $("speak-button");
+  button.classList.remove("busy");
+  setSpeakIcon("square");
+  const audio = new Audio(speech.url);
+  speech.audio = audio;
+  audio.addEventListener("ended", stopSpeech);
+  audio.addEventListener("error", () => { toast("That audio could not be played."); stopSpeech(); });
+  audio.play().catch(() => { toast("Your browser blocked playback."); stopSpeech(); });
+}
+
+async function speakResult() {
+  const button = $("speak-button");
+  if (speech.audio) { stopSpeech(); return; }  // the button stops playback mid-clip
+  const text = $("result-output").textContent.trim();
+  if (!text) return;
+  if (speech.url && speech.text === text) { playSpeech(); return; }
+
+  button.disabled = true;
+  button.classList.add("busy");
+  setSpeakIcon("loader");  // "loader", not "loader-2": the latter is a deprecated lucide alias
+  try {
+    const blob = await requestSpeech(text);
+    if (speech.url) URL.revokeObjectURL(speech.url);
+    speech.url = URL.createObjectURL(blob);
+    speech.text = text;
+    playSpeech();
+  } catch (error) {
+    toast(error.message);
+    stopSpeech();
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function forgetDevice() {
@@ -251,6 +335,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("forget-device").addEventListener("click", forgetDevice);
   $("profile-form").addEventListener("submit", saveProfile);
   $("task-form").addEventListener("submit", submitTask);
+  $("speak-button").addEventListener("click", speakResult);
   watchOnlineStatus("offline-banner");
   setupInstallPrompt("install-button");
   await loadProfile();

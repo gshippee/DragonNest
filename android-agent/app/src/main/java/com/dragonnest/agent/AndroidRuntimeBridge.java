@@ -21,4 +21,7 @@ public interface AndroidRuntimeBridge {
             Context context,
             AndroidModelArtifact artifact,
             RuntimeExecutionRequest request) throws Exception;
+
+    /** Release every runtime/session resource owned by a parent task. */
+    default void releaseTask(String taskId) { }
 }

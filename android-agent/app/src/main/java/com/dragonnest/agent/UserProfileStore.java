@@ -44,7 +44,8 @@ public final class UserProfileStore {
                 return new UserProfile(
                         value.optString("person_name"),
                         value.optString("profile_text"),
-                        value.optString("persona_id", UserProfile.PERSONA_BALANCED));
+                        value.optString("persona_id", UserProfile.PERSONA_BALANCED),
+                        (float) value.optDouble("steering_alpha", 0.0));
             }
             return migrateLegacyProfile();
         } catch (Exception invalidOrUnavailable) {
@@ -56,7 +57,8 @@ public final class UserProfileStore {
         JSONObject value = new JSONObject()
                 .put("person_name", profile.personName())
                 .put("profile_text", profile.profileText())
-                .put("persona_id", profile.personaId());
+                .put("persona_id", profile.personaId())
+                .put("steering_alpha", profile.steeringAlpha());
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey());
         byte[] ciphertext = cipher.doFinal(value.toString().getBytes(StandardCharsets.UTF_8));

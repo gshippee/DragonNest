@@ -22,7 +22,7 @@ models:
     supports_steering: false
     supports_data_parallel: true
     supports_layer_pipeline: false
-    size_bytes: null
+    size_bytes: 631616571
     context_profile:
       max_context_tokens: 4096
       prompt_sequence_lengths: unverified
@@ -41,7 +41,11 @@ models:
       runtime_version: QAIRT-2.48
       executable: genie-t2t-run.exe
       config: genie_config.json
-      timeout_sec: 180
+      # 4 minutes of generation for the X Elite 4B, which pays a ~3.1GB context
+      # load before its first token. Every enclosing budget must stay above this
+      # so a slow run fails here -- with a real error -- instead of being cut off
+      # by an outer layer: Brain 270s, then origin-device deadline 300s.
+      timeout_sec: 240
       system_prompt: You are a helpful AI assistant.
       persistent_load_supported: false
 
@@ -61,7 +65,7 @@ models:
     steering_mode: none
     behavior_profile_id: ""
     vector_id: ""
-    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+    target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
     supported_accelerators: [htp]
     min_memory_mb: 2048
     max_context_tokens: 512
@@ -105,14 +109,14 @@ models:
     precision: w4a16
     quantization: w4a16
     steering_mode: baked_profile
-    behavior_profile_id: concise-l7-alpha-m4
+    behavior_profile_id: concise
     vector_id: concise-vs-verbose-layer-7
     vector_calibration:
       layer: 7
       alpha: -4.0
       normalization: l2_at_injection
       vector_sha256: 7d69ff39a248a6e7df11d5fe2b533addfc19f84da75c4869a088eef8a2c32b2c
-    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+    target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
     supported_accelerators: [htp]
     min_memory_mb: 2048
     max_context_tokens: 512
@@ -142,6 +146,133 @@ models:
       config: genie_config.json
       timeout_sec: 180
       persistent_load_supported: false
+
+  - model_id: qwen3-0.6b-s25-detailed
+    artifact_id: qwen3-0.6b-w4a16-sm8750-detailed-l7-ap4-qairt245
+    model_version: c1899de289a04d12100db370d81485cdf75e47ca
+    base_model: Qwen/Qwen3-0.6B
+    base_model_revision: c1899de289a04d12100db370d81485cdf75e47ca
+    runtime: genie
+    artifact_format: geniex_qairt_bundle
+    artifact_path: ${QWEN3_0_6B_S25_DETAILED_DIR}
+    checksum: ${QWEN3_0_6B_S25_DETAILED_SHA256_TREE}
+    tokenizer_id: Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca
+    tokenizer_fingerprint: unverified
+    precision: w4a16
+    quantization: w4a16
+    steering_mode: baked_profile
+    behavior_profile_id: detailed
+    vector_id: concise-vs-verbose-layer-7
+    vector_calibration:
+      layer: 7
+      alpha: 4.0
+      normalization: l2_at_injection
+      vector_sha256: 7d69ff39a248a6e7df11d5fe2b533addfc19f84da75c4869a088eef8a2c32b2c
+    target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
+    supported_accelerators: [htp]
+    min_memory_mb: 2048
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: true
+    supports_layer_pipeline: false
+    size_bytes: 631616571
+    context_profile: {context_tokens: 512, prefill_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      - {name: prompt_text, dtype: utf8, shape: [dynamic]}
+    output_tensor_schema:
+      - {name: response_text, dtype: utf8, shape: [dynamic]}
+    build_provenance:
+      source: PersonaCare static steering recipe recovered 2026-08-07
+      source_onnx_sha256: fc390cb9f1a26a36d6e079ce5ceb83c51ba0379cd2a6a2713b0245f8bf7439e2
+      baked_onnx_sha256: 8d5a612b415333067910a41c368cfc4a034c443f02d705fbdbb3e41e2b046714
+      vector_sha256: 7d69ff39a248a6e7df11d5fe2b533addfc19f84da75c4869a088eef8a2c32b2c
+      release_zip_sha256: 739f2c1a2339b41195591cc89ebeae43af49dbd290bf70982af204ddfdd5f8f9
+      release_zip_size_bytes: 631616571
+      note: Artifact name says w4a16; recovered compile option says --quantize_full_type w8a16.
+    ai_hub:
+      target: Samsung Galaxy S25 (Family)
+      compile_job_ids: [jprw0m4k5, jp2ewq76p, jp06j8jep, jp81xdx85]
+      link_job_ids: [jp16jkjl5, jgd23y3l5]
+      rejected_prompt_only_link_job_ids: [jgnkndxvg, jp2ewqjxp]
+    measured_hardware_results:
+      - {device: SM-S938U1, runs: 8, runtime: GenieX-0.3.5, accelerator: htp-v79, median_word_delta_vs_base: 8.5, total_word_delta_vs_base: 123, longer_runs: 5, ttft_ms_range: [17, 19], decode_tokens_per_s_range: [120.1, 122.8], evidence: verified on physical hardware}
+    verification_status: verified on physical SM-S938U1 through GenieX QAIRT/HTP
+    runtime_options:
+      backend: htp
+      runtime_version: QAIRT-2.45 / GenieX-0.3.5
+      config: genie_config.json
+      timeout_sec: 180
+      persistent_load_supported: false
+
+  # Runtime activation steering. Unlike the baked Concise/Detailed artifacts
+  # above, this bundle exposes alpha/steering_vector as compiled auxiliary
+  # inputs, so one artifact realizes both directions at request time. It runs
+  # on the forked GenieX closure under its own runtime name; the stock Base
+  # entry above is deliberately untouched by its presence.
+  - model_id: qwen3-0.6b-s25-runtime-steerable
+    artifact_id: qwen3-0.6b-w4a16-sm8750-runtime-vector-l7-qairt245
+    model_version: c1899de289a04d12100db370d81485cdf75e47ca
+    base_model: Qwen/Qwen3-0.6B
+    base_model_revision: c1899de289a04d12100db370d81485cdf75e47ca
+    runtime: genie_aux
+    artifact_format: geniex_qairt_bundle
+    artifact_path: ${QWEN3_0_6B_S25_RUNTIME_STEERABLE_DIR}
+    checksum: ${QWEN3_0_6B_S25_RUNTIME_STEERABLE_SHA256_TREE}
+    tokenizer_id: Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca
+    tokenizer_fingerprint: unverified
+    precision: w4a16
+    quantization: w4a16
+    steering_mode: runtime_vector
+    # Intentionally blank: alpha selects Concise or Detailed at request time,
+    # so binding this artifact to one profile would misdescribe it.
+    behavior_profile_id: ""
+    vector_id: concise-vs-verbose-layer-7
+    vector_calibration:
+      layer: 7
+      normalization: l2_unit_at_source
+      vector_sha256: 800f3248289f97164d0936a567a16b93e16ecbfabbb5d0ec08a811ca0cb76305
+    target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
+    supported_accelerators: [htp]
+    min_memory_mb: 2048
+    max_context_tokens: 512
+    supports_steering: true
+    supports_data_parallel: true
+    supports_layer_pipeline: false
+    size_bytes: 718491780
+    context_profile: {context_tokens: 512, prefill_tokens: 128, decode_tokens: 1}
+    aux_inputs:
+      - {name: alpha, dtype: float32, shape: [1]}
+      - {name: steering_vector, dtype: float32, shape: [1, 1, 1024]}
+    input_tensor_schema:
+      - {name: prompt_text, dtype: utf8, shape: [dynamic]}
+    output_tensor_schema:
+      - {name: response_text, dtype: utf8, shape: [dynamic]}
+    build_provenance:
+      source: SteerLab runtime-steering export recovered 2026-08-07
+      pipeline: >-
+        bake_runtime_steering.py (ONNX runtime-input insertion) + patched
+        qai_hub_models.models.qwen3_0_6b.export --runtime geniex_qairt
+        --sequence-lengths 128,1 --context-lengths 512
+      sha256_tree: e7ae40e91db941a7d3c68db01abf35c6a1a91248f0d32eb9481974d6aba9afae
+      part1_sha256: 87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978
+      part2_sha256: c189fe74ae05b44695534191fbdeaed9f23f577d9e9d1695882fec206b6c863e
+      vector_sha256: 800f3248289f97164d0936a567a16b93e16ecbfabbb5d0ec08a811ca0cb76305
+      note: >-
+        Both prompt and decode graphs expose the aux inputs; the 2026-08-04
+        prompt-only bundles cannot serve this mechanism and are not
+        interchangeable with it.
+    ai_hub:
+      target: Samsung Galaxy S25 (Family)
+      compile_job_ids: [jgjq76385, jpv7dy2mp, jgo8r7ddp, j56w79o7g]
+      link_job_ids: [jpeyz0605, jgznmqz6g]
+    measured_hardware_results: []
+    verification_status: verified through Qualcomm AI Hub
+    runtime_options:
+      backend: htp
+      runtime_version: GenieX-fork-aux-0.3.5 / QAIRT-2.45
+      config: genie_config.json
+      timeout_sec: 180
+      persistent_load_supported: true
 
   - model_id: qwen3-0.6b-part-a
     artifact_id: qwen3-0.6b-fp16-split14-stage0-sm8750-v79-qairt245
@@ -249,3 +380,496 @@ models:
         - name: logits
           shape: [1, 32, 151936]
           dtype: float32
+
+  - model_id: qwen3-1.7b-s0-xelite
+    artifact_id: qwen3-1.7b-w4a16-demo-v1-s0-xelite
+    model_version: qwen3-1.7b-demo-v1-unpinned-main
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main-unpinned
+    runtime: qnn
+    artifact_format: qnn_context_binary
+    artifact_path: ${QWEN3_1_7B_S0_XELITE_QNN}
+    checksum: sha256:ca838bf2b1ddfaa1b0ed2b426eb798fb4e6f6437b1a28d14b217ffe9c01cec20
+    tokenizer_id: Qwen/Qwen3-1.7B
+    tokenizer_fingerprint: unverified
+    precision: w4a16-name-w8a16-compile-observed
+    quantization: "artifact name w4a16; recovered compile flag --quantize_full_type w8a16"
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+    supported_accelerators: [htp]
+    min_memory_mb: 1024
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    size_bytes: 622391296
+    context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      - {name: input_ids, dtype: int32, shape: [1, dynamic, 1]}
+    output_tensor_schema:
+      # Physically confirmed on X Elite (prompt+decode) -- was declared float32
+      # (an AI-Hub-level assumption, never physically checked); the real graph
+      # output is quantized ufixed_point_16, scale=6.988926998019451e-06,
+      # offset=-32232. See docs/results/qwen3_1_7b_xelite_physical_bringup.md.
+      - {name: embedding, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
+    build_provenance:
+      source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
+      declared_quantization: w4a16
+      observed_compile_option: --quantize_full_type w8a16 --quantize_io
+      quantization_mismatch_status: unresolved
+    ai_hub:
+      target: Snapdragon X Elite CRD
+    measured_hardware_results:
+      - {device: X1E80100 (Dell Latitude 7455), accelerator: htp, prompt_ms: 1266, decode_ms_avg: 1143, decode_samples: 8, evidence: verified on physical hardware, note: "part of a real 9-token S0-S3 prefill+decode loop"}
+    verification_status: verified-on-physical-hardware
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      stage_index: 0
+      stage_count: 4
+      total_layers: 28
+      input_tensor: input_ids
+      output_tensor: embedding
+      includes_embedding: true
+      includes_lm_head: false
+      boundary_format: qnn-raw-tensor-v1
+    runtime_options:
+      artifact_kind: context_binary
+      backend: htp
+      runtime_version: QAIRT-2.45
+      prompt_graph: prompt_ar128_cl512_1_of_4
+      decode_graph: token_ar1_cl512_1_of_4
+      tokenizer_owner: s0_agent
+      sampling_owner: final_stage_top1
+      retains_stage_kv_cache: false
+      memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
+
+  - model_id: qwen3-1.7b-s1-xelite
+    artifact_id: qwen3-1.7b-w4a16-demo-v1-s1-xelite
+    model_version: qwen3-1.7b-demo-v1-unpinned-main
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main-unpinned
+    runtime: qnn
+    artifact_format: qnn_context_binary
+    artifact_path: ${QWEN3_1_7B_S1_XELITE_QNN}
+    checksum: sha256:21c4d4d0dbe5bc0441e22fcf219b12a2c4518228b68455bfb9d84889245b9126
+    tokenizer_id: Qwen/Qwen3-1.7B
+    tokenizer_fingerprint: unverified
+    precision: w4a16-name-w8a16-compile-observed
+    quantization: "artifact name w4a16; recovered compile flag --quantize_full_type w8a16"
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+    supported_accelerators: [htp]
+    min_memory_mb: 768
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    size_bytes: 263147520
+    context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      # Physically confirmed on X Elite (prompt graph) -- same quantization
+      # as qwen3-1.7b-s0-xelite's output (scale/offset match exactly, so S0's
+      # raw output feeds S1 unchanged, no dequant/requant needed). Was
+      # declared float32 (never physically checked); see
+      # docs/results/qwen3_1_7b_xelite_physical_bringup.md.
+      - {name: embedding, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
+    output_tensor_schema:
+      # Physically confirmed on X Elite (prompt graph only, not decode);
+      # scale=0.018486686050891876, offset=-32808.
+      - {name: add_21844, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
+    build_provenance:
+      source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
+      declared_quantization: w4a16
+      observed_compile_option: --quantize_full_type w8a16 --quantize_io
+      quantization_mismatch_status: unresolved
+    ai_hub:
+      target: Snapdragon X Elite CRD
+    measured_hardware_results:
+      - {device: X1E80100 (Dell Latitude 7455), accelerator: htp, prompt_ms: 940, decode_ms_avg: 774, decode_samples: 8, evidence: verified on physical hardware, note: "decode not bit-exact vs an isolated same-value cross-check (~0.12 std-dev mean diff, plausibly batched-vs-single-token kernel divergence); real 8-step loop nonetheless produced coherent on-topic text"}
+    verification_status: verified-on-physical-hardware
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      stage_index: 1
+      stage_count: 4
+      total_layers: 28
+      transformer_start_layer: 0
+      transformer_end_layer: 9
+      input_tensor: embedding
+      output_tensor: add_21844
+      includes_embedding: false
+      includes_lm_head: false
+      boundary_format: qnn-raw-tensor-v1
+    runtime_options:
+      artifact_kind: context_binary
+      backend: htp
+      runtime_version: QAIRT-2.45
+      prompt_graph: prompt_ar128_cl512_2_of_4
+      decode_graph: token_ar1_cl512_2_of_4
+      tokenizer_owner: s0_agent
+      sampling_owner: final_stage_top1
+      retains_stage_kv_cache: true
+      memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
+
+  - model_id: qwen3-1.7b-s2-xelite
+    artifact_id: qwen3-1.7b-w4a16-demo-v1-s2-xelite
+    model_version: qwen3-1.7b-demo-v1-unpinned-main
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main-unpinned
+    runtime: qnn
+    artifact_format: qnn_context_binary
+    artifact_path: ${QWEN3_1_7B_S2_XELITE_QNN}
+    checksum: sha256:4d4c9d6e987c810bd9df501997cb5daa8105cd3a91d985b28f48e395c30dbaea
+    tokenizer_id: Qwen/Qwen3-1.7B
+    tokenizer_fingerprint: unverified
+    precision: w4a16-name-w8a16-compile-observed
+    quantization: "artifact name w4a16; recovered compile flag --quantize_full_type w8a16"
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+    supported_accelerators: [htp]
+    min_memory_mb: 768
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    size_bytes: 263131136
+    context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      # Physically confirmed on X Elite (prompt graph, real chained input from
+      # stage 1's output). scale=0.018486686050891876, offset=-32808.
+      - {name: add_21844, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
+    output_tensor_schema:
+      # Physically confirmed on X Elite (prompt graph). scale=0.018476400524377823, offset=-32938.
+      - {name: add_42314, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
+    build_provenance:
+      source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
+      declared_quantization: w4a16
+      observed_compile_option: --quantize_full_type w8a16 --quantize_io
+      quantization_mismatch_status: unresolved
+    ai_hub:
+      target: Snapdragon X Elite CRD
+    measured_hardware_results:
+      - {device: X1E80100 (Dell Latitude 7455), accelerator: htp, prompt_ms: 931, decode_ms_avg: 769, decode_samples: 8, evidence: verified on physical hardware, note: "part of a real 9-token S0-S3 prefill+decode loop"}
+    verification_status: verified-on-physical-hardware
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      stage_index: 2
+      stage_count: 4
+      total_layers: 28
+      transformer_start_layer: 10
+      transformer_end_layer: 19
+      input_tensor: add_21844
+      output_tensor: add_42314
+      includes_embedding: false
+      includes_lm_head: false
+      boundary_format: qnn-raw-tensor-v1
+    runtime_options:
+      artifact_kind: context_binary
+      backend: htp
+      runtime_version: QAIRT-2.45
+      prompt_graph: prompt_ar128_cl512_3_of_4
+      decode_graph: token_ar1_cl512_3_of_4
+      tokenizer_owner: s0_agent
+      sampling_owner: final_stage_top1
+      retains_stage_kv_cache: true
+      memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
+
+  - model_id: qwen3-1.7b-s3-xelite
+    artifact_id: qwen3-1.7b-w4a16-demo-v1-s3-xelite
+    model_version: qwen3-1.7b-demo-v1-unpinned-main
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main-unpinned
+    runtime: qnn
+    artifact_format: qnn_context_binary
+    artifact_path: ${QWEN3_1_7B_S3_XELITE_QNN}
+    checksum: sha256:bfdbc0dcb7a0f73f88f25d7b21c961e8ef061fda1b96e109710dbc79f00c1ece
+    tokenizer_id: Qwen/Qwen3-1.7B
+    tokenizer_fingerprint: unverified
+    precision: w4a16-name-w8a16-compile-observed
+    quantization: "artifact name w4a16; recovered compile flag --quantize_full_type w8a16"
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73-qairt-2.45
+    supported_accelerators: [htp]
+    min_memory_mb: 1152
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    size_bytes: 525893632
+    context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      # Physically confirmed on X Elite (prompt graph, real chained input from
+      # stage 2's output). scale=0.018476400524377823, offset=-32938.
+      - {name: add_42314, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
+    output_tensor_schema:
+      # Physically confirmed on X Elite (prompt graph, full real S0->S1->S2->S3
+      # chain): vocab_size=151936 (was an unverified placeholder), dtype is
+      # quantized not float32, scale=0.0014538989635184407, offset=-25969.
+      # Real chain's top-1 token was '<think>' (id 151667) -- the expected
+      # Qwen3 reasoning-mode first token.
+      - {name: logits, dtype: ufixed_point_16, shape: [1, dynamic, 151936]}
+    build_provenance:
+      source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
+      declared_quantization: w4a16
+      observed_compile_option: --quantize_full_type w8a16 --quantize_io
+      quantization_mismatch_status: unresolved
+    ai_hub:
+      target: Snapdragon X Elite CRD
+    measured_hardware_results:
+      - {device: X1E80100 (Dell Latitude 7455), accelerator: htp, prompt_ms: 2663, decode_ms_avg: 1197, decode_samples: 8, evidence: verified on physical hardware, note: "final stage of a real 9-token S0-S3 prefill+decode loop; generated text 'Gravity is the force that' is a coherent, on-topic continuation, not just plausible-shaped output"}
+    verification_status: verified-on-physical-hardware
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      stage_index: 3
+      stage_count: 4
+      total_layers: 28
+      transformer_start_layer: 20
+      transformer_end_layer: 27
+      input_tensor: add_42314
+      output_tensor: logits
+      includes_embedding: false
+      includes_lm_head: true
+      boundary_format: qnn-raw-tensor-v1
+    runtime_options:
+      artifact_kind: context_binary
+      backend: htp
+      runtime_version: QAIRT-2.45
+      prompt_graph: prompt_ar128_cl512_4_of_4
+      decode_graph: token_ar1_cl512_4_of_4
+      tokenizer_owner: s0_agent
+      sampling_owner: final_stage_top1
+      retains_stage_kv_cache: true
+      memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
+
+  - model_id: qwen3-1.7b-s0-s25
+    artifact_id: qwen3-1.7b-w4a16-demo-v1-s0-s25
+    model_version: qwen3-1.7b-demo-v1-unpinned-main
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main-unpinned
+    runtime: qnn
+    artifact_format: qnn_context_binary
+    artifact_path: ${QWEN3_1_7B_S0_S25_QNN}
+    checksum: sha256:d1b225660e7c3307960f9bf98611cb3f1a347baa5077079973e40026a0f7b8d5
+    tokenizer_id: Qwen/Qwen3-1.7B
+    tokenizer_fingerprint: unverified
+    precision: w4a16-name-w8a16-compile-observed
+    quantization: "artifact name w4a16; recovered compile flag --quantize_full_type w8a16"
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    supported_accelerators: [htp]
+    min_memory_mb: 1024
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    size_bytes: 622391296
+    context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      - {name: input_ids, dtype: int32, shape: [1, dynamic, 1]}
+    output_tensor_schema:
+      - {name: embedding, dtype: float32, shape: [1, dynamic, 2048]}
+    build_provenance:
+      source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
+      declared_quantization: w4a16
+      observed_compile_option: --quantize_full_type w8a16 --quantize_io
+      quantization_mismatch_status: unresolved
+    ai_hub:
+      target: Samsung Galaxy S25 (Family)
+    measured_hardware_results: []
+    verification_status: verified-through-ai-hub-not-physically-executed
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      stage_index: 0
+      stage_count: 4
+      total_layers: 28
+      input_tensor: input_ids
+      output_tensor: embedding
+      includes_embedding: true
+      includes_lm_head: false
+      boundary_format: qnn-raw-tensor-v1
+    runtime_options:
+      artifact_kind: context_binary
+      backend: htp
+      runtime_version: QAIRT-2.45
+      prompt_graph: prompt_ar128_cl512_1_of_4
+      decode_graph: token_ar1_cl512_1_of_4
+      tokenizer_owner: brain
+      sampling_owner: final_stage_top1
+      retains_stage_kv_cache: false
+      memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
+
+  - model_id: qwen3-1.7b-s1-s25
+    artifact_id: qwen3-1.7b-w4a16-demo-v1-s1-s25
+    model_version: qwen3-1.7b-demo-v1-unpinned-main
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main-unpinned
+    runtime: qnn
+    artifact_format: qnn_context_binary
+    artifact_path: ${QWEN3_1_7B_S1_S25_QNN}
+    checksum: sha256:ea19932dcc54d4a4bc66af22fa21ba19094fd146f6dd3f0221788baa47d7f912
+    tokenizer_id: Qwen/Qwen3-1.7B
+    tokenizer_fingerprint: unverified
+    precision: w4a16-name-w8a16-compile-observed
+    quantization: "artifact name w4a16; recovered compile flag --quantize_full_type w8a16"
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    supported_accelerators: [htp]
+    min_memory_mb: 768
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    size_bytes: 263028736
+    context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      - {name: embedding, dtype: float32, shape: [1, dynamic, 2048]}
+    output_tensor_schema:
+      - {name: add_21844, dtype: float32, shape: [1, dynamic, 2048]}
+    build_provenance:
+      source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
+      declared_quantization: w4a16
+      observed_compile_option: --quantize_full_type w8a16 --quantize_io
+      quantization_mismatch_status: unresolved
+    ai_hub:
+      target: Samsung Galaxy S25 (Family)
+    measured_hardware_results: []
+    verification_status: verified-through-ai-hub-not-physically-executed
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      stage_index: 1
+      stage_count: 4
+      total_layers: 28
+      transformer_start_layer: 0
+      transformer_end_layer: 9
+      input_tensor: embedding
+      output_tensor: add_21844
+      includes_embedding: false
+      includes_lm_head: false
+      boundary_format: qnn-raw-tensor-v1
+    runtime_options:
+      artifact_kind: context_binary
+      backend: htp
+      runtime_version: QAIRT-2.45
+      prompt_graph: prompt_ar128_cl512_2_of_4
+      decode_graph: token_ar1_cl512_2_of_4
+      tokenizer_owner: brain
+      sampling_owner: final_stage_top1
+      retains_stage_kv_cache: true
+      memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
+
+  - model_id: qwen3-1.7b-s2-s25
+    artifact_id: qwen3-1.7b-w4a16-demo-v1-s2-s25
+    model_version: qwen3-1.7b-demo-v1-unpinned-main
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main-unpinned
+    runtime: qnn
+    artifact_format: qnn_context_binary
+    artifact_path: ${QWEN3_1_7B_S2_S25_QNN}
+    checksum: sha256:bc8e27a2e6ad10ab97cefaabce7c40b3fe5e717363e0b32b22b563c65993807a
+    tokenizer_id: Qwen/Qwen3-1.7B
+    tokenizer_fingerprint: unverified
+    precision: w4a16-name-w8a16-compile-observed
+    quantization: "artifact name w4a16; recovered compile flag --quantize_full_type w8a16"
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    supported_accelerators: [htp]
+    min_memory_mb: 768
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    size_bytes: 263024640
+    context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      - {name: add_21844, dtype: float32, shape: [1, dynamic, 2048]}
+    output_tensor_schema:
+      - {name: add_42314, dtype: float32, shape: [1, dynamic, 2048]}
+    build_provenance:
+      source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
+      declared_quantization: w4a16
+      observed_compile_option: --quantize_full_type w8a16 --quantize_io
+      quantization_mismatch_status: unresolved
+    ai_hub:
+      target: Samsung Galaxy S25 (Family)
+    measured_hardware_results: []
+    verification_status: verified-through-ai-hub-not-physically-executed
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      stage_index: 2
+      stage_count: 4
+      total_layers: 28
+      transformer_start_layer: 10
+      transformer_end_layer: 19
+      input_tensor: add_21844
+      output_tensor: add_42314
+      includes_embedding: false
+      includes_lm_head: false
+      boundary_format: qnn-raw-tensor-v1
+    runtime_options:
+      artifact_kind: context_binary
+      backend: htp
+      runtime_version: QAIRT-2.45
+      prompt_graph: prompt_ar128_cl512_3_of_4
+      decode_graph: token_ar1_cl512_3_of_4
+      tokenizer_owner: brain
+      sampling_owner: final_stage_top1
+      retains_stage_kv_cache: true
+      memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
+
+  - model_id: qwen3-1.7b-s3-s25
+    artifact_id: qwen3-1.7b-w4a16-demo-v1-s3-s25
+    model_version: qwen3-1.7b-demo-v1-unpinned-main
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main-unpinned
+    runtime: qnn
+    artifact_format: qnn_context_binary
+    artifact_path: ${QWEN3_1_7B_S3_S25_QNN}
+    checksum: sha256:3b0444049bd9e7593568703774b9a8fc6eaf466ef5187624930f2e41990f0253
+    tokenizer_id: Qwen/Qwen3-1.7B
+    tokenizer_fingerprint: unverified
+    precision: w4a16-name-w8a16-compile-observed
+    quantization: "artifact name w4a16; recovered compile flag --quantize_full_type w8a16"
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    supported_accelerators: [htp]
+    min_memory_mb: 1152
+    max_context_tokens: 512
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    size_bytes: 525799424
+    context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
+    input_tensor_schema:
+      - {name: add_42314, dtype: float32, shape: [1, dynamic, 2048]}
+    output_tensor_schema:
+      - {name: logits, dtype: float32, shape: [1, dynamic, vocab_size]}
+    build_provenance:
+      source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
+      declared_quantization: w4a16
+      observed_compile_option: --quantize_full_type w8a16 --quantize_io
+      quantization_mismatch_status: unresolved
+    ai_hub:
+      target: Samsung Galaxy S25 (Family)
+    measured_hardware_results: []
+    verification_status: verified-through-ai-hub-not-physically-executed
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      stage_index: 3
+      stage_count: 4
+      total_layers: 28
+      transformer_start_layer: 20
+      transformer_end_layer: 27
+      input_tensor: add_42314
+      output_tensor: logits
+      includes_embedding: false
+      includes_lm_head: true
+      boundary_format: qnn-raw-tensor-v1
+    runtime_options:
+      artifact_kind: context_binary
+      backend: htp
+      runtime_version: QAIRT-2.45
+      prompt_graph: prompt_ar128_cl512_4_of_4
+      decode_graph: token_ar1_cl512_4_of_4
+      tokenizer_owner: brain
+      sampling_owner: final_stage_top1
+      retains_stage_kv_cache: true
+      memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement

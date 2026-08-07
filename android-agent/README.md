@@ -23,12 +23,18 @@ Agent/runtime layer. It includes:
 - settings for Brain address, enrollment token, TLS, and simulated offline,
   battery, thermal, CPU, accelerator, and RTT state.
 
-The debug build always includes `android-mock-v1`. It reports normalized
-execution metrics and is useful for testing the complete gRPC lifecycle. Real
-QNN and Genie capabilities are registered only when the APK contains a valid
-artifact manifest, every artifact checksum passes, and the corresponding vendor
-runtime bridge can load the artifact on the target device. The Brain remains
-authoritative for task and attempt state.
+The normal thin debug build includes `android-mock-v1` for control-plane tests.
+The explicit S25 GenieX hardware build disables that capability, so a physical
+runtime error can never become a mock response. Real capabilities are
+registered only when the installed manifest is valid, every artifact checksum
+passes, the target matches, and the corresponding vendor bridge successfully
+loads the artifact. The Brain remains authoritative for task and attempt state.
+
+The recovered Base, Concise, and Detailed cache entries each contain both
+`prompt_ar128` and `token_ar1` graphs. They are complete autoregressive
+bundles; no AI Hub compilation is pending. Prompt-only release copies are
+preserved as invalid evidence outside the active cache and are rejected by the
+provisioning inventory.
 
 ## QNN and Genie Runtime Builds
 
@@ -48,12 +54,38 @@ vendor/model-assets/models/manifest.json
 vendor/model-assets/models/<model artifacts>
 ```
 
-For QAIRT 2.48 Genie bundles, the app has a direct native
+For QAIRT 2.48 Genie bundles, the app retains a direct native
 `com.dragonnest.agent.vendor.GenieRuntimeBridge`. It creates a Genie dialog
 from the verified bundle, probes it during registration, and runs prompt text
 through the Genie callback API on HTP. The runtime is omitted from a normal
 open-source build and never advertised until the bundled libraries and model
 checksum both pass.
+
+For the physically validated Qwen3-0.6B S25 bundles, use the separate explicit
+GenieX 0.3.5 / QAIRT 2.45 build. Qualcomm libraries are pulled from the licensed
+local Maven artifact only for that build; they and the model bytes are never
+committed:
+
+```powershell
+$env:JAVA_HOME = 'C:\path\to\jdk-17'
+$env:ANDROID_HOME = 'C:\path\to\android-sdk'
+Push-Location android-agent
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug `
+  -PincludeS25GenieXRuntime=true --no-daemon
+Pop-Location
+adb install -r android-agent\app\build\outputs\apk\debug\app-debug.apk
+.\scripts\deploy_s25_local_artifacts.ps1 `
+  -CacheRoot C:\DragonNestArtifacts\qwen3-0.6b\s25 `
+  -AdbPath "$env:ANDROID_HOME\platform-tools\adb.exe"
+```
+
+The deployment helper requires exactly one debuggable SM8750 S25, verifies
+the committed per-file and tree SHA-256 inventory before its first phone
+mutation, verifies the temporary and installed copies, and writes only under
+the scoped app-private external-files store for `com.dragonnest.agent`. QAIRT
+requires this real filesystem path for mmap/HTP loading. Ordinary APK rebuilds
+remain about the size of code plus the licensed runtime closure and never
+contain the roughly 2 GB of Base/Concise/Detailed model bytes.
 
 Stage the output of the S25 AI Hub export with the matching SDK root:
 
@@ -107,16 +139,27 @@ may not escape it:
 ```
 
 For a layer-pipeline QNN artifact, set `supports_layer_pipeline` to `true` and
-add `split_boundary` with `pipeline_id`, `start_layer`, `end_layer`,
-`total_layers`, `includes_embedding`, `includes_lm_head`, and `boundary_format`.
-Both stages must be compiled for the S25 target, use the same tokenizer/model
-version/precision, and share an exact boundary format. Existing Snapdragon X
-Elite artifacts must not be treated as S25 artifacts.
+add `split_boundary` with `pipeline_id`, `stage_index`, `stage_count`, optional
+`transformer_start_layer`/`transformer_end_layer`, `input_tensor`,
+`output_tensor`, `includes_embedding`, `includes_lm_head`, and
+`boundary_format`. The transformer interval is intentionally absent for an
+embedding-only stage. Every stage must be compiled for the S25 target, use the
+same tokenizer/model version/precision contract, and share exact adjacent
+tensor interfaces. Existing Snapdragon X Elite artifacts must not be treated
+as S25 artifacts.
 
-At first launch the Agent copies packaged model assets into private storage,
+The four Qwen3-1.7B contexts are not APK assets. For the debug demo, install the
+thin APK first and run `scripts/deploy_s25_demo_artifacts.ps1 -CacheRoot
+<external-cache>` from the repo root. It verifies the external and app-private
+hashes via `run-as`,
+installs the manifest under the scoped app-private `dragonnest-models` store, and forces a clean
+catalog reload. See `docs/QWEN3_1_7B_HANDOFF.md`.
+
+At first launch the Agent copies optional packaged model assets into scoped private storage,
 then validates them. The Agent reports `npu_status=available` only after a
-verified HTP/NPU model and runtime bridge are usable; otherwise it reports
-`unavailable` and advertises only the mock model.
+verified HTP/NPU model and runtime bridge are usable. Otherwise it reports
+`unavailable`; a thin build may advertise the mock model, while the explicit
+hardware build advertises no model rather than falling back to mock.
 
 Build prerequisites are JDK 17 and Android SDK 35:
 
@@ -165,8 +208,10 @@ QR enrollment currently operates only in Brain development mode. It removes
 the need to type or distribute the shared token, but it is not a substitute for
 production client-certificate provisioning.
 
-The APK reports `npu_status=not_probed` until a QNN or Genie Android runtime is
-integrated. It does not claim HTP/NPU availability from device branding alone.
+The APK does not claim HTP/NPU availability from device branding alone. A
+hardware build reports the admitted GenieX/QAIRT bridge version only after an
+installed artifact passes checksum, target, runtime-load, and execution-ready
+gates.
 
 The implementation was verified on an API 35 x86_64 emulator against the Python
 Brain: registration and live telemetry succeeded, a remote single task returned

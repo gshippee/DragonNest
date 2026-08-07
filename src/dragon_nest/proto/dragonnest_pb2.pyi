@@ -1,10 +1,24 @@
 from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from collections.abc import Iterable as _Iterable, Mapping as _Mapping
 from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
+
+class PipelineOperation(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    PIPELINE_OPERATION_UNSPECIFIED: _ClassVar[PipelineOperation]
+    PIPELINE_PREFILL: _ClassVar[PipelineOperation]
+    PIPELINE_DECODE: _ClassVar[PipelineOperation]
+    PIPELINE_RESET: _ClassVar[PipelineOperation]
+    PIPELINE_CANCEL: _ClassVar[PipelineOperation]
+PIPELINE_OPERATION_UNSPECIFIED: PipelineOperation
+PIPELINE_PREFILL: PipelineOperation
+PIPELINE_DECODE: PipelineOperation
+PIPELINE_RESET: PipelineOperation
+PIPELINE_CANCEL: PipelineOperation
 
 class DeviceToBrain(_message.Message):
     __slots__ = ("register_device", "health_update", "task_result", "shutdown", "partial_task_result", "pipeline_stage_result")
@@ -175,20 +189,34 @@ class ModelCapability(_message.Message):
     def __init__(self, model_id: _Optional[str] = ..., model_family: _Optional[str] = ..., role: _Optional[str] = ..., task_classes: _Optional[_Iterable[str]] = ..., max_context_tokens: _Optional[int] = ..., warm: _Optional[bool] = ..., quality_score: _Optional[float] = ..., steering_vector_ids: _Optional[_Iterable[str]] = ..., supported_steering_layers: _Optional[_Iterable[int]] = ..., segment: _Optional[_Union[ModelSegment, _Mapping]] = ..., model_version: _Optional[str] = ..., tokenizer_id: _Optional[str] = ..., precision: _Optional[str] = ..., boundary_format: _Optional[str] = ..., runtime_name: _Optional[str] = ..., runtime_version: _Optional[str] = ..., supported_accelerators: _Optional[_Iterable[str]] = ..., min_memory_mb: _Optional[int] = ..., supports_steering: _Optional[bool] = ..., supports_data_parallel: _Optional[bool] = ..., supports_layer_pipeline: _Optional[bool] = ..., artifact_id: _Optional[str] = ..., steering_modes: _Optional[_Iterable[str]] = ..., behavior_profile_ids: _Optional[_Iterable[str]] = ..., target_compatibility_class: _Optional[str] = ...) -> None: ...
 
 class ModelSegment(_message.Message):
-    __slots__ = ("pipeline_id", "start_layer", "end_layer", "total_layers", "includes_embedding", "includes_lm_head")
+    __slots__ = ("pipeline_id", "start_layer", "end_layer", "total_layers", "includes_embedding", "includes_lm_head", "stage_index", "stage_count", "transformer_start_layer", "transformer_end_layer", "input_tensor", "output_tensor", "boundary_format")
     PIPELINE_ID_FIELD_NUMBER: _ClassVar[int]
     START_LAYER_FIELD_NUMBER: _ClassVar[int]
     END_LAYER_FIELD_NUMBER: _ClassVar[int]
     TOTAL_LAYERS_FIELD_NUMBER: _ClassVar[int]
     INCLUDES_EMBEDDING_FIELD_NUMBER: _ClassVar[int]
     INCLUDES_LM_HEAD_FIELD_NUMBER: _ClassVar[int]
+    STAGE_INDEX_FIELD_NUMBER: _ClassVar[int]
+    STAGE_COUNT_FIELD_NUMBER: _ClassVar[int]
+    TRANSFORMER_START_LAYER_FIELD_NUMBER: _ClassVar[int]
+    TRANSFORMER_END_LAYER_FIELD_NUMBER: _ClassVar[int]
+    INPUT_TENSOR_FIELD_NUMBER: _ClassVar[int]
+    OUTPUT_TENSOR_FIELD_NUMBER: _ClassVar[int]
+    BOUNDARY_FORMAT_FIELD_NUMBER: _ClassVar[int]
     pipeline_id: str
     start_layer: int
     end_layer: int
     total_layers: int
     includes_embedding: bool
     includes_lm_head: bool
-    def __init__(self, pipeline_id: _Optional[str] = ..., start_layer: _Optional[int] = ..., end_layer: _Optional[int] = ..., total_layers: _Optional[int] = ..., includes_embedding: _Optional[bool] = ..., includes_lm_head: _Optional[bool] = ...) -> None: ...
+    stage_index: int
+    stage_count: int
+    transformer_start_layer: int
+    transformer_end_layer: int
+    input_tensor: str
+    output_tensor: str
+    boundary_format: str
+    def __init__(self, pipeline_id: _Optional[str] = ..., start_layer: _Optional[int] = ..., end_layer: _Optional[int] = ..., total_layers: _Optional[int] = ..., includes_embedding: _Optional[bool] = ..., includes_lm_head: _Optional[bool] = ..., stage_index: _Optional[int] = ..., stage_count: _Optional[int] = ..., transformer_start_layer: _Optional[int] = ..., transformer_end_layer: _Optional[int] = ..., input_tensor: _Optional[str] = ..., output_tensor: _Optional[str] = ..., boundary_format: _Optional[str] = ...) -> None: ...
 
 class HealthUpdate(_message.Message):
     __slots__ = ("device_id", "timestamp_ms", "battery_pct", "charging", "thermal_level", "cpu_utilization", "accelerator_utilization", "available_memory_mb", "network_rtt_ms", "reachable", "active_task_ids", "simulated_constraint", "warm_model_ids", "gpu_utilization", "npu_utilization")
@@ -315,7 +343,7 @@ class BoundaryTensor(_message.Message):
     def __init__(self, tensor_name: _Optional[str] = ..., dtype: _Optional[str] = ..., shape: _Optional[_Iterable[int]] = ..., data: _Optional[bytes] = ..., checksum: _Optional[str] = ...) -> None: ...
 
 class ExecutePipelineStage(_message.Message):
-    __slots__ = ("task_id", "attempt_id", "stage_id", "stage_index", "request_text", "model_id", "input_boundary", "final_stage", "timeout_ms", "steering")
+    __slots__ = ("task_id", "attempt_id", "stage_id", "stage_index", "request_text", "model_id", "input_boundary", "final_stage", "timeout_ms", "steering", "operation", "pipeline_id", "stage_count", "token_id", "max_new_tokens")
     TASK_ID_FIELD_NUMBER: _ClassVar[int]
     ATTEMPT_ID_FIELD_NUMBER: _ClassVar[int]
     STAGE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -326,6 +354,11 @@ class ExecutePipelineStage(_message.Message):
     FINAL_STAGE_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     STEERING_FIELD_NUMBER: _ClassVar[int]
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    PIPELINE_ID_FIELD_NUMBER: _ClassVar[int]
+    STAGE_COUNT_FIELD_NUMBER: _ClassVar[int]
+    TOKEN_ID_FIELD_NUMBER: _ClassVar[int]
+    MAX_NEW_TOKENS_FIELD_NUMBER: _ClassVar[int]
     task_id: str
     attempt_id: str
     stage_id: str
@@ -336,10 +369,15 @@ class ExecutePipelineStage(_message.Message):
     final_stage: bool
     timeout_ms: int
     steering: SteeringSpec
-    def __init__(self, task_id: _Optional[str] = ..., attempt_id: _Optional[str] = ..., stage_id: _Optional[str] = ..., stage_index: _Optional[int] = ..., request_text: _Optional[str] = ..., model_id: _Optional[str] = ..., input_boundary: _Optional[_Union[BoundaryTensor, _Mapping]] = ..., final_stage: _Optional[bool] = ..., timeout_ms: _Optional[int] = ..., steering: _Optional[_Union[SteeringSpec, _Mapping]] = ...) -> None: ...
+    operation: PipelineOperation
+    pipeline_id: str
+    stage_count: int
+    token_id: int
+    max_new_tokens: int
+    def __init__(self, task_id: _Optional[str] = ..., attempt_id: _Optional[str] = ..., stage_id: _Optional[str] = ..., stage_index: _Optional[int] = ..., request_text: _Optional[str] = ..., model_id: _Optional[str] = ..., input_boundary: _Optional[_Union[BoundaryTensor, _Mapping]] = ..., final_stage: _Optional[bool] = ..., timeout_ms: _Optional[int] = ..., steering: _Optional[_Union[SteeringSpec, _Mapping]] = ..., operation: _Optional[_Union[PipelineOperation, str]] = ..., pipeline_id: _Optional[str] = ..., stage_count: _Optional[int] = ..., token_id: _Optional[int] = ..., max_new_tokens: _Optional[int] = ...) -> None: ...
 
 class PipelineStageResult(_message.Message):
-    __slots__ = ("task_id", "attempt_id", "stage_id", "device_id", "success", "output_boundary", "output_text", "error_code", "error_message", "metrics")
+    __slots__ = ("task_id", "attempt_id", "stage_id", "device_id", "success", "output_boundary", "output_text", "error_code", "error_message", "metrics", "next_token_id", "eos", "token_text", "operation")
     TASK_ID_FIELD_NUMBER: _ClassVar[int]
     ATTEMPT_ID_FIELD_NUMBER: _ClassVar[int]
     STAGE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -350,6 +388,10 @@ class PipelineStageResult(_message.Message):
     ERROR_CODE_FIELD_NUMBER: _ClassVar[int]
     ERROR_MESSAGE_FIELD_NUMBER: _ClassVar[int]
     METRICS_FIELD_NUMBER: _ClassVar[int]
+    NEXT_TOKEN_ID_FIELD_NUMBER: _ClassVar[int]
+    EOS_FIELD_NUMBER: _ClassVar[int]
+    TOKEN_TEXT_FIELD_NUMBER: _ClassVar[int]
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
     task_id: str
     attempt_id: str
     stage_id: str
@@ -360,7 +402,11 @@ class PipelineStageResult(_message.Message):
     error_code: str
     error_message: str
     metrics: ExecutionMetrics
-    def __init__(self, task_id: _Optional[str] = ..., attempt_id: _Optional[str] = ..., stage_id: _Optional[str] = ..., device_id: _Optional[str] = ..., success: _Optional[bool] = ..., output_boundary: _Optional[_Union[BoundaryTensor, _Mapping]] = ..., output_text: _Optional[str] = ..., error_code: _Optional[str] = ..., error_message: _Optional[str] = ..., metrics: _Optional[_Union[ExecutionMetrics, _Mapping]] = ...) -> None: ...
+    next_token_id: int
+    eos: bool
+    token_text: str
+    operation: PipelineOperation
+    def __init__(self, task_id: _Optional[str] = ..., attempt_id: _Optional[str] = ..., stage_id: _Optional[str] = ..., device_id: _Optional[str] = ..., success: _Optional[bool] = ..., output_boundary: _Optional[_Union[BoundaryTensor, _Mapping]] = ..., output_text: _Optional[str] = ..., error_code: _Optional[str] = ..., error_message: _Optional[str] = ..., metrics: _Optional[_Union[ExecutionMetrics, _Mapping]] = ..., next_token_id: _Optional[int] = ..., eos: _Optional[bool] = ..., token_text: _Optional[str] = ..., operation: _Optional[_Union[PipelineOperation, str]] = ...) -> None: ...
 
 class ExecutionMetrics(_message.Message):
     __slots__ = ("model_id", "model_version", "runtime_name", "runtime_version", "accelerator", "execution_latency_ms", "error_code", "error_message", "observed_memory_delta_mb", "observed_thermal_delta", "artifact_load_time_ms", "prefill_tokens_per_second", "decode_tokens_per_second")

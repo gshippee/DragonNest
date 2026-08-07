@@ -151,20 +151,24 @@ async def main() -> None:
             "phone stays feasible but loses on cold-load cost",
         )
 
-        # --- Scenario B: behavior locality --------------------------------
+        # --- Scenario B: exact baked profile -------------------------------
         plan = service.build_route_plan(
             RequestSpec(base_model_family="mock", behavior_profile_id="concise")
         )
-        _print_plan("Scenario B: behavior locality (concise)", plan)
+        _print_plan("Scenario B: exact baked profile (concise)", plan)
         modes = {c.realization_mode for c in plan.candidates if c.feasible}
         _check(
-            modes == {"runtime_vector", "baked_profile"},
-            "both runtime-vector (phone) and baked (laptop) realizations feasible",
+            modes == {"baked_profile"},
+            "Concise admits only the exact baked realization",
         )
         _check(
             plan.chosen.realization_mode == "baked_profile"
             and plan.chosen.device_id == LAPTOP,
-            "warm baked deployment on the laptop wins the cost comparison",
+            "the installed baked deployment is selected",
+        )
+        _check(
+            not plan.steering.enabled and not plan.steering.vector_id,
+            "no runtime vector is sent for a baked profile",
         )
 
         # --- Scenario C: thermal reroute ----------------------------------
@@ -231,29 +235,32 @@ async def main() -> None:
             == 6144
         )
 
-        # --- Scenario E: runtime steering unavailable ----------------------
+        # --- Scenario E: exact profile availability ------------------------
         service.set_runtime_steering_enabled(PHONE, False)
         plan = service.build_route_plan(
             RequestSpec(base_model_family="mock", behavior_profile_id="concise")
         )
-        _print_plan("Scenario E1: runtime steering disabled -> baked", plan)
+        _print_plan("Scenario E1: Concise remains baked when runtime steering is disabled", plan)
         _check(
             plan.chosen.realization_mode == "baked_profile",
-            "scheduler fell back to the baked equivalent, same profile",
+            "Concise uses the baked artifact and does not depend on runtime steering",
+        )
+        service.set_deployment_simulation(
+            LAPTOP, {"small-chat-v1-concise-baked": ArtifactState.ABSENT}
         )
         strict = service.build_route_plan(
             RequestSpec(
                 base_model_family="mock",
                 behavior_profile_id="concise",
-                fallback_policy_override="exact_only",
             )
         )
-        _print_plan("Scenario E2: exact_only rejects instead", strict)
+        _print_plan("Scenario E2: missing exact bake rejects", strict)
         _check(
             strict.chosen is None
             and strict.error_code == "BEHAVIOR_UNAVAILABLE",
-            "exact_only policy rejects rather than substituting",
+            "missing baked profile rejects rather than substituting a prompt or vector",
         )
+        service.deployment_overrides.clear()
         service.set_runtime_steering_enabled(PHONE, True)
 
         # --- Scenario F: mid-task disconnect and fenced retry --------------

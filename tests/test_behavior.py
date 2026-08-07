@@ -23,7 +23,9 @@ def registry() -> BehaviorProfileRegistry:
 def test_registry_loads_demo_profiles(registry):
     ids = {profile.profile_id for profile in registry.all()}
     assert {
+        "balanced",
         "concise",
+        "detailed",
         "friendly",
         "medical-safe",
         "creative",
@@ -32,17 +34,45 @@ def test_registry_loads_demo_profiles(registry):
     } <= ids
 
 
-def test_concise_profile_declares_runtime_and_baked_realizations(registry):
-    concise = registry.get("concise")
-    modes = [realization.mode for realization in concise.realizations]
-    assert SteeringRealizationMode.RUNTIME_VECTOR in modes
-    assert SteeringRealizationMode.BAKED_PROFILE in modes
-    runtime = next(
-        r for r in concise.realizations
-        if r.mode == SteeringRealizationMode.RUNTIME_VECTOR
-    )
-    assert runtime.vector_id == "concise-vs-verbose-layer-7"
-    assert runtime.alpha_min <= runtime.alpha <= runtime.alpha_max
+def test_demo_profiles_prefer_runtime_vector_over_baked(registry):
+    """Concise/Detailed resolve the runtime vector first, baked bake second.
+
+    Both realize the *same* profile: the runtime path steers the shared
+    steerable bundle by alpha, the baked path runs the pre-compiled artifact.
+    A plain base model is admitted only as a last resort, when no eligible
+    device can carry the behavior at all, and is reported as realization
+    "none" rather than dressed up as the profile.
+
+    The ladder must never widen into prompt conditioning: a prompt-conditioned
+    answer would claim to realize the profile while being a different
+    mechanism entirely.
+    """
+    for profile_id, baked_artifact, alpha_sign in (
+        ("concise", "qwen3-0.6b-s25-concise", -1),
+        ("detailed", "qwen3-0.6b-s25-detailed", +1),
+    ):
+        profile = registry.get(profile_id)
+        assert [r.mode for r in profile.realizations] == [
+            SteeringRealizationMode.RUNTIME_VECTOR,
+            SteeringRealizationMode.BAKED_PROFILE,
+        ]
+        runtime, baked = profile.realizations
+        assert runtime.vector_id == "concise-vs-verbose-layer-7"
+        assert runtime.injection_layer == 7
+        assert runtime.alpha * alpha_sign > 0
+        assert runtime.compatible_runtimes == ("genie_aux",)
+        assert runtime.verification_status == "verified"
+        assert baked.baked_artifact_id == baked_artifact
+        assert baked.verification_status == "verified"
+        assert profile.fallback_policy == BehaviorFallbackPolicy.ALLOW_UNSTEERED
+        assert profile.allowed_modes() == (
+            SteeringRealizationMode.RUNTIME_VECTOR,
+            SteeringRealizationMode.BAKED_PROFILE,
+            SteeringRealizationMode.NONE,
+        )
+        assert (
+            SteeringRealizationMode.PROMPT_PROFILE not in profile.allowed_modes()
+        )
 
 
 def test_fallback_ladder_expands_with_policy():

@@ -9,17 +9,23 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.os.IBinder;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 public final class AgentForegroundService extends Service {
     public static final String ACTION_RELOAD = "com.dragonnest.agent.RELOAD";
     public static final String ACTION_UPDATE_SIMULATION = "com.dragonnest.agent.UPDATE_SIMULATION";
     private static final String CHANNEL_ID = "dragonnest-agent";
     private static final int NOTIFICATION_ID = 4101;
-    private AgentRuntime runtime;
+    private volatile AgentRuntime runtime;
     private AgentConfiguration configuration;
     private AndroidTelemetry telemetry;
     private ClientDebugLog debugLog;
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
+    private ExecutorService runtimeBootstrap;
+    private volatile boolean runtimeStarting;
+    private volatile boolean destroyed;
 
     @Override
     public void onCreate() {
@@ -29,6 +35,11 @@ public final class AgentForegroundService extends Service {
         telemetry = new AndroidTelemetry(this);
         debugLog = new ClientDebugLog(this);
         debugLog.add("Foreground service created");
+        runtimeBootstrap = Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "dragonnest-runtime-bootstrap");
+            thread.setDaemon(true);
+            return thread;
+        });
 
         connectivityManager = getSystemService(ConnectivityManager.class);
         networkCallback = new ConnectivityManager.NetworkCallback() {
@@ -50,18 +61,31 @@ public final class AgentForegroundService extends Service {
     }
 
     private void startRuntime() {
-        AndroidRuntimeCatalog runtimeCatalog = AndroidRuntimeCatalog.create(this);
-        AgentProfile profile = new AgentProfile(this, configuration, runtimeCatalog);
-        runtime = new AgentRuntime(
-                () -> new GrpcAgentConnection(
-                        configuration,
-                        profile,
-                        runtimeCatalog,
-                        debugLog),
-                new EnrollmentStore(this),
-                telemetry,
-                debugLog);
-        runtime.start();
+        runtimeStarting = true;
+        runtimeBootstrap.execute(() -> {
+            try {
+                AndroidRuntimeCatalog runtimeCatalog = AndroidRuntimeCatalog.create(this);
+                if (destroyed) {
+                    return;
+                }
+                AgentProfile profile = new AgentProfile(this, configuration, runtimeCatalog);
+                AgentRuntime created = new AgentRuntime(
+                        () -> new GrpcAgentConnection(
+                                configuration,
+                                profile,
+                                runtimeCatalog,
+                                debugLog),
+                        new EnrollmentStore(this),
+                        telemetry,
+                        debugLog);
+                runtime = created;
+                created.start();
+            } catch (RuntimeException failure) {
+                debugLog.add("Runtime bootstrap failed: " + failure.getMessage());
+            } finally {
+                runtimeStarting = false;
+            }
+        });
     }
 
     @Override
@@ -86,7 +110,7 @@ public final class AgentForegroundService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (runtime == null) {
+        if (runtime == null && !runtimeStarting) {
             debugLog.add("Starting device agent");
             telemetry.setSimulation(configuration.simulation());
             startRuntime();
@@ -96,11 +120,15 @@ public final class AgentForegroundService extends Service {
 
     @Override
     public void onDestroy() {
+        destroyed = true;
         if (connectivityManager != null && networkCallback != null) {
             connectivityManager.unregisterNetworkCallback(networkCallback);
         }
         if (runtime != null) {
             runtime.stop();
+        }
+        if (runtimeBootstrap != null) {
+            runtimeBootstrap.shutdownNow();
         }
         if (debugLog != null) {
             debugLog.add("Foreground service stopped");

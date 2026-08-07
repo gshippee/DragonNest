@@ -224,6 +224,13 @@ class ProfileStore:
         association = self.association_for_device(device_id)
         return self.get(association.profile_id) if association else None
 
+    def disassociate_device(self, device_id: str) -> bool:
+        with self._lock, self._connection:
+            deleted = self._connection.execute(
+                "DELETE FROM device_profiles WHERE device_id=?", (device_id,)
+            )
+        return deleted.rowcount > 0
+
     def delete_if_unassociated(self, profile_id: str) -> bool:
         with self._lock, self._connection:
             associated = self._connection.execute(
@@ -258,7 +265,15 @@ def _validated_values(
     positions = steering_positions.strip()
     if not name or len(name) > 120:
         raise ProfileError("person_name must contain 1 to 120 characters")
-    if mode not in {"auto", "fast", "private", "quality", "parallel"}:
+    if mode not in {
+        "auto",
+        "local",
+        "elastic",
+        "quality",
+        "fast",
+        "private",
+        "parallel",
+    }:
         raise ProfileError("preferred_mode is invalid")
     if not math.isfinite(steering_alpha):
         raise ProfileError("steering_alpha must be finite")

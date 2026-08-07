@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+
+import hashlib
 import hmac
 import socket
 from io import BytesIO
@@ -28,6 +32,7 @@ from .models import (
 from .enrollment import EnrollmentError, EnrollmentStatus
 from .profiles import PersonalProfile, ProfileError
 from .regimes import build_regime_report
+from .runtime import melotts_runner, npu_lease
 from .proto import dragonnest_pb2 as pb
 from .tasks import AttemptState, TaskRecord
 from .transport.brain import BrainService
@@ -35,6 +40,27 @@ from .transport.sessions import SessionConflictError
 
 
 WEB_ROOT = Path(__file__).with_name("web")
+
+SPEECH_CACHE_DIR = melotts_runner.SCRATCH_ROOT / "cache"
+# Synthesis is slow enough (a fresh qnn-net-run process per graph call) that
+# replaying an answer must not re-synthesize it. Cached by content, so the same
+# response text is spoken once no matter which task it came from.
+SPEECH_CACHE_MAX_FILES = 64
+
+
+def _cached_speech_path(text: str) -> Path:
+    digest = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:32]
+    SPEECH_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return SPEECH_CACHE_DIR / f"{digest}.wav"
+
+
+def _prune_speech_cache(max_files: int = SPEECH_CACHE_MAX_FILES) -> None:
+    files = sorted(
+        SPEECH_CACHE_DIR.glob("*.wav"), key=lambda path: path.stat().st_mtime
+    )
+    for stale in files[: max(0, len(files) - max_files)]:
+        with contextlib.suppress(OSError):
+            stale.unlink()
 
 
 def _detect_lan_addresses() -> list[str]:
@@ -84,7 +110,7 @@ class TaskSubmission(BaseModel):
     execution_mode: str = "auto"
     origin_device_id: str = ""
     reducer: str = "mock_synthesis"
-    timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
+    timeout_ms: int = Field(default=270_000, ge=100, le=300_000)
     steering: SteeringRequest = Field(default_factory=SteeringRequest)
     use_profile_steering: bool = True
 
@@ -123,12 +149,20 @@ class RoutePlanRequest(BaseModel):
 
 class BehaviorTaskSubmission(RoutePlanRequest):
     request_text: str = Field(min_length=1, max_length=8000)
-    timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
+    timeout_ms: int = Field(default=270_000, ge=100, le=300_000)
 
     def to_spec(self) -> RequestSpec:
         values = self.model_dump()
         values.pop("timeout_ms", None)
         return RequestSpec(**values)
+
+
+class SpeechRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Bounded because synthesis is minutes-scale for long text: the worker
+    # chunks at ~480 phones and each chunk is its own encoder/flow/decoder run.
+    text: str = Field(min_length=1, max_length=4000)
 
 
 class ProvisioningRequest(BaseModel):
@@ -158,11 +192,18 @@ class ModelSegmentPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pipeline_id: str = Field(min_length=1, max_length=200)
-    start_layer: int = Field(ge=0)
-    end_layer: int = Field(gt=0)
-    total_layers: int = Field(gt=0)
+    start_layer: int | None = Field(default=None, ge=0)
+    end_layer: int | None = Field(default=None, ge=0)
+    total_layers: int = Field(default=0, ge=0)
     includes_embedding: bool = False
     includes_lm_head: bool = False
+    stage_index: int = Field(default=-1, ge=-1)
+    stage_count: int = Field(default=0, ge=0)
+    transformer_start_layer: int | None = Field(default=None, ge=0)
+    transformer_end_layer: int | None = Field(default=None, ge=0)
+    input_tensor: str = ""
+    output_tensor: str = ""
+    boundary_format: str = ""
 
 
 class ModelCapabilityPayload(BaseModel):
@@ -236,7 +277,7 @@ class RestDeviceRegistration(BaseModel):
     credential_env: str = Field(
         default="", max_length=120, pattern=r"^$|^[A-Za-z_][A-Za-z0-9_]*$"
     )
-    request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    request_timeout_seconds: float = Field(default=270.0, gt=0, le=300)
     health_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     poll_interval_seconds: float = Field(default=5.0, ge=1, le=300)
     allow_profile_context: bool = False
@@ -279,6 +320,7 @@ class PersonalProfileUpdate(BaseModel):
 def create_dashboard_app(service: BrainService) -> FastAPI:
     app = FastAPI(title="DragonNest Brain API", version="0.1.0")
     app.state.brain = service
+    app.state.speech_lock = asyncio.Lock()
     app.mount("/assets", StaticFiles(directory=WEB_ROOT), name="assets")
 
     @app.get("/", include_in_schema=False)
@@ -323,6 +365,14 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
     @app.get("/api/devices")
     async def api_devices():
         return [_device_dict(service, record) for record in service.registry.records()]
+
+    @app.delete("/api/devices/{device_id:path}")
+    async def api_remove_device(device_id: str):
+        try:
+            await service.remove_device(device_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="device not found") from exc
+        return {"device_id": device_id, "status": "REMOVED"}
 
     @app.get("/api/regimes")
     async def api_regimes():
@@ -640,6 +690,57 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
         )
         return _response_dict(response)
 
+    @app.post("/api/speech")
+    async def api_speech(request: SpeechRequest):
+        """Speak text with MeloTTS on this host's NPU and return the .wav.
+
+        Speech is a capability of the Brain host, not a routed fabric task:
+        the Brain and this dashboard share a process, so the audio is returned
+        inline rather than crossing the gRPC transport.
+        """
+        cached = _cached_speech_path(request.text)
+        if cached.is_file():
+            return Response(
+                content=cached.read_bytes(),
+                media_type="audio/wav",
+                headers={"Cache-Control": "no-store"},
+            )
+
+        # One synthesis at a time. Concurrent qnn-net-run processes contend for
+        # the same HTP/DSP session, which is exactly how a wedged session (and
+        # the resulting timeout) gets created.
+        async with app.state.speech_lock:
+            if cached.is_file():  # another request synthesized it while queued
+                return Response(
+                    content=cached.read_bytes(),
+                    media_type="audio/wav",
+                    headers={"Cache-Control": "no-store"},
+                )
+            try:
+                await asyncio.to_thread(
+                    melotts_runner.synthesize, request.text, cached
+                )
+            except npu_lease.NpuBusyError as exc:
+                # The pinned language model has the NPU. Speech deliberately
+                # yields rather than competing for the DSP session, so this is
+                # a "come back in a moment", not a failure.
+                raise HTTPException(
+                    status_code=409,
+                    detail="The NPU is busy with the language model. Try again in a moment.",
+                    headers={"Retry-After": "5"},
+                ) from exc
+            except melotts_runner.TtsUnavailableError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            except melotts_runner.TtsError as exc:
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        _prune_speech_cache()
+        return Response(
+            content=cached.read_bytes(),
+            media_type="audio/wav",
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.get("/api/events")
     async def api_events(limit: int = 100):
         events: list[dict[str, Any]] = []
@@ -914,6 +1015,9 @@ def _device_dict(
                 "runtime": model.runtime_name,
                 "runtime_version": model.runtime_version,
                 "accelerators": model.supported_accelerators,
+                "artifact_id": model.artifact_id,
+                "steering_modes": model.steering_modes,
+                "behavior_profile_ids": model.behavior_profile_ids,
                 "min_memory_mb": model.min_memory_mb,
                 "warm": model.warm,
                 "steering_vectors": model.steering_vector_ids,
@@ -924,6 +1028,9 @@ def _device_dict(
         "hardware": asdict(device.hardware),
         "active_tasks": active_task_ids,
         "simulated_constraint": record.simulated_constraint,
+        "simulated_fields": sorted(
+            service._device_simulations.get(device.device_id, {}).keys()
+        ),
         "personal_profile": (
             _profile_dict(personal_profile) if personal_profile else None
         ),
@@ -933,7 +1040,12 @@ def _device_dict(
             else ()
         ),
         "runtime_steering_enabled": (
-            device.device_id not in service.runtime_steering_disabled
+            any(
+                model.supports_steering
+                and "runtime_vector" in model.steering_modes
+                for model in device.models
+            )
+            and device.device_id not in service.runtime_steering_disabled
         ),
         "deployments": (
             [
@@ -995,6 +1107,22 @@ def _task_dict(service: BrainService, task: TaskRecord) -> dict[str, Any]:
     profile = service.task_profiles.get(task.task_id)
     plan = service.execution_plans.get(task.task_id)
     steering = service._steering_specs.get(task.task_id)
+    selected_model_id = (
+        result.metrics.model_id
+        if result and result.metrics
+        else service._attempt_models.get(task.accepted_attempt_id, "")
+    )
+    selected_artifact_id = ""
+    if result and result.device_id and selected_model_id:
+        with contextlib.suppress(KeyError):
+            selected_artifact_id = next(
+                (
+                    model.artifact_id
+                    for model in service.registry.get(result.device_id).device.models
+                    if model.model_id == selected_model_id
+                ),
+                "",
+            )
     return {
         "task_id": task.task_id,
         "state": task.state.value,
@@ -1006,6 +1134,11 @@ def _task_dict(service: BrainService, task: TaskRecord) -> dict[str, Any]:
         "error_message": task.error_message,
         "profile": asdict(profile) if profile else None,
         "execution_mode": plan.execution_mode.value if plan else "internal",
+        "preferred_mode": plan.preferred_mode if plan else "auto",
+        "pipeline_id": plan.pipeline_id if plan else "",
+        "behavior_profile_id": plan.behavior_profile_id if plan else "",
+        "profile_realization": plan.profile_realization if plan else "none",
+        "selected_artifact_id": selected_artifact_id,
         "origin_device_id": plan.origin_device_id if plan else "",
         "reducer": plan.reducer if plan else "",
         "route_reasons": service._route_reasons.get(task.task_id, ()),

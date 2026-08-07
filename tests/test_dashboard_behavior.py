@@ -69,19 +69,54 @@ def test_route_plan_preview_lists_candidates_and_rejections():
                     "/api/route-plan",
                     json={
                         "base_model_family": "mock",
+                        "behavior_profile_id": "creative",
+                        "fallback_policy_override": "exact_only",
+                    },
+                )
+            ).json()
+            concise = (
+                await client.post(
+                    "/api/route-plan",
+                    json={
+                        "base_model_family": "mock",
                         "behavior_profile_id": "concise",
+                    },
+                )
+            ).json()
+            # The same profile pinned to its exact realization. This is how an
+            # operator still gets the "you need to provision this" signal that
+            # the default policy now trades away for an answer.
+            concise_exact = (
+                await client.post(
+                    "/api/route-plan",
+                    json={
+                        "base_model_family": "mock",
+                        "behavior_profile_id": "concise",
+                        "fallback_policy_override": "exact_only",
                     },
                 )
             ).json()
 
         assert {p["profile_id"] for p in profiles} >= {"concise", "medical-safe"}
         assert any(a["artifact_id"] == "small-chat-v1" for a in catalog)
-        assert plan["behavior_profile"] == "concise"
+        assert plan["behavior_profile"] == "creative"
         assert plan["chosen"] is not None
         assert plan["chosen"]["realization_mode"] == "runtime_vector"
         rejected = [c for c in plan["candidates"] if not c["feasible"]]
         assert rejected and all(c["rejection_reasons"] for c in rejected)
         assert plan["explanation"]
+        # concise declares allow_unsteered, so the mock fleet -- which has no
+        # concise realization -- answers from the base artifact instead of
+        # refusing. The preview must say so plainly rather than implying the
+        # profile was honoured.
+        assert concise["chosen"] is not None
+        assert concise["chosen"]["realization_mode"] == "none"
+        assert not concise["chosen"]["artifact_behavior_profile"]
+        # Pinned to exact_only, the same request still fails closed and still
+        # tells the operator what to provision.
+        assert concise_exact["chosen"] is None
+        assert concise_exact["error_code"] == "BEHAVIOR_UNAVAILABLE"
+        assert concise_exact["provisioning_hint"] == "concise"
 
     asyncio.run(scenario())
 
@@ -120,8 +155,7 @@ def test_artifact_and_steering_simulations_change_the_route():
                 or rerouted["chosen"]["artifact_id"] != chosen_artifact
             )
 
-            # disable runtime steering on every device: concise must fall
-            # back to a baked equivalent or reject, never a silent switch
+            # Concise is exact baked-only and must reject when its artifact is absent.
             for device_id in ("phone-01", "pc-01"):
                 await client.post(
                     f"/api/devices/{device_id}/simulate",
@@ -241,7 +275,8 @@ def test_behavior_task_executes_end_to_end_on_mock_agents():
                         json={
                             "request_text": "Explain why local AI routing matters.",
                             "base_model_family": "mock",
-                            "behavior_profile_id": "concise",
+                            "behavior_profile_id": "creative",
+                            "fallback_policy_override": "exact_only",
                             "timeout_ms": 5000,
                         },
                     )

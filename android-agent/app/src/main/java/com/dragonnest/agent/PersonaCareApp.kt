@@ -2,6 +2,7 @@ package com.dragonnest.agent
 
 import android.app.Activity
 import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
@@ -32,10 +33,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.AddComment
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Memory
@@ -74,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,14 +88,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-
-private data class PersonaChoice(val id: String, val label: String)
-
-private val personas = listOf(
-    PersonaChoice(UserProfile.PERSONA_BALANCED, "Balanced"),
-    PersonaChoice(UserProfile.PERSONA_CONCISE, "Concise"),
-    PersonaChoice(UserProfile.PERSONA_DETAILED, "Detailed"),
-)
 
 @Composable
 fun PersonaCareApp(viewModel: PersonaCareViewModel) {
@@ -159,6 +157,7 @@ private fun ConnectScreen(viewModel: PersonaCareViewModel, onContinue: () -> Uni
     var port by rememberSaveable { mutableStateOf(viewModel.currentPort()) }
     var code by rememberSaveable { mutableStateOf("") }
     var useTls by rememberSaveable { mutableStateOf(viewModel.currentTls()) }
+    var dashboardPort by rememberSaveable { mutableStateOf(viewModel.currentDashboardPort()) }
     var error by rememberSaveable { mutableStateOf("") }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -203,6 +202,15 @@ private fun ConnectScreen(viewModel: PersonaCareViewModel, onContinue: () -> Uni
             singleLine = true,
         )
         OutlinedTextField(
+            value = dashboardPort,
+            onValueChange = { dashboardPort = it.filter(Char::isDigit); error = "" },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Dashboard port") },
+            supportingText = { Text("Used to read replies aloud. Usually 8080.") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+        )
+        OutlinedTextField(
             value = code,
             onValueChange = { code = it; error = "" },
             modifier = Modifier.fillMaxWidth(),
@@ -234,7 +242,7 @@ private fun ConnectScreen(viewModel: PersonaCareViewModel, onContinue: () -> Uni
         }
         Button(
             onClick = {
-                runCatching { viewModel.saveConnection(host, port, code, useTls) }
+                runCatching { viewModel.saveConnection(host, port, code, useTls, dashboardPort) }
                     .onSuccess { onContinue() }
                     .onFailure { error = it.message ?: "Could not save this connection" }
             },
@@ -267,7 +275,12 @@ private fun ProfileScreen(
     var name by rememberSaveable { mutableStateOf(existing?.personName().orEmpty()) }
     var about by rememberSaveable { mutableStateOf(existing?.profileText().orEmpty()) }
     var persona by rememberSaveable {
-        mutableStateOf(existing?.personaId() ?: UserProfile.PERSONA_BALANCED)
+        mutableStateOf(
+            UserProfile.personaForAlpha(existing?.steeringAlpha() ?: 0f)
+        )
+    }
+    var steeringAlpha by rememberSaveable {
+        mutableStateOf(existing?.steeringAlpha() ?: 0f)
     }
     var error by rememberSaveable { mutableStateOf("") }
 
@@ -313,16 +326,18 @@ private fun ProfileScreen(
                 minLines = 6,
                 maxLines = 10,
             )
-            Text(
-                "Default persona",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+            SteeringStrengthSlider(
+                value = steeringAlpha,
+                onValueChange = {
+                    steeringAlpha = it
+                    persona = UserProfile.personaForAlpha(it)
+                    error = ""
+                },
             )
-            PersonaSelector(selected = persona, onSelected = { persona = it })
             if (error.isNotBlank()) InlineError(error)
             Button(
                 onClick = {
-                    runCatching { viewModel.saveProfile(name, about, persona) }
+                    runCatching { viewModel.saveProfile(name, about, persona, steeringAlpha) }
                         .onSuccess { onSaved() }
                         .onFailure { error = it.message ?: "Could not save your profile" }
                 },
@@ -345,16 +360,24 @@ private fun ChatScreen(
     val chat by viewModel.chat.collectAsStateWithLifecycle()
     val status by viewModel.agentStatus.collectAsStateWithLifecycle()
     var prompt by rememberSaveable { mutableStateOf("") }
-    var persona by rememberSaveable {
-        mutableStateOf(profile?.personaId() ?: UserProfile.PERSONA_BALANCED)
+    var computePreference by rememberSaveable {
+        mutableStateOf(ComputePreference.AUTO.wireValue)
     }
-    var useProfile by rememberSaveable { mutableStateOf(true) }
-    var keepOnPhone by rememberSaveable { mutableStateOf(false) }
     var showDemoControls by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val context = LocalContext.current
 
     if (showDemoControls) {
         DemoControlsDialog(viewModel = viewModel, onDismiss = { showDemoControls = false })
+    }
+
+    // A speech failure is transient and not part of the conversation, so it is
+    // surfaced beside the chat rather than appended to it as a message.
+    LaunchedEffect(chat.speechError) {
+        chat.speechError?.let { error ->
+            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+            viewModel.consumeSpeechError()
+        }
     }
 
     LaunchedEffect(chat.messages.size, chat.sending) {
@@ -374,11 +397,18 @@ private fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = viewModel::newChat,
+                        enabled = chat.messages.isNotEmpty() && !chat.sending,
+                        modifier = Modifier.testTag("new_chat"),
+                    ) {
+                        Icon(Icons.Outlined.AddComment, "New chat")
+                    }
                     IconButton(onClick = { showDemoControls = true }) {
                         Icon(Icons.Outlined.Memory, "Demo controls")
                     }
                     IconButton(onClick = onEditProfile) {
-                        Icon(Icons.Outlined.Edit, "Edit profile")
+                        Icon(Icons.Outlined.Face, "Edit profile")
                     }
                     IconButton(onClick = onEditConnection) {
                         Icon(Icons.Outlined.SettingsEthernet, "Connection settings")
@@ -390,18 +420,17 @@ private fun ChatScreen(
             ChatComposer(
                 prompt = prompt,
                 onPromptChange = { prompt = it },
-                persona = persona,
-                onPersonaChange = { persona = it },
-                useProfile = useProfile,
-                onUseProfileChange = { useProfile = it },
-                keepOnPhone = keepOnPhone,
-                onKeepOnPhoneChange = { keepOnPhone = it },
+                computePreference = computePreference,
+                onComputePreferenceChange = { computePreference = it },
                 sending = chat.sending,
                 canSend = status.state == AgentConnectionState.CONNECTED,
                 onSend = {
                     val sent = prompt.trim()
                     if (sent.isNotEmpty()) {
-                        viewModel.submit(sent, persona, useProfile, keepOnPhone)
+                        viewModel.submit(
+                            sent,
+                            ComputePreference.fromWireValue(computePreference),
+                        )
                         prompt = ""
                     }
                 },
@@ -426,7 +455,12 @@ private fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(chat.messages, key = { it.id }) { message ->
-                    MessageBubble(message)
+                    MessageBubble(
+                        message,
+                        synthesizing = chat.synthesizingMessageId == message.id,
+                        speaking = chat.speakingMessageId == message.id,
+                        onSpeak = viewModel::speak,
+                    )
                 }
                 if (chat.sending) {
                     item("sending") {
@@ -506,12 +540,8 @@ private fun DemoControlsDialog(viewModel: PersonaCareViewModel, onDismiss: () ->
 private fun ChatComposer(
     prompt: String,
     onPromptChange: (String) -> Unit,
-    persona: String,
-    onPersonaChange: (String) -> Unit,
-    useProfile: Boolean,
-    onUseProfileChange: (Boolean) -> Unit,
-    keepOnPhone: Boolean,
-    onKeepOnPhoneChange: (Boolean) -> Unit,
+    computePreference: String,
+    onComputePreferenceChange: (String) -> Unit,
     sending: Boolean,
     canSend: Boolean,
     onSend: () -> Unit,
@@ -525,15 +555,10 @@ private fun ChatComposer(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        PersonaSelector(selected = persona, onSelected = onPersonaChange)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CompactToggle("Use profile", useProfile, onUseProfileChange)
-            CompactToggle("Keep on phone", keepOnPhone, onKeepOnPhoneChange)
-        }
+        ComputePreferenceSelector(
+            selected = computePreference,
+            onSelected = onComputePreferenceChange,
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
@@ -560,19 +585,86 @@ private fun ChatComposer(
 }
 
 @Composable
-private fun PersonaSelector(selected: String, onSelected: (String) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        personas.forEach { choice ->
-            FilterChip(
-                selected = selected == choice.id,
-                onClick = { onSelected(choice.id) },
-                label = { Text(choice.label, maxLines = 1) },
-                modifier = Modifier.weight(1f).testTag("persona_${choice.id}"),
+private fun ComputePreferenceSelector(
+    selected: String,
+    onSelected: (String) -> Unit,
+) {
+    val selectedPreference = ComputePreference.fromWireValue(selected)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Compute", style = MaterialTheme.typography.labelMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ComputePreference.entries.forEach { preference ->
+                FilterChip(
+                    selected = preference.wireValue == selectedPreference.wireValue,
+                    onClick = { onSelected(preference.wireValue) },
+                    label = { Text(preference.displayName, maxLines = 1) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("compute_${preference.wireValue}"),
+                )
+            }
+        }
+        Text(
+            selectedPreference.description,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("compute_description"),
+        )
+    }
+}
+
+/**
+ * Activation-steering strength applied on top of the selected response style.
+ *
+ * Centre means "use the style's own calibrated setting", which is what every
+ * request did before this control existed. Moving off centre sends an explicit
+ * strength with the request. The range matches the validated bounds of the
+ * layer-7 vector, so the slider cannot produce a value Brain would reject.
+ */
+@Composable
+private fun SteeringStrengthSlider(value: Float, onValueChange: (Float) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Response style",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                when (UserProfile.personaForAlpha(value)) {
+                    UserProfile.PERSONA_CONCISE -> "Concise (%.1f)".format(value)
+                    UserProfile.PERSONA_DETAILED -> "Detailed (+%.1f)".format(value)
+                    else -> "Balanced"
+                },
+                style = MaterialTheme.typography.labelLarge,
             )
         }
+        Slider(
+            value = value,
+            onValueChange = { onValueChange((it * 2f).toInt() / 2f) },
+            valueRange = UserProfile.ALPHA_MIN..UserProfile.ALPHA_MAX,
+            modifier = Modifier.fillMaxWidth().testTag("steering_strength"),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Concise", style = MaterialTheme.typography.labelSmall)
+            Text("Balanced", style = MaterialTheme.typography.labelSmall)
+            Text("Detailed", style = MaterialTheme.typography.labelSmall)
+        }
+        Text(
+            "Centre runs the plain base model. Either side steers the reply " +
+                "toward shorter or longer, where the device runs a steerable model.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -627,13 +719,19 @@ private fun EmptyConversation(name: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(
+    message: ChatMessage,
+    synthesizing: Boolean = false,
+    speaking: Boolean = false,
+    onSpeak: (ChatMessage) -> Unit = {},
+) {
     val alignment = if (message.fromUser) Alignment.CenterEnd else Alignment.CenterStart
     val background = when {
         message.failed -> MaterialTheme.colorScheme.secondaryContainer
         message.fromUser -> MaterialTheme.colorScheme.primaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
+    val canSpeak = !message.fromUser && !message.failed && message.text.isNotBlank()
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
         Column(
             modifier = Modifier
@@ -644,6 +742,34 @@ private fun MessageBubble(message: ChatMessage) {
                 .animateContentSize(),
         ) {
             Text(message.text, lineHeight = 22.sp)
+            if (canSpeak) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = { onSpeak(message) },
+                        enabled = !synthesizing,
+                        modifier = Modifier.testTag("speak_${message.id}"),
+                    ) {
+                        when {
+                            synthesizing -> CircularProgressIndicator(
+                                Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            speaking -> Icon(
+                                Icons.Outlined.Stop,
+                                contentDescription = "Stop reading aloud",
+                            )
+                            else -> Icon(
+                                Icons.AutoMirrored.Outlined.VolumeUp,
+                                contentDescription = "Read this reply aloud",
+                            )
+                        }
+                    }
+                }
+            }
             if (!message.fromUser && message.deviceName.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
@@ -653,6 +779,20 @@ private fun MessageBubble(message: ChatMessage) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (message.routeSummary.isNotBlank()) {
+                    Text(
+                        message.routeSummary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (message.profileSummary.isNotBlank()) {
+                    Text(
+                        message.profileSummary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

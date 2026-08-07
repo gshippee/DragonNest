@@ -450,6 +450,20 @@ def _validate_pipeline_artifacts(artifacts: list[ModelArtifact]) -> None:
     if len(artifacts) < 2:
         raise ArtifactError("layer pipeline requires at least two model artifacts")
     previous: ModelArtifact | None = None
+    indexed = all(
+        artifact.split_boundary is not None
+        and artifact.split_boundary.stage_count > 0
+        for artifact in artifacts
+    )
+    if indexed:
+        splits = [artifact.split_boundary for artifact in artifacts]
+        assert all(split is not None for split in splits)
+        concrete = [split for split in splits if split is not None]
+        stage_count = concrete[0].stage_count
+        if len(artifacts) != stage_count or [
+            split.stage_index for split in concrete
+        ] != list(range(stage_count)):
+            raise ArtifactError("pipeline must contain every indexed stage exactly once")
     for artifact in artifacts:
         split = artifact.split_boundary
         if (
@@ -463,10 +477,16 @@ def _validate_pipeline_artifacts(artifacts: list[ModelArtifact]) -> None:
         if previous:
             left = previous.split_boundary
             assert left is not None
-            if (
-                left.pipeline_id != split.pipeline_id
-                or left.end_layer != split.start_layer
-            ):
+            if left.pipeline_id != split.pipeline_id:
+                raise ArtifactError(
+                    f"{previous.model_id} and {artifact.model_id}: non-contiguous pipeline"
+                )
+            if indexed:
+                if left.output_tensor != split.input_tensor:
+                    raise ArtifactError(
+                        f"{previous.model_id} and {artifact.model_id}: boundary tensor mismatch"
+                    )
+            elif left.end_layer != split.start_layer:
                 raise ArtifactError(
                     f"{previous.model_id} and {artifact.model_id}: non-contiguous pipeline"
                 )
@@ -484,9 +504,13 @@ def _validate_pipeline_artifacts(artifacts: list[ModelArtifact]) -> None:
     first = artifacts[0].split_boundary
     last = artifacts[-1].split_boundary
     assert first is not None and last is not None
-    if first.start_layer != 0 or not first.includes_embedding:
-        raise ArtifactError("pipeline does not start with embeddings at layer 0")
-    if last.end_layer != last.total_layers or not last.includes_lm_head:
+    if not first.includes_embedding or (
+        not indexed and first.start_layer != 0
+    ):
+        raise ArtifactError("pipeline does not start with embeddings")
+    if not last.includes_lm_head or (
+        not indexed and last.end_layer != last.total_layers
+    ):
         raise ArtifactError("pipeline does not end with the LM head")
 
 

@@ -115,6 +115,13 @@ message ModelSegment {
   uint32 total_layers = 4;
   bool includes_embedding = 5;
   bool includes_lm_head = 6;
+  uint32 stage_index = 7;
+  uint32 stage_count = 8;
+  optional uint32 transformer_start_layer = 9;
+  optional uint32 transformer_end_layer = 10;
+  string input_tensor = 11;
+  string output_tensor = 12;
+  string boundary_format = 13;
 }
 
 message HealthUpdate {
@@ -185,6 +192,14 @@ message BoundaryTensor {
   string checksum = 5;
 }
 
+enum PipelineOperation {
+  PIPELINE_OPERATION_UNSPECIFIED = 0;
+  PIPELINE_PREFILL = 1;
+  PIPELINE_DECODE = 2;
+  PIPELINE_RESET = 3;
+  PIPELINE_CANCEL = 4;
+}
+
 message ExecutePipelineStage {
   string task_id = 1;
   string attempt_id = 2;
@@ -196,6 +211,11 @@ message ExecutePipelineStage {
   bool final_stage = 8;
   uint32 timeout_ms = 9;
   SteeringSpec steering = 10;
+  PipelineOperation operation = 11;
+  string pipeline_id = 12;
+  uint32 stage_count = 13;
+  uint32 token_id = 14;
+  uint32 max_new_tokens = 15;
 }
 
 message PipelineStageResult {
@@ -209,6 +229,10 @@ message PipelineStageResult {
   string error_code = 8;
   string error_message = 9;
   ExecutionMetrics metrics = 10;
+  optional uint32 next_token_id = 11;
+  bool eos = 12;
+  string token_text = 13;
+  PipelineOperation operation = 14;
 }
 
 message ExecutionMetrics {

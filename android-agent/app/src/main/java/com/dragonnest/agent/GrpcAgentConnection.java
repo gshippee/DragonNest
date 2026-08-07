@@ -107,7 +107,9 @@ public final class GrpcAgentConnection implements AgentConnection {
                     case EXECUTE_SHARD -> dispatch(message.getExecuteShard());
                     case EXECUTE_PIPELINE_STAGE ->
                             dispatch(message.getExecutePipelineStage());
-                    case CANCEL_TASK -> cancel(message.getCancelTask().getAttemptId());
+                    case CANCEL_TASK -> cancel(
+                            message.getCancelTask().getTaskId(),
+                            message.getCancelTask().getAttemptId());
                     case HEARTBEAT_ACK -> {
                         if (heartbeatStartedNanos > 0) {
                             networkRttMs = Math.max(
@@ -124,6 +126,7 @@ public final class GrpcAgentConnection implements AgentConnection {
                 rejection.compareAndSet("", failure.getMessage());
                 debugLog.add("gRPC stream error: " + failureSummary(failure));
                 connected.set(false);
+                activeTasks.keySet().forEach(taskExecutor::cleanupTask);
                 registration.countDown();
             }
 
@@ -131,6 +134,7 @@ public final class GrpcAgentConnection implements AgentConnection {
             public void onCompleted() {
                 debugLog.add("gRPC stream completed by Brain");
                 connected.set(false);
+                activeTasks.keySet().forEach(taskExecutor::cleanupTask);
                 registration.countDown();
             }
         });
@@ -217,6 +221,7 @@ public final class GrpcAgentConnection implements AgentConnection {
         for (Future<?> attempt : attempts.values()) {
             attempt.cancel(true);
         }
+        activeTasks.keySet().forEach(taskExecutor::cleanupTask);
         attempts.clear();
         if (outbound != null) {
             synchronized (outboundLock) {
@@ -300,9 +305,15 @@ public final class GrpcAgentConnection implements AgentConnection {
                     .setOutputText(result.outputText())
                     .setErrorCode(result.errorCode())
                     .setErrorMessage(result.errorMessage())
-                    .setMetrics(metrics(command.getModelId(), result));
+                    .setMetrics(metrics(command.getModelId(), result))
+                    .setEos(result.eos())
+                    .setTokenText(result.tokenText())
+                    .setOperation(result.operation());
             if (result.boundary() != null) {
                 response.setOutputBoundary(result.boundary());
+            }
+            if (result.nextTokenId() != null) {
+                response.setNextTokenId(result.nextTokenId());
             }
             send(DeviceToBrain.newBuilder().setPipelineStageResult(response).build());
         });
@@ -337,15 +348,16 @@ public final class GrpcAgentConnection implements AgentConnection {
         attempts.put(attemptId, attempt);
         taskPool.execute(attempt);
         if (timeoutMs > 0) {
-            timeoutPool.schedule(() -> cancel(attemptId), timeoutMs, TimeUnit.MILLISECONDS);
+            timeoutPool.schedule(() -> cancel(taskId, attemptId), timeoutMs, TimeUnit.MILLISECONDS);
         }
     }
 
-    private void cancel(String attemptId) {
+    private void cancel(String taskId, String attemptId) {
         Future<?> attempt = attempts.remove(attemptId);
         if (attempt != null) {
             attempt.cancel(true);
         }
+        taskExecutor.cleanupTask(taskId);
     }
 
     private void sendExecutionFailure(String taskId, String attemptId, Exception failure) {

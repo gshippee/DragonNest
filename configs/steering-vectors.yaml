@@ -27,8 +27,12 @@ vectors:
     holdout_indices: [4, 6, 10, 17, 23]
     target_layers: [7]
     default_layer: 7
-    alpha_min: -4.0
-    alpha_max: 4.0
+    # Widened from +/-4 to +/-10 for the runtime-vector realization. The +/-4
+    # bound came from the baked-profile sweep; the runtime path was physically
+    # exercised at 0 and +/-10 on this SM8750 class, and +/-4 alone does not
+    # produce a clear semantic separation on the runtime-steerable bundle.
+    alpha_min: -10.0
+    alpha_max: 10.0
     default_alpha: -2.0
     positions: [all, last]
     default_positions: last
@@ -61,7 +65,21 @@ vectors:
       verbosity_delta: -0.41
       helpfulness_retention: 0.97
     evaluation_dataset_version: steering-eval-v3
-    validated_runtimes: [mock, genie]
+    # The concrete file the runtime_vector realization binds as the
+    # steering_vector aux tensor. This is the L2-normalised form of the
+    # research vector above, which is what the injection expects; recorded
+    # separately because the .pt checksum above is the unnormalised source.
+    runtime_vector_asset:
+      filename: steering_vector_layer7_unit.bin
+      layout: float32 little-endian, 1024 values, L2 norm 1.0
+      sha256: 800f3248289f97164d0936a567a16b93e16ecbfabbb5d0ec08a811ca0cb76305
+      provenance: >-
+        SteerLab APK asset physically proven on SM-S938U1; staged into the
+        runtime-steerable bundle by the S25 artifact provisioner
+    # genie_aux is the forked GenieX closure that exposes alpha/steering_vector
+    # as compiled auxiliary inputs. Stock "genie" remains listed for the baked
+    # realization only -- it has no runtime-vector input to bind.
+    validated_runtimes: [mock, genie, genie_aux]
     validated_quantizations: [none, w4a16]
     status: validated
 

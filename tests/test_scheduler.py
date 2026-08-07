@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from dragon_nest.behavior import BehaviorProfileRegistry, SteeringRealizationMode
+from dragon_nest.behavior import (
+    BehaviorFallbackPolicy,
+    BehaviorProfile,
+    BehaviorProfileRegistry,
+    SteeringRealization,
+    SteeringRealizationMode,
+)
 from dragon_nest.deployments import ArtifactCatalog, ArtifactState, DeploymentIndex
 from dragon_nest.models import (
     Device,
@@ -39,6 +45,38 @@ def steering() -> SteeringRegistry:
 @pytest.fixture()
 def scheduler(catalog, behaviors, steering) -> DeploymentScheduler:
     return DeploymentScheduler(catalog, behaviors, steering)
+
+
+@pytest.fixture()
+def hybrid_scheduler(catalog, steering) -> DeploymentScheduler:
+    """Test-only profile retaining generic runtime-to-baked fallback coverage."""
+    profile = BehaviorProfile(
+        profile_id="concise",
+        display_name="Hybrid test profile",
+        description="",
+        base_model_family="mock",
+        version="test",
+        fallback_policy=BehaviorFallbackPolicy.ALLOW_BAKED_EQUIVALENT,
+        realizations=(
+            SteeringRealization(
+                mode=SteeringRealizationMode.RUNTIME_VECTOR,
+                vector_id="concise-vs-verbose-layer-7",
+                alpha=-2.0,
+                alpha_min=-4.0,
+                alpha_max=4.0,
+                injection_layer=7,
+            ),
+            SteeringRealization(
+                mode=SteeringRealizationMode.BAKED_PROFILE,
+                baked_artifact_id="small-chat-v1-concise-baked",
+            ),
+        ),
+    )
+    return DeploymentScheduler(
+        catalog,
+        BehaviorProfileRegistry({"concise": profile}),
+        steering,
+    )
 
 
 def _capability(
@@ -144,11 +182,11 @@ def test_warm_deployment_wins_over_cold(scheduler, catalog):
 # --- Scenario B: behavior locality (runtime vs baked) ----------------------
 
 
-def test_behavior_locality_explains_runtime_vs_baked_tradeoff(scheduler, catalog):
+def test_behavior_locality_explains_runtime_vs_baked_tradeoff(hybrid_scheduler, catalog):
     laptop = _laptop([_capability("small-chat-v1-concise-baked", warm=True)])
     phone = _phone([_capability("small-chat-v1", warm=True, supports_steering=True)])
     plan = _plan(
-        scheduler,
+        hybrid_scheduler,
         catalog,
         [laptop, phone],
         RequestSpec(base_model_family="mock", behavior_profile_id="concise"),
@@ -241,7 +279,7 @@ def test_long_context_memory_projection_rejects_phone(scheduler, catalog):
 # --- Scenario E: runtime steering unavailable -------------------------------
 
 
-def test_runtime_steering_disabled_falls_back_to_baked(scheduler, catalog):
+def test_runtime_steering_disabled_falls_back_to_baked(hybrid_scheduler, catalog):
     laptop = _laptop(
         [
             _capability("small-chat-v1", warm=True, supports_steering=True),
@@ -249,7 +287,7 @@ def test_runtime_steering_disabled_falls_back_to_baked(scheduler, catalog):
         ]
     )
     plan = _plan(
-        scheduler,
+        hybrid_scheduler,
         catalog,
         [laptop],
         RequestSpec(base_model_family="mock", behavior_profile_id="concise"),
@@ -268,7 +306,7 @@ def test_runtime_steering_disabled_falls_back_to_baked(scheduler, catalog):
                for line in plan.explanation)
 
 
-def test_exact_only_override_rejects_instead_of_fallback(scheduler, catalog):
+def test_exact_only_override_rejects_instead_of_fallback(hybrid_scheduler, catalog):
     laptop = _laptop(
         [
             _capability("small-chat-v1", warm=True, supports_steering=True),
@@ -276,7 +314,7 @@ def test_exact_only_override_rejects_instead_of_fallback(scheduler, catalog):
         ]
     )
     plan = _plan(
-        scheduler,
+        hybrid_scheduler,
         catalog,
         [laptop],
         RequestSpec(
@@ -416,10 +454,10 @@ def test_plan_is_deterministic(scheduler, catalog):
     ]
 
 
-def test_runtime_vector_choice_produces_steering_spec(scheduler, catalog):
+def test_runtime_vector_choice_produces_steering_spec(hybrid_scheduler, catalog):
     phone = _phone([_capability("small-chat-v1", warm=True, supports_steering=True)])
     plan = _plan(
-        scheduler,
+        hybrid_scheduler,
         catalog,
         [phone],
         RequestSpec(base_model_family="mock", behavior_profile_id="concise"),

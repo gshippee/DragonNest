@@ -294,12 +294,15 @@ def test_live_brain_sweeper_expires_missed_agent_heartbeat():
         agent_task = asyncio.create_task(agent.run_forever())
         try:
             await asyncio.wait_for(agent.registered.wait(), timeout=3)
-            for _ in range(100):
-                if registry.get(device.device_id).status == HealthStatus.OFFLINE:
-                    break
-                await asyncio.sleep(0.01)
-            else:
-                raise AssertionError("missed heartbeat did not expire Agent")
+            # Windows' asyncio/grpc timer resolution can make 10 ms sleeps
+            # return early, so an iteration budget may elapse before the
+            # registry's 100 ms monotonic deadline. Poll against a real
+            # monotonic deadline without changing heartbeat/sweeper semantics.
+            deadline = asyncio.get_running_loop().time() + 3
+            while registry.get(device.device_id).status != HealthStatus.OFFLINE:
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise AssertionError("missed heartbeat did not expire Agent")
+                await asyncio.sleep(0.02)
 
             assert not registry.get(device.device_id).stream_connected
         finally:
@@ -571,7 +574,7 @@ def test_grpc_layer_pipeline_transfers_boundary_between_agents():
                 response = await pb_grpc.BrainControlStub(channel).SubmitTask(
                     pb.SubmitTaskRequest(
                         request_text="Analyze this complex trade-off.",
-                        preferred_mode="quality",
+                        preferred_mode="auto",
                         execution_mode="layer_pipeline",
                         timeout_ms=2_000,
                     )
@@ -617,7 +620,7 @@ def test_grpc_layer_pipeline_retries_compatible_stage_after_disconnect():
                 response = await pb_grpc.BrainControlStub(channel).SubmitTask(
                     pb.SubmitTaskRequest(
                         request_text="Analyze this complex trade-off.",
-                        preferred_mode="quality",
+                        preferred_mode="auto",
                         execution_mode="layer_pipeline",
                         timeout_ms=2_000,
                     )
@@ -707,7 +710,7 @@ def test_grpc_pipeline_steering_is_assigned_to_owning_stage():
                 response = await pb_grpc.BrainControlStub(channel).SubmitTask(
                     pb.SubmitTaskRequest(
                         request_text="Analyze this concisely.",
-                        preferred_mode="quality",
+                        preferred_mode="auto",
                         execution_mode="layer_pipeline",
                         steering=pb.SteeringSpec(
                             enabled=True,

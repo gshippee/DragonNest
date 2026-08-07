@@ -42,7 +42,6 @@ class RuleBasedTaskClassifier:
             estimated_input_tokens > 350
             or is_compound
             or any(word in text for word in reasoning_words)
-            or preferred_mode == "quality"
         )
         complexity = "high" if high_complexity else "medium" if estimated_input_tokens > 80 else "low"
 
@@ -50,7 +49,7 @@ class RuleBasedTaskClassifier:
         latency_tier = "realtime" if preferred_mode == "fast" else "interactive"
         steering_requested = any(word in text for word in ("concise", "verbose", "persona", "style", "tone"))
         data_parallelizable = is_compound or " for each " in text or "sections" in text
-        layer_parallel_candidate = preferred_mode == "quality" and complexity == "high"
+        layer_parallel_candidate = preferred_mode == "elastic"
 
         return TaskProfile(
             task_class=task_class,

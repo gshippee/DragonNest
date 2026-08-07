@@ -26,6 +26,9 @@ def test_steering_validation_accepts_compatible_model():
         max_context_tokens=4096,
         warm=True,
         quality_score=0.6,
+        # supports_steering is what marks a deployment as able to bind a vector
+        # at request time; listing vector ids alone is not enough.
+        supports_steering=True,
         steering_vector_ids=("concise-vs-verbose-layer-7",),
         supported_steering_layers=(7,),
     )
@@ -133,7 +136,9 @@ def test_runtime_compatible_rejects_non_routable_status():
 def test_steering_validation_rejects_bad_alpha():
     registry = SteeringRegistry.from_yaml(ROOT / "configs/steering-vectors.yaml")
     spec = registry.default_spec("concise-vs-verbose-layer-7")
-    spec = spec.__class__(**{**spec.__dict__, "alpha": 9.0})
+    # The runtime-vector realization widened this vector's bound to +/-10;
+    # 12.0 is still outside it, so the range check must still bite.
+    spec = spec.__class__(**{**spec.__dict__, "alpha": 12.0})
     model = ModelCapability(
         model_id="small-chat-v1",
         model_family="mock",
@@ -142,6 +147,9 @@ def test_steering_validation_rejects_bad_alpha():
         max_context_tokens=4096,
         warm=True,
         quality_score=0.6,
+        # supports_steering is what marks a deployment as able to bind a vector
+        # at request time; listing vector ids alone is not enough.
+        supports_steering=True,
         steering_vector_ids=("concise-vs-verbose-layer-7",),
         supported_steering_layers=(7,),
     )
@@ -155,7 +163,7 @@ def test_baked_profile_routes_only_to_matching_artifact():
     spec = SteeringSpec(
         enabled=True,
         mode="baked_profile",
-        behavior_profile_id="concise-l7-alpha-m4",
+        behavior_profile_id="concise",
     )
     baked = ModelCapability(
         model_id="qwen3-0.6b-s25-concise",
@@ -166,7 +174,7 @@ def test_baked_profile_routes_only_to_matching_artifact():
         warm=False,
         quality_score=0.7,
         steering_modes=("baked_profile",),
-        behavior_profile_ids=("concise-l7-alpha-m4",),
+        behavior_profile_ids=("concise",),
     )
     base = baked.__class__(
         **{

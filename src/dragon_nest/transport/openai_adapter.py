@@ -37,7 +37,7 @@ class OpenAIAdapterConfig:
     device_id: str = "openai-adapter"
     display_name: str = "OpenAI-compatible endpoint"
     platform: str = "cloud"
-    request_timeout_seconds: float = 60.0
+    request_timeout_seconds: float = 270.0
     runtime_name: str = "openai_adapter"
 
 
@@ -160,7 +160,7 @@ def create_openai_adapter_app(config: OpenAIAdapterConfig) -> FastAPI:
         attempt_id = str(payload.get("attempt_id", ""))
         model_id = str(payload.get("model_id", "")) or config.models[0].model_id
         request_text = str(payload.get("request_text", ""))
-        timeout_ms = int(payload.get("timeout_ms") or 30000)
+        timeout_ms = int(payload.get("timeout_ms") or 270000)
         result = await _chat_completion(
             app.state.http_client, config, model_id, request_text, timeout_ms / 1000
         )

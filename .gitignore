@@ -19,7 +19,16 @@ artifacts/
 *.raw
 *.wav
 
+# Vendor native runtime closures. The forked GenieX libraries staged here by
+# scripts/artifact_tools/stage_steering_native_closure.py are ~91 MB of
+# Qualcomm-licensed binaries; the tool + its recorded checksums are the
+# committed provenance, the bytes are not.
+*.so
+android-agent/vendor/jniLibs/
+android-agent/vendor/steering-jniLibs/
+
 # Local hardware/tooling config
 .env
 local*.yaml
 local/
+android-agent/local.properties

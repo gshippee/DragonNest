@@ -12,6 +12,7 @@
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
   <script src="/assets/shared/api.js" defer></script>
   <script src="/assets/shared/pwa.js" defer></script>
+  <script src="/assets/admin/selection.js" defer></script>
   <script src="/assets/admin/app.js" defer></script>
 </head>
 <body>
@@ -30,26 +31,55 @@
     </nav>
   </header>
 
-  <main>
-    <section class="band" aria-labelledby="devices-title">
-      <div class="section-head">
-        <div><span class="index">01</span><h1 id="devices-title">Device Registry</h1></div>
-        <div class="section-actions"><span id="device-count" class="count">0 devices</span><button id="add-device" class="btn-secondary" type="button"><i data-lucide="scan-qr-code"></i><span>Add device</span></button><button id="add-endpoint" class="btn-secondary" type="button"><i data-lucide="server"></i><span>Add endpoint</span></button></div>
+  <main class="control-room">
+    <section class="fabric-summary" aria-label="Fabric status">
+      <div><span class="eyebrow">Trusted local fabric</span><h1>DragonNest Fabric</h1></div>
+      <div id="fabric-summary" class="fabric-summary-copy">Waiting for device telemetry...</div>
+    </section>
+
+    <div class="primary-grid">
+      <section class="primary-panel devices-panel" aria-labelledby="devices-title">
+        <div class="panel-head">
+          <div><span class="eyebrow">Fabric</span><h2 id="devices-title">Device Registry</h2></div>
+          <div class="section-actions"><span id="device-count" class="count">0 devices</span><button id="add-device" class="icon-btn" type="button" title="Add device" aria-label="Add device"><i data-lucide="scan-qr-code"></i></button></div>
+        </div>
+        <div id="devices" class="device-grid"></div>
+      </section>
+
+      <section class="primary-panel requests-panel" aria-labelledby="requests-title">
+        <div class="panel-head">
+          <div><span class="eyebrow">From PersonaCare and Admin</span><h2 id="requests-title">Live Requests</h2></div>
+          <div class="follow-controls"><span id="follow-state" class="follow-state">Following latest</span><button id="follow-latest" class="btn-secondary compact" type="button" hidden>Follow latest</button></div>
+        </div>
+        <div id="recent-requests" class="request-list" aria-live="polite"><div class="empty">No requests yet</div></div>
+      </section>
+    </div>
+
+    <section class="primary-panel selected-panel" aria-labelledby="selected-title">
+      <div class="panel-head">
+        <div><span class="eyebrow">Route, execution, result</span><h2 id="selected-title">Selected Request</h2></div>
+        <span id="result-state" class="status-pill neutral">Idle</span>
       </div>
-      <div id="devices" class="device-grid"></div>
+      <div id="selected-prompt" class="selected-prompt">No request selected.</div>
+      <div id="profile-strip" class="profile-strip"></div>
+      <div id="route-topology" class="route-topology"><div class="empty">No route selected</div></div>
+      <div class="selected-detail-grid">
+        <div><h3>Why Brain chose this route</h3><ol id="route-trace" class="trace-list"><li class="empty">No route selected</li></ol></div>
+        <div><h3>Result</h3><pre id="result-output" class="result-output">No result selected.</pre><div id="result-meta" class="result-meta"></div></div>
+      </div>
+      <div id="progress" class="sr-only" aria-hidden="true"></div>
     </section>
 
-    <section class="band band-muted" aria-labelledby="vectors-title">
-      <div class="section-head"><div><span class="index">02</span><h2 id="vectors-title">Steering Vectors</h2></div></div>
-      <div id="vector-list" class="vector-list"></div>
-    </section>
+    <details class="advanced-shell">
+      <summary><span>Advanced</span><span>Task submission, behavior routing, steering, provisioning, endpoints</span></summary>
+      <div class="advanced-actions"><button id="add-endpoint" class="btn-secondary" type="button"><i data-lucide="server"></i><span>Add endpoint</span></button></div>
 
-    <section class="band" aria-labelledby="submit-title">
-      <div class="section-head"><div><span class="index">03</span><h2 id="submit-title">Task Submission</h2></div></div>
+      <section class="advanced-panel" aria-labelledby="submit-title">
+        <div class="section-head"><div><h2 id="submit-title">Manual Task Submission</h2></div></div>
       <form id="task-form" class="task-form">
         <label class="field">Request<textarea id="request" rows="4" required>Compare both options and recommend one.</textarea></label>
         <div class="control-grid">
-          <label class="field">Mode<select id="preferred-mode"><option value="auto">Auto</option><option value="fast">Fast</option><option value="private">Private</option><option value="quality">Quality</option><option value="parallel">Parallel</option></select></label>
+          <label class="field">Compute preference<select id="preferred-mode"><option value="auto">Auto</option><option value="local">Local</option><option value="elastic">Elastic</option><option value="quality">Quality</option><option value="fast">Fast (legacy)</option><option value="private">Private (legacy)</option><option value="parallel">Parallel (legacy)</option></select></label>
           <label class="field">Execution<select id="execution-mode"><option value="auto">Auto</option><option value="single">Single</option><option value="data_parallel">Data Parallel</option><option value="layer_pipeline">Layer Pipeline</option></select></label>
           <label class="field">Origin device<select id="origin-device"><option value="">None</option></select></label>
           <label class="field">Reducer<select id="reducer"><option value="mock_synthesis">Mock synthesis</option><option value="concat">Concatenate</option><option value="first_success">First success</option></select></label>
@@ -63,10 +93,10 @@
           <label class="field">Positions<select id="positions"><option value="last">Last token</option><option value="all">All tokens</option></select></label>
         </div>
       </form>
-    </section>
+      </section>
 
-    <section class="band" aria-labelledby="behavior-title">
-      <div class="section-head"><div><span class="index">04</span><h2 id="behavior-title">Behavior Routing</h2></div><span class="count">deployment scheduler</span></div>
+      <section class="advanced-panel" aria-labelledby="behavior-title">
+      <div class="section-head"><div><h2 id="behavior-title">Behavior Routing</h2></div><span class="count">deployment scheduler</span></div>
       <form id="behavior-form" class="task-form">
         <label class="field">Request<textarea id="behavior-request" rows="3" required>Explain why local AI routing matters.</textarea></label>
         <div class="control-grid">
@@ -88,42 +118,27 @@
         <table><thead><tr><th>Device</th><th>Artifact</th><th>Realization</th><th>Deployment</th><th>Predicted cost</th><th>Verdict</th></tr></thead>
         <tbody id="behavior-candidates"><tr><td colspan="6" class="empty">No candidates yet</td></tr></tbody></table>
       </div>
-    </section>
+      </section>
 
-    <section class="band band-muted" aria-labelledby="provisioning-title">
-      <div class="section-head"><div><span class="index">05</span><h2 id="provisioning-title">Provisioning</h2></div><span id="provisioning-count" class="count">0 jobs</span></div>
+      <section class="advanced-panel" aria-labelledby="vectors-title">
+        <div class="section-head"><div><h2 id="vectors-title">Steering Vectors</h2></div></div>
+        <div id="vector-list" class="vector-list"></div>
+      </section>
+
+      <section class="advanced-panel" aria-labelledby="provisioning-title">
+      <div class="section-head"><div><h2 id="provisioning-title">Provisioning</h2></div><span id="provisioning-count" class="count">0 jobs</span></div>
       <div class="table-wrap">
         <table><thead><tr><th>Job</th><th>Profile</th><th>Device</th><th>Artifact</th><th>State</th><th>Detail</th><th></th></tr></thead>
         <tbody id="provisioning-jobs"><tr><td colspan="7" class="empty">No provisioning jobs</td></tr></tbody></table>
       </div>
-    </section>
+      </section>
+    </details>
 
-    <section class="band band-muted" aria-labelledby="trace-title">
-      <div class="section-head">
-        <div><span class="index">06</span><h2 id="trace-title">Routing Trace</h2></div>
-        <select id="task-select" aria-label="Selected task"><option>No tasks</option></select>
-      </div>
-      <div id="profile-strip" class="profile-strip"></div>
-      <ol id="route-trace" class="trace-list"><li class="empty">No route selected</li></ol>
-    </section>
-
-    <section class="band" aria-labelledby="progress-title">
-      <div class="section-head"><div><span class="index">07</span><h2 id="progress-title">Parallel Progress</h2></div></div>
-      <div class="table-wrap">
-        <table><thead><tr><th>Unit</th><th>Device</th><th>Model</th><th>Status</th><th>Latency</th><th>Retries</th></tr></thead><tbody id="progress"><tr><td colspan="6" class="empty">No active shards or stages</td></tr></tbody></table>
-      </div>
-    </section>
-
-    <section class="band band-muted" aria-labelledby="result-title">
-      <div class="section-head"><div><span class="index">08</span><h2 id="result-title">Result</h2></div><span id="result-state" class="status-pill neutral">Idle</span></div>
-      <pre id="result-output" class="result-output">No result selected.</pre>
-      <div id="result-meta" class="result-meta"></div>
-    </section>
-
-    <section class="band band-dark" aria-labelledby="events-title">
-      <div class="section-head"><div><span class="index">09</span><h2 id="events-title">Live Event Log</h2></div><button id="refresh-events" class="icon-btn" title="Refresh events" aria-label="Refresh events"><i data-lucide="refresh-cw"></i></button></div>
+    <details class="diagnostics-shell">
+      <summary><span>Event log</span><span>Raw fabric diagnostics</span></summary>
+      <div class="diagnostics-head"><button id="refresh-events" class="icon-btn" title="Refresh events" aria-label="Refresh events"><i data-lucide="refresh-cw"></i></button></div>
       <div id="events" class="event-log" aria-live="polite"></div>
-    </section>
+    </details>
   </main>
 
   <dialog id="simulation-dialog">

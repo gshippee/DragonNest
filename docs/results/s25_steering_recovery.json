@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-07",
+  "device": {
+    "manufacturer": "samsung",
+    "model": "SM-S938U1",
+    "device": "pa3q",
+    "android": "15",
+    "security_patch": "2025-06-01",
+    "build_fingerprint": "samsung/pa3quew/pa3q:15/AP3A.240905.015.A2/S938U1UES4AYE3_OYM4AYE3:user/release-keys"
+  },
+  "working_reference": {
+    "package": "com.personacare.steeringdemo",
+    "version_name": "1.0",
+    "version_code": 1,
+    "debuggable": true,
+    "run_as_worked": true,
+    "installed_apk": {
+      "size_bytes": 99966284,
+      "sha256": "9038cff6548fe7fa1aef3bb007648451d088c04c02f2a18a19245fab1bf7b419"
+    },
+    "private_archive": {
+      "size_bytes": 1459950080,
+      "sha256": "553e2ee38e125ef0da1028431ab1c47d6bdeb2a4529d218b3fc17a3dff059590"
+    },
+    "runtime": "GenieX Android 0.3.5 / QAIRT 2.45.0.260326154327 / QNN HTP v79",
+    "phone_context_binaries": {
+      "base_part1": {"size_bytes": 311226368, "sha256": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978"},
+      "base_part2": {"size_bytes": 407248896, "sha256": "6fbfa220a305bf3df27bf943a5c86e0885518ce8e11027c098aa32ab5dd25c75"},
+      "concise_part1": {"size_bytes": 311226368, "sha256": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978"},
+      "concise_part2": {"size_bytes": 407252992, "sha256": "4d91bc6c65150cfc4e52875ad224aa2f7cfd0f1246bf71caab37db6ac0a7782c"}
+    }
+  },
+  "release_archives": {
+    "base": {"size_bytes": 629468676, "sha256": "2854ef411208b1315855584b223e32627922c8bb5b192ce88d7ee13010d5c8fe"},
+    "concise": {"size_bytes": 629447381, "sha256": "e932381129d5d93514d6cefadff7e4bfe55dd6cf23532c183e17cfc13937a183"},
+    "phone_binary_match": false,
+    "note": "Non-binary metadata matches; phone context binaries are larger and are preserved separately."
+  },
+  "bake": {
+    "base_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+    "base_onnx_sha256": "fc390cb9f1a26a36d6e079ce5ceb83c51ba0379cd2a6a2713b0245f8bf7439e2",
+    "vector_id": "concise-vs-verbose-layer-7",
+    "vector_sha256": "7d69ff39a248a6e7df11d5fe2b533addfc19f84da75c4869a088eef8a2c32b2c",
+    "layer": 7,
+    "normalization": "l2_at_injection",
+    "concise_alpha": -4.0,
+    "concise_reproduced_onnx_sha256": "03f6a9fa01997098e00720a1abb0dd587591e279e22ac183cd17e2074c4b0438",
+    "detailed_alpha": 4.0,
+    "detailed_onnx_sha256": "8d5a612b415333067910a41c368cfc4a034c443f02d705fbdbb3e41e2b046714"
+  },
+  "detailed_target": {
+    "prompt_compile_jobs": ["jprw0m4k5", "jp2ewq76p"],
+    "token_compile_jobs": ["jp06j8jep", "jp81xdx85"],
+    "rejected_prompt_only_link_jobs": ["jgnkndxvg", "jp2ewqjxp"],
+    "combined_prompt_token_link_jobs": ["jp16jkjl5", "jgd23y3l5"],
+    "compile_option_quantization": "w8a16",
+    "artifact_name_quantization": "w4a16",
+    "target": "Samsung Galaxy S25 (Family), Android 15, SM8750-ac, Hexagon v79",
+    "target_bundle": {
+      "size_bytes": 631616571,
+      "sha256": "739f2c1a2339b41195591cc89ebeae43af49dbd290bf70982af204ddfdd5f8f9",
+      "part1_size_bytes": 311226368,
+      "part1_sha256": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978",
+      "part2_size_bytes": 407252992,
+      "part2_sha256": "b7eb9b0db2a2711fe69bcb2438114b756dbc9d28b6872c69958c2ed35fdeac6b"
+    },
+    "physical_htp_status": "verified",
+    "physical_test": {
+      "package": "com.personacare.steeringdemo",
+      "runtime": "GenieX Android 0.3.5 / QAIRT 2.45 / QNN HTP v79",
+      "executor": "real_npu",
+      "runs": 8,
+      "max_generated_tokens": 192,
+      "detailed_median_word_delta_vs_base": 8.5,
+      "detailed_total_word_delta_vs_base": 123,
+      "detailed_longer_runs": 5,
+      "concise_median_word_delta_vs_base": -5.0,
+      "concise_total_word_delta_vs_base": -4,
+      "concise_shorter_runs": 5,
+      "detailed_ttft_ms_range": [17, 19],
+      "detailed_decode_tokens_per_s_range": [120.1, 122.8]
+    }
+  }
+}
+

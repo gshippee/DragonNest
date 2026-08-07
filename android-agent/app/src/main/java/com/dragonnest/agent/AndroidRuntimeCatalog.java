@@ -11,6 +11,7 @@ import com.dragonnest.proto.ModelCapability;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -47,10 +48,12 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
         Map<String, AndroidTaskExecutor> executors = new LinkedHashMap<>();
         List<ModelCapability> capabilities = new ArrayList<>();
         List<String> warm = new ArrayList<>();
-        MockAndroidTaskExecutor mock = new MockAndroidTaskExecutor();
-        executors.put(MockAndroidTaskExecutor.MODEL_ID, mock);
-        capabilities.add(mockCapability());
-        warm.add(MockAndroidTaskExecutor.MODEL_ID);
+        if (BuildConfig.DRAGONNEST_ENABLE_MOCK_RUNTIME) {
+            MockAndroidTaskExecutor mock = new MockAndroidTaskExecutor();
+            executors.put(MockAndroidTaskExecutor.MODEL_ID, mock);
+            capabilities.add(mockCapability());
+            warm.add(MockAndroidTaskExecutor.MODEL_ID);
+        }
 
         AndroidArtifactRegistry registry;
         try {
@@ -59,7 +62,10 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
         } catch (Exception failure) {
             Log.w(TAG, "Ignoring invalid Android model manifest", failure);
             registry = AndroidArtifactRegistry.fromJson("{\"models\":[]}",
-                    context.getFilesDir().toPath().resolve(AndroidArtifactRegistry.MODEL_DIRECTORY));
+                    AndroidArtifactRegistry.modelRoot(context));
+        }
+        for (String skipped : registry.skippedEntries()) {
+            Log.w(TAG, "Ignoring unusable Android manifest entry -- " + skipped);
         }
         Map<String, AndroidRuntimeBridge> bridges = new LinkedHashMap<>();
         boolean npuAvailable = false;
@@ -92,9 +98,10 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
             if (usesNpu(artifact)) {
                 npuAvailable = true;
                 availableNpuName = "Qualcomm " + artifact.supportedAccelerators().get(0).toUpperCase();
-                if (artifact.runtime().equals("qnn")) {
-                    availableQnnVersion = bridge.runtimeVersion();
-                }
+                // HardwareInventory retains the historical qnn_runtime_version
+                // field name, but GenieX is also backed by QAIRT/QNN. Report the
+                // exact admitted bridge version for either real HTP runtime.
+                availableQnnVersion = bridge.runtimeVersion();
             }
         }
         return new AndroidRuntimeCatalog(
@@ -126,6 +133,39 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
         return qnnRuntimeVersion;
     }
 
+    /**
+     * A real artifact target becomes authoritative only after checksum,
+     * runtime-load, and execution-ready probing have admitted its capability.
+     * Thin/mock builds therefore retain their generic platform key.
+     */
+    public String compatibilityKey(String platformFallback) {
+        return resolveCompatibilityKey(capabilities, platformFallback);
+    }
+
+    static String resolveCompatibilityKey(
+            List<ModelCapability> availableCapabilities,
+            String platformFallback) {
+        LinkedHashSet<String> targets = new LinkedHashSet<>();
+        for (ModelCapability capability : availableCapabilities) {
+            if (!capability.getTargetCompatibilityClass().isBlank()) {
+                targets.add(capability.getTargetCompatibilityClass());
+            }
+        }
+        if (targets.isEmpty()) {
+            return platformFallback;
+        }
+        String selected = targets.iterator().next();
+        String family = selected.split("-qairt-", 2)[0];
+        for (String target : targets) {
+            if (!target.split("-qairt-", 2)[0].equals(family)) {
+                throw new IllegalStateException(
+                        "Loaded Android runtimes advertise incompatible target families: "
+                                + targets);
+            }
+        }
+        return selected;
+    }
+
     @Override
     public TaskExecutionResult execute(ExecuteTask command) throws Exception {
         return executorFor(command.getModelId()).execute(command);
@@ -139,6 +179,11 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
     @Override
     public TaskExecutionResult executePipelineStage(ExecutePipelineStage command) throws Exception {
         return executorFor(command.getModelId()).executePipelineStage(command);
+    }
+
+    @Override
+    public void cleanupTask(String taskId) {
+        executors.values().forEach(executor -> executor.cleanupTask(taskId));
     }
 
     private AndroidTaskExecutor executorFor(String modelId) {
