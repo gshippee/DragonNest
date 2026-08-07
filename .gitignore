@@ -23,3 +23,4 @@ artifacts/
 .env
 local*.yaml
 local/
+android-agent/local.properties

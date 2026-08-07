@@ -276,7 +276,11 @@ models:
     input_tensor_schema:
       - {name: input_ids, dtype: int32, shape: [1, dynamic, 1]}
     output_tensor_schema:
-      - {name: embedding, dtype: float32, shape: [1, dynamic, 2048]}
+      # Physically confirmed on X Elite (prompt+decode) -- was declared float32
+      # (an AI-Hub-level assumption, never physically checked); the real graph
+      # output is quantized ufixed_point_16, scale=6.988926998019451e-06,
+      # offset=-32232. See docs/results/qwen3_1_7b_xelite_physical_bringup.md.
+      - {name: embedding, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
     build_provenance:
       source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
       declared_quantization: w4a16
@@ -331,9 +335,16 @@ models:
     size_bytes: 263147520
     context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
     input_tensor_schema:
-      - {name: embedding, dtype: float32, shape: [1, dynamic, 2048]}
+      # Physically confirmed on X Elite (prompt graph) -- same quantization
+      # as qwen3-1.7b-s0-xelite's output (scale/offset match exactly, so S0's
+      # raw output feeds S1 unchanged, no dequant/requant needed). Was
+      # declared float32 (never physically checked); see
+      # docs/results/qwen3_1_7b_xelite_physical_bringup.md.
+      - {name: embedding, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
     output_tensor_schema:
-      - {name: add_21844, dtype: float32, shape: [1, dynamic, 2048]}
+      # Physically confirmed on X Elite (prompt graph only, not decode);
+      # scale=0.018486686050891876, offset=-32808.
+      - {name: add_21844, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
     build_provenance:
       source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
       declared_quantization: w4a16

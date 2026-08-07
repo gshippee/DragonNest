@@ -121,6 +121,19 @@ def _env():
 
     env = os.environ.copy()
     env["PATH"] = os.pathsep.join((str(LIB_DIR), str(HEXAGON_DIR), env.get("PATH", "")))
+    # Without this, qnn-net-run.exe can still *load* the unsigned HTP skel
+    # (setSkelLogLevel succeeds) but graph preparation on the DSP silently
+    # fails -- HtpTransport::graphPrepareDsp returns a null graph handle --
+    # and the process then crashes (0xC0000409) trying to use it, instead of
+    # returning a clean QNN error. qnn-platform-validator.exe's own DSP
+    # smoke test fails the same way with an explicit "Please use testsig if
+    # using unsigned images. Also make sure ADSP_LIBRARY_PATH points to
+    # directory containing skels" message. Reproduced and fixed physically
+    # on a Snapdragon X Elite; see
+    # docs/results/qwen3_1_7b_xelite_physical_bringup.md.
+    env["ADSP_LIBRARY_PATH"] = os.pathsep.join(
+        (str(HEXAGON_DIR / "unsigned"), env.get("ADSP_LIBRARY_PATH", ""))
+    )
     return env
 
 
@@ -244,8 +257,19 @@ def run_context_binary(
     output_dtypes: dict[str, np.dtype],
     backend: str = "htp",
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+    graph_index: int | None = None,
+    num_graphs: int = 1,
 ) -> dict[str, np.ndarray]:
-    """Run a precompiled QNN context binary (.bin, loaded via --retrieve_context)."""
+    """Run a precompiled QNN context binary (.bin, loaded via --retrieve_context).
+
+    Some context binaries (e.g. this repo's Qwen3-1.7B split-stage artifacts)
+    bundle more than one graph -- typically a prompt/prefill graph and a
+    decode graph sharing one set of weights. Pass ``graph_index`` (0-based,
+    matching the graph order reported by ``qnn-context-binary-utility.exe``)
+    and ``num_graphs`` (the total graph count in the binary) to select one;
+    qnn-net-run.exe requires every other graph slot to be explicitly skipped
+    (``__``) rather than just omitted.
+    """
     return _run(
         model_flag=["--retrieve_context", str(bin_path)],
         inputs=inputs,
@@ -254,6 +278,8 @@ def run_context_binary(
         output_dtypes=output_dtypes,
         backend=backend,
         timeout_sec=timeout_sec,
+        graph_index=graph_index,
+        num_graphs=num_graphs,
     )
 
 
@@ -265,6 +291,8 @@ def run_context_binary_batch(
     output_dtypes: dict[str, np.dtype],
     backend: str = "htp",
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+    graph_index: int | None = None,
+    num_graphs: int = 1,
 ) -> list[dict[str, np.ndarray]]:
     """Batched sibling of run_context_binary() -- see run_dlc_batch()."""
     return _run_batch(
@@ -275,6 +303,8 @@ def run_context_binary_batch(
         output_dtypes=output_dtypes,
         backend=backend,
         timeout_sec=timeout_sec,
+        graph_index=graph_index,
+        num_graphs=num_graphs,
     )
 
 
@@ -286,6 +316,8 @@ def _run(
     output_dtypes: dict[str, np.dtype],
     backend: str,
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+    graph_index: int | None = None,
+    num_graphs: int = 1,
 ) -> dict[str, np.ndarray]:
     return _run_batch(
         model_flag=model_flag,
@@ -295,6 +327,8 @@ def _run(
         output_dtypes=output_dtypes,
         backend=backend,
         timeout_sec=timeout_sec,
+        graph_index=graph_index,
+        num_graphs=num_graphs,
     )[0]
 
 
@@ -306,6 +340,8 @@ def _run_batch(
     output_dtypes: dict[str, np.dtype],
     backend: str,
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+    graph_index: int | None = None,
+    num_graphs: int = 1,
 ) -> list[dict[str, np.ndarray]]:
     last_exc: Exception | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -318,6 +354,8 @@ def _run_batch(
                 output_dtypes,
                 backend,
                 timeout_sec,
+                graph_index,
+                num_graphs,
             )
         except RuntimeError as exc:
             last_exc = exc
@@ -337,6 +375,8 @@ def _run_batch_once(
     output_dtypes: dict[str, np.dtype],
     backend: str,
     timeout_sec: float,
+    graph_index: int | None = None,
+    num_graphs: int = 1,
 ) -> list[dict[str, np.ndarray]]:
     global _profile_call_count
 
@@ -367,13 +407,26 @@ def _run_batch_once(
         input_list_path = work_dir / "input_list.txt"
         input_list_path.write_text("\n".join(list_lines) + "\n")
 
+        if graph_index is not None:
+            if not (0 <= graph_index < num_graphs):
+                raise ValueError(
+                    f"graph_index {graph_index} out of range for num_graphs={num_graphs}"
+                )
+            # qnn-net-run.exe requires one input-list slot per graph in the
+            # binary when it contains more than one; "__" skips a graph.
+            slots = ["__"] * num_graphs
+            slots[graph_index] = input_list_path.name
+            input_list_arg = ",".join(slots)
+        else:
+            input_list_arg = input_list_path.name
+
         output_dir = work_dir / "output"
         backend_dll = BACKENDS[backend]
         cmd = [
             str(QNN_NET_RUN),
             *model_flag,
             "--input_list",
-            str(input_list_path.name),
+            input_list_arg,
             "--backend",
             str(backend_dll),
             "--output_dir",
@@ -416,6 +469,17 @@ def _run_batch_once(
         outputs_list: list[dict[str, np.ndarray]] = []
         for idx in range(len(inputs_list)):
             result_dir = output_dir / f"Result_{idx}"
+            if not result_dir.is_dir():
+                # Multi-graph binaries nest results one level deeper, under
+                # the selected graph's name (output_dir/<graph_name>/Result_N).
+                nested = list(output_dir.glob(f"*/Result_{idx}"))
+                if len(nested) == 1:
+                    result_dir = nested[0]
+                elif len(nested) > 1:
+                    raise RuntimeError(
+                        f"Ambiguous Result_{idx} directory across graphs: {nested}. "
+                        f"Pass graph_index to select exactly one graph."
+                    )
 
             if dump_layers:
                 _save_layer_dump(model_flag, result_dir, item_index=idx)
