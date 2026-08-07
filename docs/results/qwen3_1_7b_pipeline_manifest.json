@@ -18,15 +18,14 @@
     "note": "Job/model names say w4a16 but the actual AI Hub compile option recorded on every part is w8a16. This mismatch is unresolved and must not be silently normalized to either value; both are recorded as observed."
   },
   "physical_io_verification": {
-    "note": "This manifest originally declared float32 for every tensor dtype below (an AI-Hub-level, not physically-verified, assumption). Physical execution on X Elite (docs/results/qwen3_1_7b_xelite_physical_bringup.md) found the actual QNN graphs use the '--quantize_io' compile flag literally: stage boundary tensors, shared RoPE/mask inputs, and KV cache are all quantized fixed-point on the wire, not float32. All four stages' prompt graphs have now been physically run and chained with REAL (not placeholder) boundary tensors end-to-end (S0->S1->S2->S3), producing a top-1 token of '<think>' -- the expected Qwen3 reasoning-mode first token -- a strong qualitative correctness signal, not just a shape/dtype check. Decode graphs: only S0 (bit-exact) and S1 (close, ~0.12 std-dev average difference vs a bit-exact cross-check reconstruction, plausibly explained by different batched-vs-single-token HTP execution kernels) have been physically run; S2/S3 decode graphs are UNTESTED.",
+    "note": "This manifest originally declared float32 for every tensor dtype below (an AI-Hub-level, not physically-verified, assumption). Physical execution on X Elite (docs/results/qwen3_1_7b_xelite_physical_bringup.md) found the actual QNN graphs use the '--quantize_io' compile flag literally: stage boundary tensors, shared RoPE/mask inputs, and KV cache are all quantized fixed-point on the wire, not float32. ALL FOUR STAGES' prompt AND decode graphs have now been physically run on real Hexagon HTP, chained end-to-end with real (not placeholder) boundary tensors and real persistent per-stage KV state, through one prefill call plus 8 real autoregressive decode steps. Generated text: '<think>\\n</think>\\n\\nGravity is the force that' -- a coherent, on-topic, correct continuation of the prompt 'What is gravity?', not just plausible-shaped numbers. This is the strongest correctness signal obtained this session.",
     "confirmed_stages": [
-      "stage_index 0 prompt+decode graphs (bit-exact cross-checked)",
-      "stage_index 1 prompt graph (real chained input from stage 0)",
-      "stage_index 1 decode graph (bit-exact cross-check reconstruction; close but not exact, see note above)",
-      "stage_index 2 prompt graph (real chained input from stage 1)",
-      "stage_index 3 prompt graph (real chained input from stage 2 -- full 4-stage chain, real top-1 token recorded)"
+      "stage_index 0 prompt+decode graphs (bit-exact cross-checked, and used for all 8 decode-loop steps)",
+      "stage_index 1 prompt+decode graphs (decode: real KV state and real upstream input for all 8 loop steps; step-1 decode cross-checked separately against a same-value bit-exact-style reconstruction, close but not exact -- see the physical bring-up doc)",
+      "stage_index 2 prompt+decode graphs (real chained input + real persistent KV for all 8 loop steps)",
+      "stage_index 3 prompt+decode graphs (real chained input + real persistent KV for all 8 loop steps -- full 4-stage prefill+decode loop, 9 real tokens generated total including the prefill top-1)"
     ],
-    "unconfirmed_stages": ["stage_index 2 decode graph", "stage_index 3 decode graph"]
+    "unconfirmed": ["No independent floating-point reference execution of this exact prompt+config was run this session -- correctness evidence is the coherent/on-topic generated text plus every stage's own internal invariants (pad-token/real-token distinctness, NaN/Inf checks), not a numeric diff against a known-good reference."]
   },
   "source": {
     "discovery_method": "Recovered directly from Qualcomm AI Hub job history via the account's real API token (qai_hub 0.53.0), not from any file in DragonNest or the adjacent PersonaCare-Steering-Research repo.",

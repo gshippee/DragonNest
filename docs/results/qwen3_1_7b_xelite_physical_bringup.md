@@ -67,15 +67,20 @@ model binaries, and absolute local paths where not load-bearing.
    reasoning-mode first token, corroborated by this same repo's
    `genie_runner.py` docstring. That is a strong qualitative correctness
    signal for the whole physical pipeline, not just a shape/dtype check.
-   S2's and S3's own decode graphs remain untested (§9's closing note).
-8. `docs/results/qwen3_1_7b_pipeline_manifest.json` and
-   `configs/model-artifacts.yaml` **updated this session** to say
+8. **S1's decode graph, S2, and S3 are all now physically proven with real
+   upstream decode output and real persistent stage-local KV** (§9-§11),
+   and a **complete real prefill + 8-token autoregressive decode loop** ran
+   end-to-end on HTP (§13), generating the coherent, on-topic text
+   `<think>\n</think>\n\nGravity is the force that` for the prompt "What is
+   gravity?" — the stop condition for this bring-up.
+9. `docs/results/qwen3_1_7b_pipeline_manifest.json` and
+   `configs/model-artifacts.yaml` updated throughout the session to say
    `ufixed_point_16`/`ufixed_point_8` instead of `float32` for every tensor
-   physically confirmed quantized — now covering **all four stages'** prompt
-   graphs (S0 also decode) — see §8/§12. The S25 artifact entries are
-   deliberately left as originally declared (`float32`), since Android/S25
-   was not touched this session. `verification_status` fields were left
-   unchanged (out of scope for this session's specific ask).
+   physically confirmed quantized (now all four stages, prompt and decode),
+   and `verification_status: verified-on-physical-hardware` with real
+   latency numbers for all four `qwen3-1.7b-s{0,1,2,3}-xelite` entries — see
+   §8/§13. The S25 artifact entries are deliberately left untouched (out of
+   scope this session).
 
 ## 1. Artifact staging (physically verified)
 
@@ -556,9 +561,11 @@ passes (S0/S1 first, S2/S3 added once those stages were also proven — see
   `vocab_size` placeholder replaced with the confirmed `151936`.
 
 **Deliberately left unchanged**: the S25 artifact entries (different
-target, not touched this session) and every `verification_status` field
-(this session's ask was specifically about dtype, not verification-status
-bookkeeping). `ArtifactRegistry.from_yaml()` still loads all 13 models
+target, not touched this session). `verification_status` for the four
+`qwen3-1.7b-s{0,1,2,3}-xelite` entries *was* later updated — see §13 — once
+the full physical loop (not just individual-stage dtype confirmation)
+justified it; that update also added real `measured_hardware_results`
+latency entries. `ArtifactRegistry.from_yaml()` still loads all 13 models
 cleanly after every edit; full test suite still 168/169 throughout (the 1
 failure is the same pre-existing, unrelated gRPC heartbeat-timing flake
 documented in `xelite_worker_status.md`).
@@ -591,9 +598,10 @@ per-layer activations, out of scope for "prove decode executes and produces
 a plausible, close-to-correct result"). Recorded honestly rather than
 rounded off to "matches" or treated as a failure.
 
-S2's and S3's own decode graphs were not attempted this session (only their
-prompt graphs — §10, §11); there's no specific reason to expect them to
-behave differently from S1's decode, but that's unverified.
+S2's and S3's own decode graphs are proven later this session as part of
+the full autoregressive loop (§13), using real upstream decode output and
+real persistent KV rather than a reconstruction like this one — no separate
+bit-exact-style cross-check was built for them specifically.
 
 ## 10. S2 prompt graph — physically proven with S1's real output
 
@@ -642,23 +650,141 @@ tokenization, real RoPE, real attention masking, real per-tensor
 quantization, chained through four independently-compiled QNN graphs — is
 strong evidence the whole physical pipeline (not just each stage in
 isolation) is numerically correct, not merely producing plausible-shaped
-noise. This is not yet the full `phase 7/8` local four-stage prefill +
-multi-token decode loop the original bring-up plan describes (only one
-forward pass was run, no decode chaining across stages), but it is a
-significant, meaningful data point toward it.
+noise. This single forward pass was extended later this session into the
+full `phase 7/8` local four-stage prefill + multi-token decode loop the
+original bring-up plan describes — see §13.
 
-## 12. What remains (updated)
+## 13. Full physical prefill + 8-token autoregressive decode loop — final proof
 
-- S2's and S3's own decode graphs (individually) — untested.
-- The true multi-token autoregressive decode loop, chaining KV state
-  correctly across stages between generated tokens (`phase 8` in the
-  original bring-up plan) — not attempted; S1's decode cross-check (§9)
-  suggests this is mechanically reachable but numerically imperfect
-  (non-bit-exact) in ways not yet fully characterized.
-- Full DragonNest runtime/session integration (wiring this into the
-  PREFILL/DECODE/RESET session abstractions) and stage advertisement
-  (`phase 9-10`) — not attempted, per the original plan's own ordering
-  (integrate only after the local loop is proven, and the multi-token loop
-  isn't proven yet).
-- Android/S25 — entirely out of scope this session, as instructed from the
-  start.
+Built a persistent sliding-window KV buffer (`kv_buffer.StageKVBuffer`,
+generalized module, not inline hacks) per stage, seeded directly from each
+stage's own real prompt-call `past_*_in` (zero) + `past_*_out` (real delta)
+— confirmed via §7/§10/§11 to concatenate to exactly 512 entries — and
+updated after every decode call the same way: `concat(current_window,
+new_delta)[-512:]`. This is the same rule for both prompt (past_len=384,
+delta=128) and decode (past_len=511, delta=1) calls; no special-casing
+needed. Ran one real prefill, then 8 real decode steps, all on HTP, all
+through `qnn_runner.run_context_binary()` — no mock execution, no CPU
+fallback, no placeholder tensors anywhere in this final run.
+
+**Per decode step**: `S0 decode(token_id)` → embedding; `S1
+decode(embedding, S1 KV, RoPE pos, growing mask)` → `add_21844`, updates S1
+KV; `S2 decode(add_21844, S2 KV, ...)` → `add_42314`, updates S2 KV; `S3
+decode(add_42314, S3 KV, ...)` → `logits`, updates S3 KV; top-1 argmax →
+next token. RoPE position and the attention-mask's real-token count both
+advance by 1 every step (`31, 32, 33, ...` and `32, 33, 34, ...`
+respectively — the mask's count includes the token currently being
+processed). Step 1's S2 and S3 decode calls **are** the "S2 decode / S3
+decode individually, with real upstream decode output and real stage-local
+KV" proof this task asked for first — they were not re-run separately with
+throwaway data, since that would be the identical computation.
+
+### Results
+
+- **Prefill top-1 token**: id `151667` → `<think>` (unchanged from the
+  earlier session's real-chain result, §11 — same prompt, same pipeline,
+  reproduced).
+- **Generated token IDs** (prefill token + 8 decode steps, 9 total, no EOS
+  hit): `[151667, 198, 151668, 271, 38409, 374, 279, 5344, 429]`
+- **Decoded text**: `'<think>\n</think>\n\nGravity is the force that'`
+- **Incremental decode** (one token added per line):
+  `<think>` → `<think>\n` → `<think>\n</think>` → `<think>\n</think>\n\n` →
+  `...Gravity` → `...Gravity is` → `...Gravity is the` →
+  `...Gravity is the force` → `...Gravity is the force that`
+
+This is a **coherent, on-topic, semantically correct** continuation of the
+actual prompt ("What is gravity? Keep the answer under ten words.") — an
+empty `<think>...</think>` block (Qwen3's documented reasoning-mode
+preamble) followed by the literal start of a correct factual answer. This
+is qualitatively strong evidence the full four-stage physical pipeline,
+including real cross-call KV persistence over 8 steps, is numerically
+sound end-to-end — a coherent sentence is a much harder thing to get by
+accident than a plausible-shaped tensor.
+
+### Per-stage latency (mean over 8 decode steps; prompt is a single call)
+
+| Stage | Prompt (1 call) | Decode (mean of 8) | Decode min/max |
+|---|---|---|---|
+| S0 | 1.266s | 1.143s | 1.067 / 1.208s |
+| S1 | 0.940s | 0.774s | 0.731 / 0.843s |
+| S2 | 0.931s | 0.769s | 0.725 / 0.827s |
+| S3 | 2.663s | 1.197s | 1.135 / 1.282s |
+
+Total: 36.86s across 36 physical HTP calls (4 prompt + 32 decode). Every
+call pays a full context-binary reload (`qnn-net-run.exe` has no
+persistent-process/warm-load mode, consistent with `qnn_runner.py`'s and
+`genie_runner.py`'s existing docstrings) — these numbers are not
+representative of a production serving loop, only of this bring-up script's
+call pattern.
+
+### KV update method
+
+Confirmed (§7, §10, §11) and now exercised for real across 8 steps: each
+call's `past_*_out` is the newly-computed **delta** only, never a full
+replacement. Buffer update rule: `new_window = concat(old_window,
+new_delta)[..., -512:]`. Because this run only ever reaches sequence length
+39 (31 real prompt tokens + 8 generated) against a `context_length` of 512,
+the sliding window never actually needed to drop real content — only the
+initial unused zero-padding — so this run does not independently prove the
+window correctly evicts real (non-padding) history once the buffer
+genuinely fills past 512 tokens. That would require a much longer
+generation and was not attempted.
+
+### Runtime/HTP confirmation
+
+Every one of the 36 calls used `backend="htp"` through
+`qnn_runner.run_context_binary()` (never `cpu`, never a mocked/short-circuited
+path). No `qnn-net-run` call in this run returned mock or fallback output;
+every failure mode encountered earlier in this session (§2, §2b) was a hard
+process failure, not a silent fallback, so "physical HTP execution or a
+loud error" was the operating invariant throughout, not "physical HTP
+execution or a quiet approximation."
+
+### Cleanup
+
+- Released all Python-side `StageKVBuffer` state (`kv_s1.release()`,
+  `kv_s2.release()`, `kv_s3.release()`) after the loop.
+- **0 orphaned `qnn-net-run.exe`/`qnn`-named processes** remained
+  post-run (checked via `psutil.process_iter`).
+- **0 leftover scratch work directories** under `qnn_runner.py`'s
+  `_SCRATCH_ROOT` (each call's own `finally: shutil.rmtree(...)` — already
+  existing code, not new this session — accounted for all 36 calls'
+  temporary input/output files).
+- There is no separate "context unload" step to prove beyond this, because
+  `qnn-net-run.exe` has no persistent/warm-loaded state to begin with —
+  each call is already a fully self-contained process that loads, executes,
+  and exits. The only session-scoped state this bring-up introduced was the
+  Python-side KV buffers, which are now confirmed released.
+
+### Independent reference comparison
+
+**Not done.** Downloading and running a floating-point reference Qwen3-1.7B
+(via `transformers`/PyTorch on CPU, several GB of real weights) was judged
+not worth blocking this session's completion on, per instructions —
+especially given the qualitative signal already obtained (a coherent,
+on-topic, grammatically correct sentence, plus this repo's own documented
+Qwen3 reasoning-mode behavior matching exactly) is already a strong,
+non-coincidental correctness signal. Flagged as a genuine follow-up for
+whoever wants a numeric (not just qualitative) confidence bound on this
+pipeline's fidelity to the original unquantized model.
+
+### Remaining scope, explicitly not attempted (per instructions)
+
+- Android/S25 — untouched, as instructed.
+- DragonNest Brain/runtime session integration (wiring this into
+  PREFILL/DECODE/RESET abstractions, advertising these stages on a device
+  registry) — untouched, as instructed.
+- Distributed/cross-device execution — untouched, as instructed.
+- A floating-point reference comparison (see above) — optional, explicitly
+  allowed to be skipped rather than block completion.
+- Generation past 39 total tokens (to exercise real KV eviction, not just
+  zero-padding eviction) — not attempted; not required by the stop
+  condition, which was 4-8 tokens.
+
+### Stop condition: met
+
+"The physical X Elite can execute the complete recovered Qwen3-1.7B S0→S3
+pipeline, prefill once, then autoregressively generate multiple tokens
+through S0→S3 decode with persistent correct KV state entirely on HTP" —
+demonstrated above with 8 real decode steps producing coherent, on-topic
+text.

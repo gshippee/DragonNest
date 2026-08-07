@@ -288,8 +288,9 @@ models:
       quantization_mismatch_status: unresolved
     ai_hub:
       target: Snapdragon X Elite CRD
-    measured_hardware_results: []
-    verification_status: verified-through-ai-hub-not-physically-executed
+    measured_hardware_results:
+      - {device: X1E80100 (Dell Latitude 7455), accelerator: htp, prompt_ms: 1266, decode_ms_avg: 1143, decode_samples: 8, evidence: verified on physical hardware, note: "part of a real 9-token S0-S3 prefill+decode loop"}
+    verification_status: verified-on-physical-hardware
     split_boundary:
       pipeline_id: qwen3-1.7b-w4a16-demo-v1
       stage_index: 0
@@ -352,8 +353,9 @@ models:
       quantization_mismatch_status: unresolved
     ai_hub:
       target: Snapdragon X Elite CRD
-    measured_hardware_results: []
-    verification_status: verified-through-ai-hub-not-physically-executed
+    measured_hardware_results:
+      - {device: X1E80100 (Dell Latitude 7455), accelerator: htp, prompt_ms: 940, decode_ms_avg: 774, decode_samples: 8, evidence: verified on physical hardware, note: "decode not bit-exact vs an isolated same-value cross-check (~0.12 std-dev mean diff, plausibly batched-vs-single-token kernel divergence); real 8-step loop nonetheless produced coherent on-topic text"}
+    verification_status: verified-on-physical-hardware
     split_boundary:
       pipeline_id: qwen3-1.7b-w4a16-demo-v1
       stage_index: 1
@@ -414,8 +416,9 @@ models:
       quantization_mismatch_status: unresolved
     ai_hub:
       target: Snapdragon X Elite CRD
-    measured_hardware_results: []
-    verification_status: verified-through-ai-hub-not-physically-executed
+    measured_hardware_results:
+      - {device: X1E80100 (Dell Latitude 7455), accelerator: htp, prompt_ms: 931, decode_ms_avg: 769, decode_samples: 8, evidence: verified on physical hardware, note: "part of a real 9-token S0-S3 prefill+decode loop"}
+    verification_status: verified-on-physical-hardware
     split_boundary:
       pipeline_id: qwen3-1.7b-w4a16-demo-v1
       stage_index: 2
@@ -480,8 +483,9 @@ models:
       quantization_mismatch_status: unresolved
     ai_hub:
       target: Snapdragon X Elite CRD
-    measured_hardware_results: []
-    verification_status: verified-through-ai-hub-not-physically-executed
+    measured_hardware_results:
+      - {device: X1E80100 (Dell Latitude 7455), accelerator: htp, prompt_ms: 2663, decode_ms_avg: 1197, decode_samples: 8, evidence: verified on physical hardware, note: "final stage of a real 9-token S0-S3 prefill+decode loop; generated text 'Gravity is the force that' is a coherent, on-topic continuation, not just plausible-shaped output"}
+    verification_status: verified-on-physical-hardware
     split_boundary:
       pipeline_id: qwen3-1.7b-w4a16-demo-v1
       stage_index: 3
