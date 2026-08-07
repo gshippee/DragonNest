@@ -184,3 +184,61 @@ including origin-preference, private mode, and disconnect recovery.
   Genie JNI bundle described in `android-agent/README.md`.
 - Remaining physical Android execution/provisioning obligations are specified
   in `docs/HARDWARE_CONTRACT.md`.
+
+## 7. True cross-host X Elite proof
+
+This is the remaining physical claim: the Brain/application runs on a separate
+desktop while `pc-01` executes Qwen3-4B through Genie/HTP on the X Elite.
+
+Desktop terminal 1:
+
+```powershell
+$env:DRAGONNEST_ENROLLMENT_TOKEN = "<random-shared-token>"
+.\scripts\run_demo_brain.ps1
+```
+
+If the variable is omitted, the launcher generates and prints a random token.
+It binds gRPC/dashboard to the LAN, prints candidate LAN addresses, disables
+the unrelated HTTP endpoint pool, refuses `dev-token`, and does not alter
+Windows Firewall.
+
+X Elite terminal (no LLM interaction):
+
+```powershell
+git pull
+$env:DRAGONNEST_ENROLLMENT_TOKEN = "<same-token>"
+.\scripts\run_xelite_worker.ps1 -Brain <desktop-lan-ip>:50051
+```
+
+Desktop terminal 2, after `pc-01` appears in the dashboard:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\validate_remote_xelite.py `
+  --brain-http http://127.0.0.1:8080 `
+  --device-id pc-01 `
+  --model-id qwen3-4b-genie `
+  --runs 3 `
+  --calibrate-memory `
+  --output "$env:TEMP\dragonnest-crosshost-xelite.json"
+```
+
+The harness waits for an eligible, reachable gRPC worker; requires the exact
+installed/cold model and binary artifact IDs; rejects runtime-steering claims;
+submits through `/api/behavior-tasks`; and accepts only a scheduler-selected
+`pc-01` result whose execution metrics report `qwen3-4b-genie`, `genie`, and
+`htp`. The proof contains task/attempt IDs, route/explanation, latencies,
+telemetry summaries, and output SHA-256—never raw output, tokens, paths, or
+credentials.
+
+Brain telemetry is sampled throughout each call. The proof marks memory
+capture reliable only if the Brain exposes the active task and at least two
+distinct in-task heartbeat updates. A false value means the observed minimum
+may have missed a faster transient; do not change `estimated_memory_mb` from
+that run alone. For optional 100 ms host-side sampling, start this in a second
+X Elite terminal before rerunning the desktop harness:
+
+```powershell
+.\scripts\sample_xelite_memory.ps1 `
+  -DurationSeconds 180 `
+  -Output "$env:TEMP\dragonnest-xelite-memory-samples.json"
+```
