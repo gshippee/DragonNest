@@ -28,6 +28,12 @@
     Brain enrollment token. Defaults to $env:DRAGONNEST_ENROLLMENT_TOKEN, and
     falls back to the DragonNest dev default with a warning if unset.
 
+.PARAMETER ExpectedChecksum
+    Expected sha256-tree checksum for the physically verified Qwen3-4B bundle.
+    The default pins the exact bundle recorded in
+    docs/results/xelite_worker_status.md so auto-discovery cannot silently
+    select a different Genie model.
+
 .EXAMPLE
     .\scripts\run_xelite_worker.ps1 -Brain 192.168.137.1:50051
 #>
@@ -43,7 +49,9 @@ param(
 
     [string]$RuntimeVersion = "QAIRT-2.48",
 
-    [string]$EnrollmentToken
+    [string]$EnrollmentToken,
+
+    [string]$ExpectedChecksum = "sha256-tree:940ab2c9958a4f0a53b6964fa96fc427f1f4d33dd1046584e040ec6f2298c929"
 )
 
 $ErrorActionPreference = "Stop"
@@ -93,6 +101,9 @@ Write-Host "Hashing artifact tree..."
 $checksum = & $Python "scripts\hash_artifact.py" $GenieDir
 if ($LASTEXITCODE -ne 0 -or -not $checksum) {
     Fail "Failed to compute artifact checksum for $GenieDir"
+}
+if ($checksum -ne $ExpectedChecksum) {
+    Fail "Bundle checksum does not match the physically verified qwen3-4b-genie artifact. Expected $ExpectedChecksum but found $checksum. Refusing to advertise the wrong model."
 }
 
 $env:GENIE_DIR = $GenieDir

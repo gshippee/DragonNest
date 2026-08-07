@@ -1,15 +1,17 @@
 # X Elite file-mediated coordination
 
-This directory is the intentionally slow Agent-to-Agent mailbox for the
-physical Snapdragon X Elite laptop.
+This directory began as the file-mediated mailbox for the physical Snapdragon
+X Elite laptop. The physical worker is now verified and the mailbox is kept as
+a sanitized audit trail.
 
-- `AGENT_PROMPT.md` is the current instruction for the laptop-side agent.
-- `STATUS.json` is the only response file it should edit and commit initially.
+- `AGENT_PROMPT.md` is now the no-reasoning operator handoff for the worker.
+- `STATUS.json` summarizes the completed physical proof and remaining
+  separate-host claim.
+- `docs/results/xelite_worker_status.md` contains the detailed sanitized proof.
 - Full logs and `dragonnest-xelite-proof.json` stay outside Git under `%TEMP%`.
 - `STATUS.json` records only sanitized facts and the proof file's SHA-256.
 
-The laptop agent should create and push a response branch named
-`codex/xelite-response`. Shubham can then relay that branch name to the primary
-agent. Never place tokens, credentials, SDK/runtime binaries, model bundles,
-licenses, certificates, raw prompts containing private data, or verbose system
-logs in this mailbox.
+No new laptop-side response branch or LLM session is expected for normal
+operation. Never place tokens, credentials, SDK/runtime binaries, model
+bundles, licenses, certificates, raw prompts containing private data, or
+verbose system logs in this mailbox.

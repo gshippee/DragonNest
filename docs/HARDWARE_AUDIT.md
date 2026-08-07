@@ -1,6 +1,6 @@
 # DragonNest Hardware Capability Audit
 
-Audit date: 2026-08-05 (America/Los_Angeles)
+Audit date: 2026-08-05; X Elite evidence updated 2026-08-07 UTC
 
 This audit uses five evidence labels exactly: **verified on physical hardware**,
 **verified through Qualcomm AI Hub**, **verified locally without hardware**,
@@ -13,7 +13,9 @@ The machine running this audit is a CyberPowerPC x64 desktop with an Intel
 Core i7-14700KF and Windows 11 build 26200. It is not the Snapdragon X Elite
 laptop. No Android device was attached, `adb` was not on `PATH`, and no QAIRT,
 QNN, Genie, or AI Hub environment variable was configured in this process.
-Consequently this session cannot create a new physical-device claim.
+Consequently that initial desktop session could not create a physical-device
+claim. A later session on the actual X Elite produced the sanitized evidence
+in `docs/results/xelite_worker_status.md`; the table below incorporates it.
 
 Adjacent `qcom_hackathon` evidence was inspected. It contains a physical S25
 QNN transcript, checksummed contexts, AI Hub job records, vector metadata, a
@@ -31,22 +33,40 @@ locally without hardware**, not an NPU execution claim.
 
 | Capability | Snapdragon X Elite laptop | Galaxy S25 Ultra |
 |---|---|---|
-| Exact identity | User confirms a physical X Elite laptop is available; exact OEM model and X1E SKU are **unverified** | Samsung `SM-S938U1`, Snapdragon 8 Elite (`SM8750` class), **verified on physical hardware** by the saved ADB/QNN transcript |
-| OS / ABI | Windows 11 / ARM64 expected; exact build is **unverified** | Android 15 / ARM64, **verified on physical hardware** for OS and inferred from the executed `aarch64-android` runtime for ABI |
-| Accelerator | Hexagon v73 is **verified through Qualcomm AI Hub** for the X Elite CRD; local laptop HTP visibility is **unverified** | Hexagon v79 HTP execution is **verified on physical hardware** |
-| Available runtime | Qwen3-4B W4A16 Genie bundle and `genie-t2t-run.exe` path exist in prior PersonaCare code; availability on this laptop is **unverified** | `qnn-net-run` build `2.45.41.260507231357` executed physically. GenieX Android 0.3.5 + QAIRT 2.45 bundles are built/compiled but DragonNest JNI execution is **unverified** |
-| QAIRT/QNN/Genie/GenieX | Manifest expects QAIRT 2.48 Genie; exact installed SDK is **unverified** | QNN 2.45.41 physical; AI Hub compiler 2.45.0.260326154327; GenieX 0.3.5 package built. DragonNest's QAIRT 2.48 Genie JNI bundle remains **unverified** |
-| Executable formats | Genie bundle/context binaries, **inferred from existing runner and manifest**; QNN context binary is **verified through AI Hub** | QNN context `.bin` is **verified on physical hardware**; GenieX/QAIRT zip/bundle is **verified through Qualcomm AI Hub**, not through DragonNest APK |
+| Exact identity | Dell Latitude 7455, Snapdragon X Elite `X1E80100`, **verified on physical hardware** | Samsung `SM-S938U1`, Snapdragon 8 Elite (`SM8750` class), **verified on physical hardware** by the saved ADB/QNN transcript |
+| OS / ABI | Windows 11 Pro build 26100 / ARM64, **verified on physical hardware** | Android 15 / ARM64, **verified on physical hardware** for OS and inferred from the executed `aarch64-android` runtime for ABI |
+| Accelerator | Hexagon NPU visible and real Genie execution reported HTP, **verified on physical hardware** | Hexagon v79 HTP execution is **verified on physical hardware** |
+| Available runtime | Qwen3-4B W4A16 bundle plus `genie-t2t-run.exe`, **verified on physical hardware** through DragonNest | `qnn-net-run` build `2.45.41.260507231357` executed physically. GenieX Android 0.3.5 + QAIRT 2.45 bundles are built/compiled but DragonNest JNI execution is **unverified** |
+| QAIRT/QNN/Genie/GenieX | Genie/QAIRT `2.48.40.260702`, **verified on physical hardware**; the older installed 2.32 runtime was correctly rejected as incompatible | QNN 2.45.41 physical; AI Hub compiler 2.45.0.260326154327; GenieX 0.3.5 package built. DragonNest's QAIRT 2.48 Genie JNI bundle remains **unverified** |
+| Executable formats | Qwen3-4B Genie bundle/context binaries, **verified on physical hardware** | QNN context `.bin` is **verified on physical hardware**; GenieX/QAIRT zip/bundle is **verified through Qualcomm AI Hub**, not through DragonNest APK |
 | Stock arbitrary named inputs | No public named-tensor input in Genie/GenieX LLM calls, **inferred from official header/source inspection** | Same GenieX boundary. Direct `qnn-net-run` input lists accept named graph inputs, **verified on physical hardware** for normal model tensors; steering inputs were **verified through AI Hub** only |
 | Custom/fork path | Current GenieX QAIRT source exposes `Graph::write(name, data)` and `InputProvider`; a fork is feasible, **inferred from official source inspection** | Same, but rebuilding/package/license practicality on the phone is **unverified** |
-| `runtime_vector` | Fixed-shape QNN graph inputs (`steering_vector`, `alpha`) are **verified through Qualcomm AI Hub** on X Elite/8 Elite classes. Full laptop Genie generation is **unsupported/unverified**, so capability is disabled | Full-model stock GenieX is disabled. Direct-QNN Qwen Part B dynamic input was **verified through Qualcomm AI Hub**, not in the APK or a complete generation loop |
+| `runtime_vector` | Fixed-shape QNN graph inputs (`steering_vector`, `alpha`) are **verified through Qualcomm AI Hub** on X Elite/8 Elite classes. Runtime-vector injection in the physically verified laptop Genie generation path is **unsupported**, so capability is disabled | Full-model stock GenieX is disabled. Direct-QNN Qwen Part B dynamic input was **verified through Qualcomm AI Hub**, not in the APK or a complete generation loop |
 | `baked_profile` | Build/export is feasible by graph rewrite, **verified locally without hardware**; X Elite compiled artifact is **unverified** | Qwen3-0.6B concise layer-7 artifact compiled and bundled, **verified through Qualcomm AI Hub**. Final base/steered physical APK comparison remains **unverified** |
 | Fixed split stage | Stage-1 tensor graph compatibility is **verified through Qualcomm AI Hub**; physical laptop stage execution is **unverified** | Qwen3-0.6B two-stage and Qwen3-1.7B four-stage execution are **verified on physical hardware** |
-| Install/load | Host uses externally provisioned bundle + checksum. Genie CLI reloads every request; persistent warm load is **unverified/unsupported by this adapter** | APK asset installer + app-private checksum registry are **verified locally without hardware**. Physical QNN proof used ADB `/data/local/tmp`; DragonNest APK install/load is **unverified** |
-| Compatibility sharing | Do not share X Elite v73 contexts with SM8750 v79. Compatibility within the exact X1E/v73/runtime class is **unverified** | Existing artifacts target `sm8750-ac`/v79. Same-family sharing is intended but only SM-S938U1 was physically exercised; wider sharing is **unverified** |
-| Licenses/files | Matching QAIRT/Genie runtime, HTP libraries, model bundle, and Qualcomm terms are required; presence is **unverified** | Matching arm64 QNN/Genie libraries, v79 skel/stub, model contexts, Android SDK/NDK/JDK are required. QAIRT 2.45 files used physically; redistribution rights remain subject to their licenses |
+| Install/load | External bundle discovery, tree checksum, manifest validation, installed/cold advertisement, execution, and cleanup are **verified on physical hardware**; persistent warm load remains unsupported | APK asset installer + app-private checksum registry are **verified locally without hardware**. Physical QNN proof used ADB `/data/local/tmp`; DragonNest APK install/load is **unverified** |
+| Compatibility sharing | Exact X1E/v73/QAIRT-2.48 bundle compatibility is **verified on this laptop**. Do not share its contexts with SM8750 v79; other X Elite hosts remain **unverified** | Existing artifacts target `sm8750-ac`/v79. Same-family sharing is intended but only SM-S938U1 was physically exercised; wider sharing is **unverified** |
+| Licenses/files | Required Genie/HTP 2.48 runtime files and model bundle were present and executed, **verified on physical hardware**; redistribution remains subject to their licenses | Matching arm64 QNN/Genie libraries, v79 skel/stub, model contexts, Android SDK/NDK/JDK are required. QAIRT 2.45 files used physically; redistribution rights remain subject to their licenses |
 
 ## Real measurements recovered
+
+### X Elite, physical DragonNest worker
+
+- Direct Qwen3-4B Genie/HTP generation succeeded in 31,019 ms.
+- `probe_hardware.py --execute` traversed `HardwareRuntimeAdapter` and succeeded
+  in 21,560 ms with runtime `genie`, accelerator `htp`, and a nonempty output.
+- Brain -> local gRPC Agent -> Genie -> Brain succeeded through the normal
+  scheduler/API path in 13,920 ms.
+- Brain -> Agent through the laptop's real LAN interface -> Genie -> Brain
+  succeeded in 20,070 ms server execution / 20,249 ms client-observed E2E.
+- The worker advertised `qwen3-4b-genie` installed but cold and did not claim
+  runtime steering. Full details and hashes are in
+  `docs/results/xelite_worker_status.md`.
+- A roughly 9 GB available-memory drop was observed during execution and
+  recovered afterward. It is not yet a calibrated artifact-memory estimate.
+
+The last item not yet physically verified is a genuinely separate-host
+desktop Brain -> LAN -> X Elite worker -> LAN -> desktop Brain round trip.
 
 ### S25 Ultra, physical direct-QNN execution
 
@@ -108,10 +128,10 @@ Concrete answers:
 
 ## Shortest paths
 
-1. **X Elite:** place the already validated Qwen3-4B Genie bundle on the laptop,
-   compute its tree checksum, run `scripts/probe_hardware.py --execute`, and
-   retain the secret-free proof JSON. This uses the current DragonNest
-   `ExecutionPlan -> HardwareRuntimeAdapter -> GenieExecutor` path.
+1. **X Elite:** the worker path is complete. Start a Brain on a separate
+   desktop, then run `scripts/run_xelite_worker.ps1 -Brain
+   <desktop-lan-ip>:50051` on the laptop and drive/verify the request from the
+   desktop through the normal HTTP submission path.
 2. **S25:** stage the smaller Qwen3-0.6B base bundle (and then concise baked
    bundle) with matching licensed runtime files, build the integrated PersonaCare
    hardware APK, install, connect its embedded Agent to the existing Brain, and
@@ -120,8 +140,9 @@ Concrete answers:
 
 ## Current blockers
 
-- The X Elite laptop is not attached to this execution session; exact SoC SKU,
-  runtime DLL set, bundle checksum, output, memory, and throughput are missing.
+- The only remaining X Elite claim is a genuinely separate-host desktop Brain
+  round trip. Physical model/runtime/adapter/local-gRPC/LAN-interface evidence
+  is complete.
 - The DragonNest Android QAIRT/Genie bridge has not loaded either S25 bundle on
   the physical phone. The recovered static bundle was built against QAIRT 2.45
   / GenieX 0.3.5 while the current JNI staging guide targets QAIRT 2.48; the
@@ -134,7 +155,9 @@ Concrete answers:
 
 ## Status by evidence class
 
-- **Physically verified:** SM-S938U1 identity; QNN 2.45.41/v79 execution;
+- **Physically verified:** Dell Latitude 7455/X1E80100 identity; Qwen3-4B
+  Genie/HTP through `HardwareRuntimeAdapter`, local gRPC, and the real LAN
+  interface; worker launcher; SM-S938U1 identity; QNN 2.45.41/v79 execution;
   Qwen3-0.6B split numerics/timings; Qwen3-1.7B four-context generation.
 - **AI-Hub verified:** fixed named QNN steering/alpha inputs; small v79->v73
   boundary chain; S25 base/baked compilation; X Elite CRD tensor stage.
@@ -142,15 +165,18 @@ Concrete answers:
   `InputProvider` extension point.
 - **Mocked/local only:** Brain transport tests, Android thin APK build/unit
   tests, adapter unit tests, artifact installation/lifecycle tests.
-- **Blocked:** new physical X Elite DragonNest run; DragonNest hardware APK run;
-  physical baked-profile comparison; full-model runtime-vector generation.
+- **Blocked/unverified:** separate-host X Elite round trip; DragonNest hardware
+  APK run; physical baked-profile comparison; full-model runtime-vector
+  generation.
 
 ## Exact next physical commands
 
-On the X Elite laptop, from this repository after setting the real bundle path:
+On the X Elite laptop, after the separate desktop Brain is listening:
 
 ```powershell
-$env:GENIE_DIR='C:\path\to\qwen3_4b-genie-w4a16-qualcomm_snapdragon_x_elite'; $env:QWEN3_4B_GENIE_SHA256_TREE=(& .\.venv\Scripts\python.exe scripts\hash_artifact.py $env:GENIE_DIR); .\.venv\Scripts\python.exe scripts\probe_hardware.py --device-id pc-01 --model-id qwen3-4b-genie --compatibility-key windows-arm64-x1e-v73-qairt-2.48 --runtime-name genie --runtime-version QAIRT-2.48 --accelerator-available --execute --output "$env:TEMP\dragonnest-xelite-proof.json"
+git pull
+$env:DRAGONNEST_ENROLLMENT_TOKEN = "<same token as desktop Brain>"
+.\scripts\run_xelite_worker.ps1 -Brain <desktop-lan-ip>:50051
 ```
 
 On the workstation with the S25 attached, after staging the matching licensed
@@ -160,5 +186,5 @@ SDK/bundle as described in `android-agent/README.md`:
 $env:DRAGONNEST_QAIRT_SDK_ROOT='C:\path\to\qairt\2.48.0.260626'; $env:DRAGONNEST_ANDROID_INCLUDE_MODEL_ARTIFACTS='true'; .\android-agent\gradlew.bat -p android-agent :app:assembleDebug; adb install -r android-agent\app\build\outputs\apk\debug\app-debug.apk; adb shell am start -n com.dragonnest.agent/.AgentSettingsActivity
 ```
 
-The commands create no repository secrets. Return only the generated X Elite
-proof JSON and Android Agent logs/Brain result, not SDK files or credentials.
+The commands create no repository secrets. Return only secret-free proof JSON
+and Android Agent logs/Brain result, not SDK files or credentials.

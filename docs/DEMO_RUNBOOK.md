@@ -47,23 +47,21 @@ Terminal 2 — simulated/control-plane X Elite agent:
 This command registers the deterministic `demo-fleet.yaml` X Elite device and
 runs its portable mock artifacts. It does **not** claim Genie or NPU execution.
 
-For the real X Elite Genie agent, first set `GENIE_DIR` and
-`QWEN3_4B_GENIE_SHA256_TREE` as described in `README.md` under "Hardware
-Runtime Configuration", then run:
+The real X Elite worker is physically verified with Qwen3-4B / Genie / HTP,
+including `HardwareRuntimeAdapter`, Brain-to-Agent gRPC, and the machine's real
+LAN interface. Set the same enrollment token as the Brain and run the pinned,
+one-command launcher on the X Elite:
 
 ```powershell
-.venv\Scripts\python.exe scripts\run_agent.py `
-  --device-id pc-01 `
-  --fabric configs\hardware-fabric.yaml `
-  --artifact-manifest configs/model-artifacts.yaml `
-  --compatibility-key windows-arm64-x1e-v73-qairt-2.48 `
-  --runtime-name genie `
-  --runtime-version QAIRT-2.48 `
-  --accelerator-available
+$env:DRAGONNEST_ENROLLMENT_TOKEN = "<same token as Brain>"
+.\scripts\run_xelite_worker.ps1 -Brain <brain-host>:50051
 ```
 
-That command uses `HardwareRuntimeAdapter` and advertises
-`ModelCapability.model_id=qwen3-4b-genie` only when the real bundle validates.
+The launcher refuses ambiguous or checksum-mismatched bundles, then advertises
+`ModelCapability.model_id=qwen3-4b-genie` as installed/cold with runtime
+steering disabled. The detailed sanitized proof is in
+`docs/results/xelite_worker_status.md`. Only the genuinely separate-host
+desktop-Brain round trip remains to be physically verified.
 
 Terminal 3 — the Galaxy S25 Ultra agent (simulated locally; on the real
 phone install the Android Agent APK and point it at the Brain's LAN address):
@@ -175,14 +173,14 @@ including origin-preference, private mode, and disconnect recovery.
 
 ## 6. Real-hardware notes
 
-- **X Elite laptop:** run the Brain and the `x-elite-01` agent on the
-  laptop itself; Windows memory/battery telemetry is native. Real Genie
-  execution requires the validated Qwen3-4B bundle and env vars from
-  `README.md` → "Hardware Runtime Configuration".
+- **X Elite laptop:** use `pc-01` and `scripts/run_xelite_worker.ps1` for the
+  real worker; `x-elite-01` is the simulated/control-plane demo identity.
+  Windows memory/battery telemetry is native. Real Qwen3-4B Genie/HTP
+  execution is physically verified; runtime steering remains correctly off.
 - **Galaxy S25 Ultra:** build/install the Android Agent
   (`scripts/build_android.sh`), enroll via the dashboard **Add device** QR,
   and it registers over the LAN with real inventory (SoC `SM8750`) and
   telemetry. Mock execution works out of the box; NPU execution needs the
   Genie JNI bundle described in `android-agent/README.md`.
-- What Desktop Codex must implement for full hardware execution and real
-  provisioning is specified in `docs/HARDWARE_CONTRACT.md`.
+- Remaining physical Android execution/provisioning obligations are specified
+  in `docs/HARDWARE_CONTRACT.md`.

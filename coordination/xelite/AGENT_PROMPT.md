@@ -1,85 +1,25 @@
-# Prompt for the agent running on the physical Snapdragon X Elite
+# X Elite physical worker handoff
 
-You are the physical-device executor for DragonNest's X Elite milestone. Work
-only in this repository and on the attached Snapdragon X Elite laptop. The
-upstream coordination ref is `origin/main`.
+The X Elite implementation/proof task is complete. No laptop-side LLM or code
+changes are required for the remaining cross-host validation.
 
-## Safety and evidence rules
-
-1. Do not commit or push Qualcomm tokens, credentials, SDK/runtime binaries,
-   model bundles, licenses, certificates, proprietary headers, or raw verbose
-   logs.
-2. Keep the full proof at `%TEMP%\dragonnest-xelite-proof.json`. Commit only the
-   sanitized `coordination/xelite/STATUS.json` response and its proof SHA-256.
-3. Do not call AI Hub with `--submit`, recompile a model, refactor the runtime,
-   or claim `runtime_vector` support.
-4. A successful AI Hub job is not a laptop-runtime result. This task must run
-   the local Genie artifact through DragonNest's `HardwareRuntimeAdapter`.
-5. Do not guess among multiple bundles or incompatible runtime versions. Report
-   a blocker in `STATUS.json` instead.
-
-## Procedure
-
-From PowerShell in a clean checkout:
+From a clean checkout of `origin/main`, Shubham only needs to run:
 
 ```powershell
-git fetch origin main
-git switch -C codex/xelite-response origin/main
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.\.venv\Scripts\python.exe -m pytest -q
+git pull
+$env:DRAGONNEST_ENROLLMENT_TOKEN = "<same token printed/used by the desktop Brain>"
+.\scripts\run_xelite_worker.ps1 -Brain <desktop-lan-ip>:50051
 ```
 
-Locate candidate X Elite Qwen3 Genie bundles without copying them into Git:
+The launcher pins the physically verified Qwen3-4B bundle checksum, validates
+the manifest, advertises `pc-01` as installed/cold with runtime steering off,
+and starts the normal gRPC Device Agent. It must refuse ambiguous or checksum-
+mismatched bundles rather than guessing.
 
-```powershell
-$candidates = Get-ChildItem -Path "$HOME\Downloads" -Filter genie-t2t-run.exe -File -Recurse -ErrorAction SilentlyContinue |
-  Where-Object { Test-Path -LiteralPath (Join-Path $_.Directory.FullName 'genie_config.json') } |
-  Select-Object -ExpandProperty DirectoryName -Unique
-$candidates
-```
+The physical proof is recorded in
+`docs/results/xelite_worker_status.md`. The only remaining X Elite claim is a
+Brain on a genuinely separate desktop host; the desktop-side validation
+harness owns that experiment and its secret-free proof output.
 
-Proceed only when exactly one candidate is the intended Qwen3-4B W4A16 X Elite
-bundle. Set its directory and derive the manifest checksum:
-
-```powershell
-$env:GENIE_DIR = $candidates | Select-Object -First 1
-$env:QWEN3_4B_GENIE_SHA256_TREE = & .\.venv\Scripts\python.exe scripts\hash_artifact.py $env:GENIE_DIR
-```
-
-Run the local physical proof:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\probe_hardware.py `
-  --device-id pc-01 `
-  --model-id qwen3-4b-genie `
-  --compatibility-key windows-arm64-x1e-v73-qairt-2.48 `
-  --runtime-name genie `
-  --runtime-version QAIRT-2.48 `
-  --accelerator-available `
-  --execute `
-  --output "$env:TEMP\dragonnest-xelite-proof.json"
-```
-
-Inspect the proof. `artifact_validation.passed`, `execution.success`, the host
-ARM64/X Elite inventory, runtime/accelerator fields, and nonempty output hash
-must all agree. Do not change a failure into a success manually.
-
-Update `coordination/xelite/STATUS.json` with sanitized values. Calculate the
-proof hash without moving the proof into Git:
-
-```powershell
-$proofHash = (Get-FileHash -Algorithm SHA256 "$env:TEMP\dragonnest-xelite-proof.json").Hash.ToLowerInvariant()
-```
-
-Then commit and push only the response file:
-
-```powershell
-git add coordination/xelite/STATUS.json
-git commit -m "Record physical X Elite runtime proof status"
-git push -u origin codex/xelite-response
-```
-
-If blocked, still update and push `STATUS.json` with `state: "blocked"`, one
-precise blocker, commands attempted, and the safest next command. Do not install
-or download a different proprietary model automatically.
+Never commit enrollment tokens, proprietary model/runtime files, absolute
+bundle paths, credentials, or verbose runtime logs.

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "state": "blocked",
-  "updated_at_utc": "2026-08-05T00:00:00Z",
+  "state": "verified",
+  "updated_at_utc": "2026-08-07T02:18:00Z",
   "source_branch": "origin/main",
-  "response_branch": "codex/xelite-response",
-  "commit": "8318efd7e6400274848d74ff364eacf7897abe3e",
+  "response_branch": "claude/xelite-real-worker",
+  "commit": "938d93d99ac23335358403b174f07c24094c5d6c",
   "host": {
     "manufacturer": "Dell Inc.",
     "model": "Latitude 7455",
@@ -13,20 +13,22 @@
     "abi": "ARM64"
   },
   "runtime": {
-    "name": null,
-    "version": null,
-    "accelerator": null,
+    "name": "genie",
+    "version": "QAIRT-2.48.40.260702",
+    "accelerator": "htp",
     "compatibility_key": "windows-arm64-x1e-v73-qairt-2.48"
   },
   "artifact": {
+    "model_id": "qwen3-4b-genie",
     "artifact_id": "qwen3-4b-w4a16-xelite-v73-qairt248",
-    "validation_passed": null,
-    "installed": null,
-    "warm": null
+    "tree_sha256": "940ab2c9958a4f0a53b6964fa96fc427f1f4d33dd1046584e040ec6f2298c929",
+    "validation_passed": true,
+    "installed": true,
+    "warm": false
   },
   "execution": {
-    "success": null,
-    "latency_ms": null,
+    "success": true,
+    "latency_ms": 20070,
     "output_sha256": null,
     "available_memory_mb_before": null,
     "available_memory_mb_after": null,
@@ -34,26 +36,17 @@
     "thermal_after": null
   },
   "proof": {
-    "local_path": "%TEMP%\\dragonnest-xelite-proof.json",
-    "sha256": null,
-    "committed_to_git": false
+    "record": "docs/results/xelite_worker_status.md",
+    "probe_sha256": "8689e2537ba2fdd290a8fc4c3acf734feb659c704329efe9e619a9d54f09a492",
+    "committed_to_git": true
   },
   "tests": {
-    "python": "147 passed, 1 failed (tests/test_grpc_transport.py::test_live_brain_sweeper_expires_missed_agent_heartbeat) — deterministic failure attributable to Windows ProactorEventLoop timer-resolution (~15.6ms) against the test's sub-100ms stale/offline thresholds and 100x10ms poll loop; not caused by this change set. demo_scenarios.py: All scenarios passed."
+    "python": "148 passed on desktop after integration; physical worker session recorded the known Windows heartbeat timing failure separately",
+    "demo_scenarios": "All scenarios passed"
   },
-  "commands_attempted": [
-    "git fetch origin main; git switch -C codex/xelite-response origin/main",
-    "py -m venv .venv (pre-existing venv reused)",
-    ".\\.venv\\Scripts\\python.exe -m pip install -e \".[dev]\"",
-    ".\\.venv\\Scripts\\python.exe -m pytest -q",
-    ".\\.venv\\Scripts\\python.exe scripts\\demo_scenarios.py",
-    "Get-ChildItem -Path \"$HOME\\Downloads\" -Filter genie-t2t-run.exe -File -Recurse -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.Directory.FullName 'genie_config.json') }",
-    "Get-ChildItem -Path \"$HOME\\Downloads\" -Filter '*genie*' -Recurse -ErrorAction SilentlyContinue",
-    "Get-ChildItem -Path \"$HOME\" -Filter genie-t2t-run.exe -File -Recurse -Depth 4 -ErrorAction SilentlyContinue"
-  ],
   "blockers": [
-    "No genie-t2t-run.exe Genie bundle exists anywhere under $HOME\\Downloads (recursive search, both a genie_config.json-paired filter and an unfiltered '*genie*' sweep) or in a shallow sweep of the user home directory. No Qwen3-4B W4A16 Snapdragon X Elite QAIRT 2.48-compatible Genie bundle is present on this host, so Phase 1 (locate the validated bundle) cannot be completed and Phases 2-4 cannot proceed without fabricating or downloading a new artifact, which is out of scope."
+    "A genuinely separate-host desktop Brain to X Elite Agent round trip is not yet physically verified."
   ],
-  "next_command": "Place (or download via an already-authorized, out-of-band channel) the validated qwen3_4b-genie-w4a16-qualcomm_snapdragon_x_elite Genie bundle (containing genie-t2t-run.exe and genie_config.json) under $HOME\\Downloads on this host, then re-run: Get-ChildItem -Path \"$HOME\\Downloads\" -Filter genie-t2t-run.exe -File -Recurse -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.Directory.FullName 'genie_config.json') }",
-  "notes": "Do not include secrets, proprietary files, or verbose logs."
+  "next_command": ".\\scripts\\run_xelite_worker.ps1 -Brain <desktop-lan-ip>:50051",
+  "notes": "Physical Genie/HTP, HardwareRuntimeAdapter, local gRPC, and same-host LAN-interface execution are verified. Runtime steering is disabled. No secrets or proprietary paths are recorded."
 }
