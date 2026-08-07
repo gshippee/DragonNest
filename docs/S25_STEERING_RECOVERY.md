@@ -1,8 +1,9 @@
 # S25 baked-profile recovery and Detailed build
 
 This record separates three evidence classes: bytes recovered from the working
-phone, release archives recovered from the desktop, and the not-yet-physical
-Detailed candidate. Model/APK/runtime bytes remain outside Git.
+phone, release archives recovered from the desktop, and the newly built and
+physically verified Detailed artifact. Model/APK/runtime bytes remain outside
+Git.
 
 ## Preserved working reference
 
@@ -63,9 +64,40 @@ Historical and Detailed compile jobs explicitly report
 `--quantize_full_type w8a16`. Artifact/model names remain `w4a16`; this
 unresolved naming/provenance mismatch is intentionally preserved.
 
-Detailed compile jobs: `jprw0m4k5` (part 1) and `jp2ewq76p` (part 2).
-Target link/download and physical HTP validation status are recorded in
-`docs/results/s25_steering_recovery.json`.
+The recovered command above compiles the prompt graphs. Packaging only those
+graphs produced link jobs `jgnkndxvg` and `jp2ewqjxp`; the resulting bundle was
+correctly rejected by GenieX during physical model creation because it lacked
+the token/decode graphs. That prompt-only bundle is retained as invalid
+evidence and is not schedulable.
+
+The complete Detailed build uses prompt jobs `jprw0m4k5` / `jp2ewq76p` and
+token jobs `jp06j8jep` / `jp81xdx85`. Combined prompt+token links are
+`jp16jkjl5` and `jgd23y3l5`. The final bundle is 631,616,571 bytes with
+SHA-256
+`739f2c1a2339b41195591cc89ebeae43af49dbd290bf70982af204ddfdd5f8f9`.
+Its context binaries are 311,226,368 and 407,252,992 bytes, matching the size
+class of the physically working two-graph phone contexts.
+
+## Physical S25 result
+
+The complete Detailed bundle was copied into the preserved debuggable
+`com.personacare.steeringdemo` app-private model store with SHA-256 verification
+before and after transfer. On the physical SM-S938U1, GenieX created both Base
+and Detailed QAIRT pipelines successfully with `device_id: NPU`; the logs show
+the v79 HTP skeleton and no mock executor.
+
+Eight deterministic Base/Concise/Detailed comparisons used the same prompts,
+top-k 1, and maximum of 192 generated tokens. Concise (-4) had a median word
+delta of -5 versus Base, was shorter in 5/8 runs, and totaled -4 words across
+the set. Detailed (+4) had a median delta of +8.5, was longer in 5/8 runs, and
+totaled +123 words. Detailed TTFT was 17-19 ms and decode throughput was
+120.1-122.8 tokens/s. These are directional behavior observations, not a hard
+output-length guarantee.
+
+The preserved APK hardcodes its second-card caption as alpha -4. During the
+Detailed run that caption was stale; the app-private Detailed shard-2 SHA-256
+was `b7eb9b0db2a2711fe69bcb2438114b756dbc9d28b6872c69958c2ed35fdeac6b`.
+Hashes and runtime logs, not that label, identify the executed artifact.
 
 ## Product policy
 

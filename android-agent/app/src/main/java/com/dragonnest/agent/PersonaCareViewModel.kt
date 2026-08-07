@@ -195,6 +195,7 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
             )
         }
         val message = when (response.errorCode) {
+            "PROFILE_UNAVAILABLE" -> "That response style is not installed on an eligible device yet."
             "STEERING_UNAVAILABLE" -> "That persona is not available on a connected model."
             "NO_ELIGIBLE_FALLBACK" -> "No compatible DragonNest device is ready."
             "LOCAL_UNAVAILABLE" -> "Local compute is not available with current device resources."

@@ -81,12 +81,19 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "Keep on phone" not in app
     assert "ComputePreferenceSelector" in app
     assert 'Text("Compute"' in app
+    assert '"Response style"' in app
+    assert 'CompactToggle("Use profile"' not in app
+    chat_composer = app[app.index("private fun ChatComposer("):app.index("private fun ComputePreferenceSelector(")]
+    assert "PersonaSelector(" not in chat_composer
     for mode in ("AUTO", "LOCAL", "ELASTIC", "QUALITY"):
         assert mode in (
             sources / "ComputePreference.kt"
         ).read_text(encoding="utf-8")
     assert "compute_${preference.wireValue}" in app
     assert "Ran on" in app
+    assert "PROFILE_UNAVAILABLE" in view_model
+    assert "Profile:" in view_model
+    assert "baked_profile" in view_model
     assert "UserProfileStore" in view_model
     assert "BrainTaskClient" in view_model
     assert "EnrollmentCaptureActivity" in (

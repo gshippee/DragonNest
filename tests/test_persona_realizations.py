@@ -5,8 +5,10 @@ from dataclasses import replace
 from pathlib import Path
 
 import grpc
+import httpx
 
 from dragon_nest.artifacts import ArtifactRegistry
+from dragon_nest.dashboard import create_dashboard_app
 from dragon_nest.models import Device, HealthState, ModelCapability
 from dragon_nest.proto import dragonnest_pb2 as pb
 from dragon_nest.proto import dragonnest_pb2_grpc as pb_grpc
@@ -97,6 +99,20 @@ def test_classic_grpc_routes_semantic_profiles_to_exact_baked_artifacts():
                             in reason
                             for reason in response.route_reasons
                         )
+
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=create_dashboard_app(service)),
+                    base_url="http://test",
+                ) as client:
+                    dashboard_task = (
+                        await client.get(f"/api/tasks/{response.task_id}")
+                    ).json()
+                assert dashboard_task["behavior_profile_id"] == "detailed"
+                assert dashboard_task["profile_realization"] == "baked_profile"
+                assert dashboard_task["selected_artifact_id"] == (
+                    "artifact-qwen3-0.6b-s25-detailed"
+                )
+                assert not dashboard_task["steering"]["enabled"]
 
                 current = service.registry.get("phone-01").device
                 service.registry.register(

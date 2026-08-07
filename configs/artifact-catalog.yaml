@@ -199,8 +199,8 @@ artifacts:
     topology: full_model
     artifact_size_mb: 601
     estimated_memory_mb: 2048
-    build_provenance: PersonaCare layer-7 alpha +4 source baked; target compile and physical validation pending
-    readiness: unvalidated
+    build_provenance: PersonaCare layer-7 alpha +4 bake; QAIRT 2.45 prompt+token contexts physically verified on SM-S938U1 HTP
+    readiness: ready
 
   # Unsupported 4B S25 target retained only as an explicit non-routable record.
   - artifact_id: qwen3-4b-qnn-s25

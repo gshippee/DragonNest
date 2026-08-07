@@ -22,7 +22,7 @@ models:
     supports_steering: false
     supports_data_parallel: true
     supports_layer_pipeline: false
-    size_bytes: null
+    size_bytes: 631616571
     context_profile:
       max_context_tokens: 4096
       prompt_sequence_lengths: unverified
@@ -171,7 +171,7 @@ models:
     supports_steering: false
     supports_data_parallel: true
     supports_layer_pipeline: false
-    size_bytes: null
+    size_bytes: 631616571
     context_profile: {context_tokens: 512, prefill_tokens: 128, decode_tokens: 1}
     input_tensor_schema:
       - {name: prompt_text, dtype: utf8, shape: [dynamic]}
@@ -182,12 +182,17 @@ models:
       source_onnx_sha256: fc390cb9f1a26a36d6e079ce5ceb83c51ba0379cd2a6a2713b0245f8bf7439e2
       baked_onnx_sha256: 8d5a612b415333067910a41c368cfc4a034c443f02d705fbdbb3e41e2b046714
       vector_sha256: 7d69ff39a248a6e7df11d5fe2b533addfc19f84da75c4869a088eef8a2c32b2c
+      release_zip_sha256: 739f2c1a2339b41195591cc89ebeae43af49dbd290bf70982af204ddfdd5f8f9
+      release_zip_size_bytes: 631616571
+      note: Artifact name says w4a16; recovered compile option says --quantize_full_type w8a16.
     ai_hub:
       target: Samsung Galaxy S25 (Family)
-      compile_job_ids: []
-      link_job_ids: []
-    measured_hardware_results: []
-    verification_status: source baked; target compile and physical execution pending
+      compile_job_ids: [jprw0m4k5, jp2ewq76p, jp06j8jep, jp81xdx85]
+      link_job_ids: [jp16jkjl5, jgd23y3l5]
+      rejected_prompt_only_link_job_ids: [jgnkndxvg, jp2ewqjxp]
+    measured_hardware_results:
+      - {device: SM-S938U1, runs: 8, runtime: GenieX-0.3.5, accelerator: htp-v79, median_word_delta_vs_base: 8.5, total_word_delta_vs_base: 123, longer_runs: 5, ttft_ms_range: [17, 19], decode_tokens_per_s_range: [120.1, 122.8], evidence: verified on physical hardware}
+    verification_status: verified on physical SM-S938U1 through GenieX QAIRT/HTP
     runtime_options:
       backend: htp
       runtime_version: QAIRT-2.45 / GenieX-0.3.5
