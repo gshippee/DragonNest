@@ -35,6 +35,10 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String VEC_ASSET = "steering_vector_layer7_unit.bin";
     private static final int HIDDEN = 1024;
+    // Deployed bundle's genie_config.json declares context.size = 512 (prompt +
+    // generation KV budget); leave headroom below that instead of hard-capping
+    // generation at an arbitrary demo value.
+    private static final int MAX_GEN_TOKENS = 480;
 
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
 
@@ -192,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
 
         exec.submit(() -> {
             try {
-            String result = GenieXBridge.generate(prompt, alpha, vec, useAux, 96);
+            String result = GenieXBridge.generate(prompt, alpha, vec, useAux, MAX_GEN_TOKENS);
             runOnUiThread(() -> {
                 generateBtn.setEnabled(true);
                 try {

@@ -29,8 +29,17 @@ reload.
 | `geniex-steering/device/` | bundle/build tooling: tiny steering test-context builder, runtime-input Qwen bake + ai-hub-models patch, JNI/APK build scripts, C-ABI probe |
 
 Model bundles are not committed (700 MB); they are reproducible from the
-recorded AI Hub jobs (part-2 link `jgznmqz6g`) via
+recorded AI Hub jobs (part-2 link `jgznmqz6g`, sibling part-1 link
+`jpeyz0605` — same 2026-08-07 04:48:53-56 batch) via
 `geniex-steering/device/make_qwen_steered_bundle/`.
+
+A restorable local copy (with full provenance, checksums, and the
+reconstructed `genie_config.json`/`aux_inputs.json`/tokenizer files) lives
+outside this repo at
+`C:\DragonNestArtifacts\geniex-steering\qwen3-0.6b-runtime-steerable\` —
+treat that as the canonical bundle, not the SteerLab app's private storage,
+which gets wiped by any `adb uninstall` (e.g. a forced reinstall after a
+debug-signing-key mismatch).
 
 Proven on a physical Galaxy S25 Ultra (SM8750, HTP v79): fp16-exact mechanism
 numerics on a test graph, and direction-specific verbose/concise steering of
