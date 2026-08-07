@@ -20,11 +20,19 @@ async def run(args) -> int:
                 origin_device_id=args.origin_device_id,
                 reducer=args.reducer,
                 timeout_ms=args.timeout_ms,
+                persona_id=args.persona_id,
             )
         )
     print(f"task_id: {response.task_id}")
     print(f"state: {response.state}")
     print(f"device/model: {response.device_id}/{response.model_id}")
+    if args.persona_id:
+        print(f"persona requested: {args.persona_id}")
+        print(
+            "persona realized: "
+            f"{response.steering.behavior_profile_id or 'none'} "
+            f"(mode={response.steering.mode or 'none'})"
+        )
     if response.success:
         print(response.output_text)
         return 0
@@ -39,6 +47,17 @@ def main() -> None:
     parser.add_argument("--preferred-mode", default="auto")
     parser.add_argument("--execution-mode", default="single")
     parser.add_argument("--origin-device-id", default="")
+    parser.add_argument(
+        "--persona-id",
+        choices=("", "balanced", "concise", "detailed"),
+        default="",
+        help=(
+            "PersonaCare profile to request (balanced/concise/detailed). "
+            "Required to faithfully exercise Concise/Detailed Local "
+            "acceptance from the CLI; omit to use the device's default "
+            "persona (balanced)."
+        ),
+    )
     parser.add_argument(
         "--reducer",
         choices=("concat", "first_success", "mock_synthesis"),
