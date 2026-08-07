@@ -75,7 +75,12 @@ def build_chatml_prompt(system: str, user: str) -> str:
     )
 
 
-def _parse_response(stdout: str) -> str:
+def _parse_response(stdout: str | None) -> str:
+    # subprocess.run's .stdout can come back None (observed on Windows under
+    # NPU/DSP session contention) even when returncode == 0, outside the
+    # already-handled TimeoutExpired path. Fall through to the existing
+    # "no [BEGIN]:...[END] response" error instead of a raw regex TypeError.
+    stdout = stdout or ""
     match = _RESPONSE_RE.search(stdout)
     if not match:
         raise RuntimeError(
