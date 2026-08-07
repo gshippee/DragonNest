@@ -41,6 +41,34 @@ treat that as the canonical bundle, not the SteerLab app's private storage,
 which gets wiped by any `adb uninstall` (e.g. a forced reinstall after a
 debug-signing-key mismatch).
 
+## Rebuilding the APK
+
+The Java/Kotlin layer builds with a stock Android SDK (no NDK needed) as long
+as two non-source trees are staged into `apk/app/src/main/` first — both can
+be lifted straight out of `proofs/steerlab-app-debug.apk`:
+
+- `jniLibs/arm64-v8a/` — the 12 prebuilt `.so` files (forked GenieX stack +
+  QNN runtime + the JNI shim). Not committed; ~106 MB.
+- `assets/steering_vector_layer7_unit.bin` — the layer-7 verbosity vector,
+  unit L2 norm, 1024 float32. This one IS committed (`git add -f`, since the
+  root `.gitignore` blanket-ignores `*.bin`).
+
+```
+unzip -j proofs/steerlab-app-debug.apk 'lib/arm64-v8a/*' -d apk/app/src/main/jniLibs/arm64-v8a/
+gradle :app:assembleDebug
+```
+
+**If `assets/` is missing the app still builds and runs, but silently does not
+steer** — `MainActivity` logs `ERROR loading vector asset`, sends only `alpha`
+(1 aux tensor instead of 2, 1 prefill write instead of 2), and `alpha` with no
+vector is a mathematical no-op. Check the diagnostics panel for
+`PREFILL graphs got 2 aux writes` before trusting a steering result.
+
+Rebuilt APKs are signed with the building machine's debug key. Installing over
+a copy signed by a different machine requires `adb uninstall`, **which wipes
+the app-private model bundle** — make sure the external bundle cache is
+populated first (see the note above).
+
 Proven on a physical Galaxy S25 Ultra (SM8750, HTP v79): fp16-exact mechanism
 numerics on a test graph, and direction-specific verbose/concise steering of
 real Qwen3-0.6B W4A16 at ~124 tok/s with one context load. The known-good
