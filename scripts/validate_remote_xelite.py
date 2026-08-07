@@ -185,6 +185,16 @@ def validate_execution_result(
         raise ValidationFailure(
             f"scheduler chose runtime {chosen.get('runtime')!r}; expected 'genie'"
         )
+    if chosen.get("deployment_state") != "installed":
+        raise ValidationFailure(
+            f"scheduler route reports deployment {chosen.get('deployment_state')!r}; "
+            "expected installed/cold"
+        )
+    if chosen.get("realization_mode") != "none":
+        raise ValidationFailure(
+            f"scheduler route used realization {chosen.get('realization_mode')!r}; "
+            "real X Elite proof must be unsteered"
+        )
     if submission.get("device_id") != device_id:
         raise ValidationFailure(
             f"result came from device {submission.get('device_id')!r}; expected {device_id!r}"
@@ -198,11 +208,23 @@ def validate_execution_result(
             f"task failed: {submission.get('error_code') or 'unknown'} "
             f"{submission.get('error_message') or ''}".strip()
         )
+    steering = submission.get("steering") or {}
+    if steering.get("enabled") or steering.get("vector_id"):
+        raise ValidationFailure("Brain response falsely reports steering on X Elite")
 
     result = task.get("result") or {}
     metrics = result.get("metrics") or {}
+    if task.get("state") != "SUCCEEDED":
+        raise ValidationFailure(
+            f"task record state is {task.get('state')!r}; expected 'SUCCEEDED'"
+        )
     if not result.get("success"):
         raise ValidationFailure("task record does not contain a successful result")
+    if result.get("device_id") != device_id:
+        raise ValidationFailure(
+            f"task record result device is {result.get('device_id')!r}; "
+            f"expected {device_id!r}"
+        )
     output = str(result.get("output_text") or "").strip()
     if not output:
         raise ValidationFailure("physical worker returned an empty output")
@@ -226,6 +248,8 @@ def validate_execution_result(
             f"execution metrics accelerator is {metrics.get('accelerator')!r}; "
             "expected 'htp'"
         )
+    if int(metrics.get("execution_latency_ms") or 0) <= 0:
+        raise ValidationFailure("execution metrics did not report a positive latency")
     attempt_id = str(task.get("accepted_attempt_id") or "")
     if not attempt_id or attempt_id != str(submission.get("accepted_attempt_id") or ""):
         raise ValidationFailure("accepted attempt id is missing or inconsistent")

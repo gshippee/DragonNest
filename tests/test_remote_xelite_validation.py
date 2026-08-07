@@ -52,13 +52,17 @@ def _successful_result(*, device_id: str = "pc-01", model_id: str = "qwen3-4b-ge
                 "artifact_id": model_id,
                 "runtime": "genie",
                 "deployment_state": "installed",
+                "realization_mode": "none",
             }
         },
+        "steering": {"enabled": False, "vector_id": ""},
     }
     task = {
+        "state": "SUCCEEDED",
         "accepted_attempt_id": "attempt-1",
         "result": {
             "success": True,
+            "device_id": device_id,
             "output_text": "DRAGONNEST_CROSSHOST_OK",
             "metrics": {
                 "model_id": model_id,
