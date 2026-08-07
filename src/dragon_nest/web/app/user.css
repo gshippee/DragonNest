@@ -1,6 +1,12 @@
 .forget-button { width: 100%; }
 
 .result-output { margin: 0; min-height: 88px; max-height: 360px; overflow: auto; padding: var(--space-4); background: #f7f9f8; border: 1px solid var(--line); border-radius: var(--radius); white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.55; }
+.result-actions { display: flex; align-items: center; gap: var(--space-2); }
+.result-actions .icon-btn:disabled { opacity: 0.4; cursor: default; }
+.result-actions .icon-btn.busy svg { animation: dn-spin 1s linear infinite; }
+@keyframes dn-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .result-actions .icon-btn.busy svg { animation: none; } }
+
 .enrollment-code { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-2) 0; }
 .enrollment-code img { width: min(256px, 72vw); height: auto; aspect-ratio: 1; background: white; }
 .enrollment-code strong { font-size: var(--text-base); }

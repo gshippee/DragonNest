@@ -41,7 +41,11 @@ models:
       runtime_version: QAIRT-2.48
       executable: genie-t2t-run.exe
       config: genie_config.json
-      timeout_sec: 180
+      # 4 minutes of generation for the X Elite 4B, which pays a ~3.1GB context
+      # load before its first token. Every enclosing budget must stay above this
+      # so a slow run fails here -- with a real error -- instead of being cut off
+      # by an outer layer: Brain 270s, then origin-device deadline 300s.
+      timeout_sec: 240
       system_prompt: You are a helpful AI assistant.
       persistent_load_supported: false
 

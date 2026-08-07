@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 
+import hashlib
 import hmac
 import socket
 from io import BytesIO
@@ -30,6 +32,7 @@ from .models import (
 from .enrollment import EnrollmentError, EnrollmentStatus
 from .profiles import PersonalProfile, ProfileError
 from .regimes import build_regime_report
+from .runtime import melotts_runner, npu_lease
 from .proto import dragonnest_pb2 as pb
 from .tasks import AttemptState, TaskRecord
 from .transport.brain import BrainService
@@ -37,6 +40,27 @@ from .transport.sessions import SessionConflictError
 
 
 WEB_ROOT = Path(__file__).with_name("web")
+
+SPEECH_CACHE_DIR = melotts_runner.SCRATCH_ROOT / "cache"
+# Synthesis is slow enough (a fresh qnn-net-run process per graph call) that
+# replaying an answer must not re-synthesize it. Cached by content, so the same
+# response text is spoken once no matter which task it came from.
+SPEECH_CACHE_MAX_FILES = 64
+
+
+def _cached_speech_path(text: str) -> Path:
+    digest = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:32]
+    SPEECH_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return SPEECH_CACHE_DIR / f"{digest}.wav"
+
+
+def _prune_speech_cache(max_files: int = SPEECH_CACHE_MAX_FILES) -> None:
+    files = sorted(
+        SPEECH_CACHE_DIR.glob("*.wav"), key=lambda path: path.stat().st_mtime
+    )
+    for stale in files[: max(0, len(files) - max_files)]:
+        with contextlib.suppress(OSError):
+            stale.unlink()
 
 
 def _detect_lan_addresses() -> list[str]:
@@ -86,7 +110,7 @@ class TaskSubmission(BaseModel):
     execution_mode: str = "auto"
     origin_device_id: str = ""
     reducer: str = "mock_synthesis"
-    timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
+    timeout_ms: int = Field(default=270_000, ge=100, le=300_000)
     steering: SteeringRequest = Field(default_factory=SteeringRequest)
     use_profile_steering: bool = True
 
@@ -125,12 +149,20 @@ class RoutePlanRequest(BaseModel):
 
 class BehaviorTaskSubmission(RoutePlanRequest):
     request_text: str = Field(min_length=1, max_length=8000)
-    timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
+    timeout_ms: int = Field(default=270_000, ge=100, le=300_000)
 
     def to_spec(self) -> RequestSpec:
         values = self.model_dump()
         values.pop("timeout_ms", None)
         return RequestSpec(**values)
+
+
+class SpeechRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Bounded because synthesis is minutes-scale for long text: the worker
+    # chunks at ~480 phones and each chunk is its own encoder/flow/decoder run.
+    text: str = Field(min_length=1, max_length=4000)
 
 
 class ProvisioningRequest(BaseModel):
@@ -245,7 +277,7 @@ class RestDeviceRegistration(BaseModel):
     credential_env: str = Field(
         default="", max_length=120, pattern=r"^$|^[A-Za-z_][A-Za-z0-9_]*$"
     )
-    request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    request_timeout_seconds: float = Field(default=270.0, gt=0, le=300)
     health_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     poll_interval_seconds: float = Field(default=5.0, ge=1, le=300)
     allow_profile_context: bool = False
@@ -288,6 +320,7 @@ class PersonalProfileUpdate(BaseModel):
 def create_dashboard_app(service: BrainService) -> FastAPI:
     app = FastAPI(title="DragonNest Brain API", version="0.1.0")
     app.state.brain = service
+    app.state.speech_lock = asyncio.Lock()
     app.mount("/assets", StaticFiles(directory=WEB_ROOT), name="assets")
 
     @app.get("/", include_in_schema=False)
@@ -656,6 +689,57 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
             None,
         )
         return _response_dict(response)
+
+    @app.post("/api/speech")
+    async def api_speech(request: SpeechRequest):
+        """Speak text with MeloTTS on this host's NPU and return the .wav.
+
+        Speech is a capability of the Brain host, not a routed fabric task:
+        the Brain and this dashboard share a process, so the audio is returned
+        inline rather than crossing the gRPC transport.
+        """
+        cached = _cached_speech_path(request.text)
+        if cached.is_file():
+            return Response(
+                content=cached.read_bytes(),
+                media_type="audio/wav",
+                headers={"Cache-Control": "no-store"},
+            )
+
+        # One synthesis at a time. Concurrent qnn-net-run processes contend for
+        # the same HTP/DSP session, which is exactly how a wedged session (and
+        # the resulting timeout) gets created.
+        async with app.state.speech_lock:
+            if cached.is_file():  # another request synthesized it while queued
+                return Response(
+                    content=cached.read_bytes(),
+                    media_type="audio/wav",
+                    headers={"Cache-Control": "no-store"},
+                )
+            try:
+                await asyncio.to_thread(
+                    melotts_runner.synthesize, request.text, cached
+                )
+            except npu_lease.NpuBusyError as exc:
+                # The pinned language model has the NPU. Speech deliberately
+                # yields rather than competing for the DSP session, so this is
+                # a "come back in a moment", not a failure.
+                raise HTTPException(
+                    status_code=409,
+                    detail="The NPU is busy with the language model. Try again in a moment.",
+                    headers={"Retry-After": "5"},
+                ) from exc
+            except melotts_runner.TtsUnavailableError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            except melotts_runner.TtsError as exc:
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        _prune_speech_cache()
+        return Response(
+            content=cached.read_bytes(),
+            media_type="audio/wav",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/events")
     async def api_events(limit: int = 100):

@@ -257,15 +257,27 @@ def test_steering_disabled_capability_does_not_get_runtime_steering():
     _run(models, body)
 
 
-def test_profile_unavailable_when_neither_realization_exists():
-    """Neither the steerable bundle nor the baked bake -- refuse, never
-    substitute Base and call it Concise."""
+def test_base_answers_when_neither_realization_exists_but_is_never_called_concise():
+    """Neither the steerable bundle nor the baked bake is present.
+
+    Concise declares ``allow_unsteered``, so the request is answered from Base
+    rather than failed -- a styled request must not become unanswerable just
+    because the one device carrying the behavior went ineligible.
+
+    The invariant that survives is the honesty one: Base may serve the
+    request, but it is never *called* Concise. The realization is reported as
+    "none" and no steering is sent to the device.
+    """
     models = (_baked(BASE),)
 
     async def body(stub, service) -> None:
         response = await stub.SubmitTask(_request("concise"))
-        assert not response.success
-        assert response.error_code == "PROFILE_UNAVAILABLE"
+        assert response.success
+        assert response.model_id == BASE
+        assert response.steering.mode != "runtime_vector" or not response.steering.enabled
+        plan = service.execution_plans[response.task_id]
+        assert plan.profile_realization == "none"
+        assert plan.steering.enabled is False
 
     _run(models, body)
 

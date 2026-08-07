@@ -26,6 +26,24 @@ public final class AgentConfiguration {
         return preferences.getBoolean("use_tls", false);
     }
 
+    /**
+     * Port of the Brain's dashboard HTTP API, used for speech synthesis.
+     *
+     * <p>Separate from {@link #brainPort()}, which is the gRPC control plane.
+     * The enrollment QR carries only the gRPC endpoint, so this defaults to
+     * the dashboard's own default rather than being discovered -- devices
+     * enrolled before speech existed keep working without re-enrolling.
+     */
+    public int dashboardPort() {
+        return preferences.getInt("dashboard_port", DEFAULT_DASHBOARD_PORT);
+    }
+
+    public void saveDashboardPort(int port) {
+        preferences.edit().putInt("dashboard_port", port).apply();
+    }
+
+    public static final int DEFAULT_DASHBOARD_PORT = 8080;
+
     public String deviceId() {
         String current = preferences.getString("device_id", "");
         if (!current.trim().isEmpty()) {

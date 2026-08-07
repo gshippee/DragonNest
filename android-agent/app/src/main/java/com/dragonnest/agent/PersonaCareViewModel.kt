@@ -168,6 +168,17 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /**
+     * Start a fresh conversation. Any reply being read aloud is stopped first:
+     * the audio belongs to a message that is about to disappear, so letting it
+     * keep playing would leave the speaker running with nothing on screen to
+     * stop it.
+     */
+    fun newChat() {
+        stopSpeech()
+        mutableChat.value = ChatUiState()
+    }
+
+    /**
      * Read a reply aloud. The text is sent to the Brain, which runs MeloTTS on
      * its own NPU and returns a .wav -- this phone's HTP cannot load that
      * model, whose context binaries are compiled for Snapdragon X Elite.

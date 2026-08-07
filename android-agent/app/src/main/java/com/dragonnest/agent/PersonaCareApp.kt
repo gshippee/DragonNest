@@ -35,10 +35,12 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.AddComment
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Memory
@@ -395,11 +397,18 @@ private fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = viewModel::newChat,
+                        enabled = chat.messages.isNotEmpty() && !chat.sending,
+                        modifier = Modifier.testTag("new_chat"),
+                    ) {
+                        Icon(Icons.Outlined.AddComment, "New chat")
+                    }
                     IconButton(onClick = { showDemoControls = true }) {
                         Icon(Icons.Outlined.Memory, "Demo controls")
                     }
                     IconButton(onClick = onEditProfile) {
-                        Icon(Icons.Outlined.Edit, "Edit profile")
+                        Icon(Icons.Outlined.Face, "Edit profile")
                     }
                     IconButton(onClick = onEditConnection) {
                         Icon(Icons.Outlined.SettingsEthernet, "Connection settings")

@@ -74,8 +74,22 @@ public final class BrainTaskClient {
                         .setModelFamily("qwen3")
                         .setBehaviorProfileId(personaId));
             }
+            // Kept comfortably above the Brain's own task timeout so the Brain
+            // decides the outcome and can answer with a real error code; if the
+            // client gave up first, every slow request would look like a
+            // transport failure instead. A request that falls back to the
+            // laptop's Qwen3-4B pays a full ~3.1GB Genie context load per call,
+            // which is what makes the slow path slow.
+            //
+            // This must be re-checked whenever BrainServiceConfig's
+            // default_task_timeout_ms moves: 300s sits above that 270s default,
+            // which in turn sits above the 240s generation budget for a single
+            // X Elite 4B Genie attempt (qwen3-4b-genie runtime_options.timeout_sec
+            // in configs/model-artifacts.yaml). Ordering the three that way is the
+            // whole point -- the innermost budget should always expire first, so
+            // the layer that actually knows what went wrong is the one reporting.
             return BrainControlGrpc.newBlockingStub(channel)
-                    .withDeadlineAfter(90, TimeUnit.SECONDS)
+                    .withDeadlineAfter(300, TimeUnit.SECONDS)
                     .submitTask(request.build());
         } finally {
             channel.shutdownNow();

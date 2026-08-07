@@ -101,7 +101,7 @@ def main() -> None:
     parser.add_argument("--steering-layer", type=int, default=7)
     parser.add_argument("--steering-positions", default="all")
     parser.add_argument("--steering-model-family", default="qwen3")
-    parser.add_argument("--timeout-ms", type=int, default=30_000)
+    parser.add_argument("--timeout-ms", type=int, default=270_000)
     raise SystemExit(asyncio.run(run(parser.parse_args())))
 
 

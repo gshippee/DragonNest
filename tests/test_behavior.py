@@ -39,7 +39,13 @@ def test_demo_profiles_prefer_runtime_vector_over_baked(registry):
 
     Both realize the *same* profile: the runtime path steers the shared
     steerable bundle by alpha, the baked path runs the pre-compiled artifact.
-    The ladder must never widen past those two into prompt conditioning.
+    A plain base model is admitted only as a last resort, when no eligible
+    device can carry the behavior at all, and is reported as realization
+    "none" rather than dressed up as the profile.
+
+    The ladder must never widen into prompt conditioning: a prompt-conditioned
+    answer would claim to realize the profile while being a different
+    mechanism entirely.
     """
     for profile_id, baked_artifact, alpha_sign in (
         ("concise", "qwen3-0.6b-s25-concise", -1),
@@ -58,12 +64,14 @@ def test_demo_profiles_prefer_runtime_vector_over_baked(registry):
         assert runtime.verification_status == "verified"
         assert baked.baked_artifact_id == baked_artifact
         assert baked.verification_status == "verified"
-        assert profile.fallback_policy == (
-            BehaviorFallbackPolicy.ALLOW_BAKED_EQUIVALENT
-        )
+        assert profile.fallback_policy == BehaviorFallbackPolicy.ALLOW_UNSTEERED
         assert profile.allowed_modes() == (
             SteeringRealizationMode.RUNTIME_VECTOR,
             SteeringRealizationMode.BAKED_PROFILE,
+            SteeringRealizationMode.NONE,
+        )
+        assert (
+            SteeringRealizationMode.PROMPT_PROFILE not in profile.allowed_modes()
         )
 
 

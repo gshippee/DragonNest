@@ -78,7 +78,15 @@ class BrainServiceConfig:
     brain_id: str = "dragon-nest-brain"
     enrollment_token: str = "dev-token"
     heartbeat_interval_ms: int = 2000
-    default_task_timeout_ms: int = 30_000
+    # Must stay above the slowest single attempt a routed device can legitimately
+    # take, or the Brain aborts work that was still progressing. The binding case
+    # is the X Elite 4B, whose Genie generation budget is 240s (the qwen3-4b-genie
+    # runtime_options.timeout_sec in configs/model-artifacts.yaml) because it pays
+    # a full ~3.1GB context load before emitting a token. 270s leaves that 30s of
+    # headroom so Genie is always the layer that gives up first and can report a
+    # real error. At the original 30s the Brain killed those attempts every time
+    # and the origin device saw a generic failure it had not itself timed out on.
+    default_task_timeout_ms: int = 270_000
     sweep_interval_seconds: float = 1.0
     max_boundary_bytes: int = 32 * 1024 * 1024
     pipeline_max_new_tokens: int = 8
@@ -964,10 +972,37 @@ class BrainService(pb_grpc.BrainControlServicer):
             except ValueError as exc:
                 auto_pipeline_error = str(exc)
 
+        route_error = ""
         if routed is None or decision is None:
             try:
                 routed, decision = self.router.route(plan, profile, devices)
             except ValueError as exc:
+                route_error = str(exc)
+                # Nothing could realize the requested behavior -- typically the
+                # only steerable bundle is on a device that just became
+                # ineligible (memory, thermal, disconnect). Rather than fail
+                # the request outright, drop to an unsteered base model when
+                # the profile's own policy admits it, and report the
+                # realization as none so the downgrade is never hidden.
+                unsteered = self._unsteered_fallback_plan(plan, behavior_profile_id)
+                if unsteered is not None:
+                    try:
+                        routed, decision = self.router.route(
+                            unsteered, profile, devices
+                        )
+                    except ValueError:
+                        routed, decision = None, None
+                    else:
+                        plan = unsteered
+                        steering = unsteered.steering
+                        profile_realization = SteeringMode.NONE.value
+                        profile_steering_reason = (
+                            f"No eligible device could realize {behavior_profile_id!r}; "
+                            "its fallback policy admits an unsteered realization, so "
+                            "DragonNest answered with a base model and reports the "
+                            "realization as none."
+                        )
+            if routed is None or decision is None:
                 error_code = "NO_ELIGIBLE_FALLBACK"
                 if preferred_mode == ComputePreference.ELASTIC.value:
                     error_code = "ELASTIC_UNAVAILABLE"
@@ -979,7 +1014,7 @@ class BrainService(pb_grpc.BrainControlServicer):
                     task_id=plan.task_id,
                     state="FAILED",
                     error_code=error_code,
-                    error_message=str(exc),
+                    error_message=route_error,
                     origin_device_id=request.origin_device_id,
                     reducer=reducer,
                 )
@@ -2245,6 +2280,38 @@ class BrainService(pb_grpc.BrainControlServicer):
                 )
         # ProfileStore performs the canonical string and numeric validation.
         return values
+
+    def _unsteered_fallback_plan(
+        self, plan: ExecutionPlan, behavior_profile_id: str
+    ) -> ExecutionPlan | None:
+        """``plan`` with its behavior realization dropped, or None to fail closed.
+
+        Returned only when the profile's own declared fallback policy admits an
+        unsteered realization. Degrading is never inferred: a profile declared
+        ``exact_only`` or ``reject`` still fails rather than quietly answering
+        from a model that does not carry its behavior.
+
+        Clearing the steering spec is what widens the candidate set -- the
+        router refuses to serve an unsteered request from a baked artifact or
+        from a bundle whose only steering mode is ``runtime_vector``, so the
+        degraded plan lands on a genuine base model rather than silently
+        borrowing a behavior-specific one.
+        """
+        if plan.profile_realization == SteeringMode.NONE.value:
+            return None
+        if self.behavior_registry is None or not behavior_profile_id:
+            return None
+        try:
+            behavior = self.behavior_registry.get(behavior_profile_id)
+        except KeyError:
+            return None
+        if SteeringRealizationMode.NONE not in behavior.allowed_modes():
+            return None
+        return replace(
+            plan,
+            steering=SteeringSpec(),
+            profile_realization=SteeringMode.NONE.value,
+        )
 
     def _runtime_vector_for_persona(
         self, persona_id: str, origin_device_id: str

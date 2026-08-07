@@ -83,6 +83,19 @@ def test_route_plan_preview_lists_candidates_and_rejections():
                     },
                 )
             ).json()
+            # The same profile pinned to its exact realization. This is how an
+            # operator still gets the "you need to provision this" signal that
+            # the default policy now trades away for an answer.
+            concise_exact = (
+                await client.post(
+                    "/api/route-plan",
+                    json={
+                        "base_model_family": "mock",
+                        "behavior_profile_id": "concise",
+                        "fallback_policy_override": "exact_only",
+                    },
+                )
+            ).json()
 
         assert {p["profile_id"] for p in profiles} >= {"concise", "medical-safe"}
         assert any(a["artifact_id"] == "small-chat-v1" for a in catalog)
@@ -92,9 +105,18 @@ def test_route_plan_preview_lists_candidates_and_rejections():
         rejected = [c for c in plan["candidates"] if not c["feasible"]]
         assert rejected and all(c["rejection_reasons"] for c in rejected)
         assert plan["explanation"]
-        assert concise["chosen"] is None
-        assert concise["error_code"] == "BEHAVIOR_UNAVAILABLE"
-        assert concise["provisioning_hint"] == "concise"
+        # concise declares allow_unsteered, so the mock fleet -- which has no
+        # concise realization -- answers from the base artifact instead of
+        # refusing. The preview must say so plainly rather than implying the
+        # profile was honoured.
+        assert concise["chosen"] is not None
+        assert concise["chosen"]["realization_mode"] == "none"
+        assert not concise["chosen"]["artifact_behavior_profile"]
+        # Pinned to exact_only, the same request still fails closed and still
+        # tells the operator what to provision.
+        assert concise_exact["chosen"] is None
+        assert concise_exact["error_code"] == "BEHAVIOR_UNAVAILABLE"
+        assert concise_exact["provisioning_hint"] == "concise"
 
     asyncio.run(scenario())
 
