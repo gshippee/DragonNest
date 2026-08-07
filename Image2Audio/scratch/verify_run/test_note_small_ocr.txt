@@ -1,0 +1,6 @@
+0.89	Patient Name: John Smith
+0.87	Problem: Seasonal allergies with mild sinus congestion
+0.80	Medications: Loratadine | 0.95	1Omg | 1.00	once daily
+0.68	Symptoms: Sneezing, watery eyes, nasal congestion
+0.91	Next Appointment: August 15 2026
+0.88	Guidelines: Avoid outdoor allergens, use air purifier at home
