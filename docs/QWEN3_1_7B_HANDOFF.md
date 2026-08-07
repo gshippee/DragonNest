@@ -7,9 +7,13 @@ context binaries: S0-S3 for S25/v79 and X Elite/v73. Qualcomm AI Hub
 interface comparison passed for every prompt/decode graph on both targets.
 The reproducible `scripts/xelite_bringup/` harness has physically proven the
 X Elite v73 S0-S3 prefill, eight autoregressive decode steps, stage-local KV,
-HTP-only execution, and coherent output with QAIRT 2.45. That proves the
-runtime algorithm, not the new normal Agent/provider path. The latter remains
-pending the 4+0 acceptance below. S25 S0-S3 remains unexecuted.
+HTP-only execution, and coherent output with QAIRT 2.45. That proved the
+runtime algorithm; the new normal Agent/provider path (4+0 acceptance below)
+has now also been physically proven, on 2026-08-07, at commit
+`1b4febf3e38c3af13d4b3abe9f693930c6da4e7a` — see
+`docs/results/qwen3_1_7b_xelite_production_acceptance.md` for the full
+evidence record. No code changes were required to reach that result. S25
+S0-S3 remains unexecuted.
 
 Artifact names say `w4a16`; recovered compile options say
 `--quantize_full_type w8a16 --quantize_io`. The mismatch is unresolved and is
@@ -68,6 +72,17 @@ PREFILL→S0/S1/S2/S3, DECODE→S0/S1/S2/S3, explicit token sampling, and RESET
 cleanup. It uses mock executors and is control-plane evidence only.
 
 ## X Elite production-provider acceptance
+
+**Physically accepted 2026-08-07** at commit
+`1b4febf3e38c3af13d4b3abe9f693930c6da4e7a` — a real Brain submission
+(`preferred_mode=elastic`) routed `layer_pipeline` / `qwen3-1.7b-w4a16-demo-v1`
+with S0/S1/S2/S3 all placed on `pc-01`, ran one PREFILL pass plus 7 DECODE
+rounds (8 tokens total) on `runtime=qnn`/`accelerator=htp`/QAIRT-2.45,
+returned coherent decoded text, and left zero active sessions, zero orphaned
+`qnn-net-run` processes, and no stale scratch directories afterward,
+including after a forced-timeout negative path. Full record:
+`docs/results/qwen3_1_7b_xelite_production_acceptance.md`. The steps below
+remain the exact reproduction procedure.
 
 No model download or compilation is required. On the laptop:
 

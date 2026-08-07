@@ -156,6 +156,19 @@
     }
   ],
   "cross_target_invariant": "PASSED at the AI Hub tensor-interface/schema level for all four stages and both prompt/decode graphs. Names, dtypes, shapes, and recorded quantized-output parameters matched between S25 and X Elite compiles. This does not claim physical execution, bit-exact activations, or runtime/KV ABI compatibility; see cross_target_boundary_check in demo_artifact_inventory.json.",
+  "production_provider_acceptance": {
+    "status": "PHYSICALLY VERIFIED",
+    "date": "2026-08-07",
+    "git_commit": "1b4febf3e38c3af13d4b3abe9f693930c6da4e7a",
+    "branch": "codex/qwen17-variable-split",
+    "evidence": "docs/results/qwen3_1_7b_xelite_production_acceptance.md",
+    "note": "This block records the normal DragonNest Brain/Agent production-provider path (src/dragon_nest/runtime/qwen17_provider.py), not the scripts/xelite_bringup/ standalone harness. A real Brain submission (preferred_mode=elastic) routed layer_pipeline/qwen3-1.7b-w4a16-demo-v1 with stages S0-S3 all placed on pc-01 (4+0 cut, no S25/phone involvement), ran one PREFILL pass plus 7 DECODE rounds (8 tokens total) on runtime=qnn/accelerator=htp/QAIRT-2.45, and returned coherent decoded text ('<think>\\n</think>\\n\\nGravity is the force'). Zero active pipeline sessions, zero orphaned qnn-net-run processes, and no stale scratch directories remained after completion, including after a forced-timeout negative-path run. No code changes were required to reach this result.",
+    "task_id": "task-cc06d7c7",
+    "route": {"execution_mode": "layer_pipeline", "pipeline_id": "qwen3-1.7b-w4a16-demo-v1", "S0": "pc-01", "S1": "pc-01", "S2": "pc-01", "S3": "pc-01", "runtime_name": "qnn", "runtime_version": "QAIRT-2.45", "accelerator": "htp"},
+    "decode_rounds": 7,
+    "total_tokens_generated": 8,
+    "output_text": "<think>\n</think>\n\nGravity is the force"
+  },
   "known_gaps": [
     "base_model_revision and tokenizer_fingerprint are not pinned anywhere upstream; 'main' is a moving ref.",
     "quantization name (w4a16) vs observed compile flag (w8a16) discrepancy is unresolved.",

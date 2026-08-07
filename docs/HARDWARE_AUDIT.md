@@ -44,8 +44,8 @@ separate on-device load/probe evidence is called out below.
 | Custom/fork path | Current GenieX QAIRT source exposes `Graph::write(name, data)` and `InputProvider`; a fork is feasible, **inferred from official source inspection** | Same, but rebuilding/package/license practicality on the phone is **unverified** |
 | `runtime_vector` | Fixed-shape QNN graph inputs (`steering_vector`, `alpha`) are **verified through Qualcomm AI Hub** on X Elite/8 Elite classes. Runtime-vector injection in the physically verified laptop Genie generation path is **unsupported**, so capability is disabled | Full-model stock GenieX is disabled. Direct-QNN Qwen Part B dynamic input was **verified through Qualcomm AI Hub**, not in the APK or a complete generation loop |
 | `baked_profile` | Build/export is feasible by graph rewrite, **verified locally without hardware**; X Elite compiled artifact is **unverified** | Base, Concise layer-7 alpha -4, and Detailed layer-7 alpha +4 prompt+decode bundles executed through GenieX/HTP in the preserved reference app, **verified on physical hardware** |
-| Fixed split stage | Qwen3-1.7B v73 S0-S3 prefill plus eight decode steps with stage-local KV and coherent text are **verified on physical hardware** in the reproducible standalone harness; normal Agent/provider 4+0 acceptance remains pending | Qwen3-0.6B two-stage execution is **verified on physical hardware**. Qwen3-1.7B v79 contexts are AI-Hub/interface verified but not physically executed |
-| Install/load | The 4B DragonNest path is physically verified. The new 1.7B production provider is desktop-tested and explicitly gated, but awaits Agent-path physical acceptance | `com.dragonnest.agent` physically loaded/probed and advertised the exact Detailed bundle through GenieX/HTP. Integrated end-to-end text was not completed before the phone left; Base/Concise remain to be provisioned from the repaired cache and accepted |
+| Fixed split stage | Qwen3-1.7B v73 S0-S3 prefill plus eight decode steps with stage-local KV and coherent text are **verified on physical hardware** in the reproducible standalone harness, and the normal Agent/provider 4+0 Brain-path acceptance is now also **verified on physical hardware** (2026-08-07, `docs/results/qwen3_1_7b_xelite_production_acceptance.md`) | Qwen3-0.6B two-stage execution is **verified on physical hardware**. Qwen3-1.7B v79 contexts are AI-Hub/interface verified but not physically executed |
+| Install/load | The 4B DragonNest path is physically verified. The 1.7B production provider's Agent-path 4+0 acceptance is now also **verified on physical hardware** | `com.dragonnest.agent` physically loaded/probed and advertised the exact Detailed bundle through GenieX/HTP. Integrated end-to-end text was not completed before the phone left; Base/Concise remain to be provisioned from the repaired cache and accepted |
 | Compatibility sharing | Exact X1E/v73/QAIRT-2.48 bundle compatibility is **verified on this laptop**. Do not share its contexts with SM8750 v79; other X Elite hosts remain **unverified** | Existing artifacts target `sm8750-ac`/v79. Same-family sharing is intended but only SM-S938U1 was physically exercised; wider sharing is **unverified** |
 | Licenses/files | Required Genie/HTP 2.48 runtime files and model bundle were present and executed, **verified on physical hardware**; redistribution remains subject to their licenses | Matching arm64 QNN/Genie libraries, v79 skel/stub, model contexts, Android SDK/NDK/JDK are required. QAIRT 2.45 files used physically; redistribution rights remain subject to their licenses |
 
@@ -160,9 +160,11 @@ Concrete answers:
   physical S25 validation.
 - The X Elite QAIRT 2.45 contexts and runtime algorithm are physically proven
   by `scripts/xelite_bringup/`, including correct delta-KV append/window
-  semantics. The newly promoted production Agent provider still requires the
-  normal 4+0 Brain-path acceptance; it is not physically verified by the
-  standalone result.
+  semantics. The promoted production Agent provider's normal 4+0 Brain-path
+  acceptance is now also physically verified (2026-08-07, commit
+  `1b4febf3e38c3af13d4b3abe9f693930c6da4e7a`,
+  `docs/results/qwen3_1_7b_xelite_production_acceptance.md`) — no longer
+  standalone-only.
 - The S25 is no longer attached. Current desktop test/build results cannot add
   new phone execution evidence.
 - Exact tokenizer file fingerprints and full neutral-NLL/refusal/template
@@ -173,7 +175,9 @@ Concrete answers:
 - **Physically verified:** Dell Latitude 7455/X1E80100 identity; Qwen3-4B
   Genie/HTP through `HardwareRuntimeAdapter`, local gRPC, and the real LAN
   interface; worker launcher; standalone X Elite 1.7B S0-S3 prefill/eight-step
-  decode on HTP; SM-S938U1 identity; QNN 2.45.41/v79 execution; Qwen3-0.6B
+  decode on HTP; normal Brain/Agent-path X Elite 1.7B 4+0 Elastic
+  (`docs/results/qwen3_1_7b_xelite_production_acceptance.md`); SM-S938U1
+  identity; QNN 2.45.41/v79 execution; Qwen3-0.6B
   Base/Concise/Detailed GenieX/HTP reference execution and behavior comparison;
   DragonNest Detailed load/probe/advertisement; PersonaCare phone-origin Request A on the
   thin Android mock followed by immediate low-RAM Request B rerouting to real
@@ -186,9 +190,9 @@ Concrete answers:
 - **Mocked/local only:** Brain transport tests, Android builds/unit tests,
   production-provider unit tests, artifact installation/lifecycle tests, and
   simulated 4+0/3+1/2+2 routing.
-- **Blocked/unverified:** normal Agent-path X Elite 1.7B 4+0; S25 1.7B direct
-  QNN; real 3+1 and 2+2; integrated `com.dragonnest.agent` Base/Concise/Detailed
-  text responses; full-model runtime-vector generation.
+- **Blocked/unverified:** S25 1.7B direct QNN; real 3+1 and 2+2 (require S25);
+  integrated `com.dragonnest.agent` Base/Concise/Detailed text responses;
+  full-model runtime-vector generation.
 
 ## Exact next physical commands
 
@@ -198,9 +202,11 @@ On the X Elite laptop for the physically verified Act 1/2 topology:
 .\scripts\run_xelite_demo.ps1
 ```
 
-For the production-provider 1.7B 4+0 acceptance, use the exact staged command
-in `docs/QWEN3_1_7B_HANDOFF.md`. It keeps QAIRT 2.45 QNN separate from the
-verified 4B QAIRT 2.48 Genie capability and requires an explicit enable flag.
+For the production-provider 1.7B 4+0 acceptance (physically verified
+2026-08-07, `docs/results/qwen3_1_7b_xelite_production_acceptance.md`), use
+the exact staged command in `docs/QWEN3_1_7B_HANDOFF.md`. It keeps QAIRT 2.45
+QNN separate from the verified 4B QAIRT 2.48 Genie capability and requires an
+explicit enable flag.
 
 On the workstation with the S25 attached, after staging the matching licensed
 SDK/bundle as described in `android-agent/README.md`:
