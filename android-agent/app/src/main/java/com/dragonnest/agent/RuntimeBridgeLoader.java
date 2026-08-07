@@ -5,23 +5,26 @@ final class RuntimeBridgeLoader {
     private RuntimeBridgeLoader() { }
 
     static AndroidRuntimeBridge load(String runtime) {
-        String className = switch (runtime) {
-            case "qnn" -> "com.dragonnest.agent.vendor.QnnRuntimeBridge";
-            case "genie" -> "com.dragonnest.agent.vendor.GenieRuntimeBridge";
-            default -> "";
+        String[] classNames = switch (runtime) {
+            case "qnn" -> new String[] {"com.dragonnest.agent.vendor.QnnRuntimeBridge"};
+            case "genie" -> new String[] {
+                    "com.dragonnest.agent.vendor.GenieXRuntimeBridge",
+                    "com.dragonnest.agent.vendor.GenieRuntimeBridge"
+            };
+            default -> new String[0];
         };
-        if (className.isEmpty()) {
-            return null;
-        }
-        try {
-            Class<?> candidate = Class.forName(className);
-            Object instance = candidate.getDeclaredConstructor().newInstance();
-            if (!(instance instanceof AndroidRuntimeBridge bridge)) {
-                return null;
+        for (String className : classNames) {
+            try {
+                Class<?> candidate = Class.forName(className);
+                Object instance = candidate.getDeclaredConstructor().newInstance();
+                if (instance instanceof AndroidRuntimeBridge bridge
+                        && runtime.equals(bridge.runtimeName())) {
+                    return bridge;
+                }
+            } catch (ReflectiveOperationException | LinkageError unavailable) {
+                // Optional runtime closures are intentionally absent from thin builds.
             }
-            return runtime.equals(bridge.runtimeName()) ? bridge : null;
-        } catch (ReflectiveOperationException | LinkageError unavailable) {
-            return null;
         }
+        return null;
     }
 }

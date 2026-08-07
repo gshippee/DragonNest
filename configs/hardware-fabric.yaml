@@ -24,7 +24,7 @@ devices:
       npu_status: available
       npu_name: Hexagon v79 HTP
       qnn_runtime_version: 2.45.41.260507231357
-      compatibility_key: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+      compatibility_key: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
     models:
       - model_id: qwen3-0.6b-s25-base
         artifact_id: qwen3-0.6b-w4a16-sm8750-base-qairt245
@@ -35,7 +35,7 @@ devices:
         warm: false
         quality_score: 0.70
         steering_modes: [none]
-        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+        target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
       - model_id: qwen3-0.6b-s25-concise
         artifact_id: qwen3-0.6b-w4a16-sm8750-concise-l7-am4-qairt245
         model_family: qwen3
@@ -46,7 +46,7 @@ devices:
         quality_score: 0.70
         steering_modes: [baked_profile]
         behavior_profile_ids: [concise]
-        target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+        target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
       - model_id: qwen3-1.7b-s0-s25
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s0-s25
         model_family: qwen3-1.7b

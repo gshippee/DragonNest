@@ -44,14 +44,14 @@ profiles:
     policy_tags: [style]
     fallback_policy: exact_only
     provenance: PersonaCare concise-vs-verbose layer-7 vector candidate at alpha +4
-    evaluation_status: draft
+    evaluation_status: validated
     realizations:
       - mode: baked_profile
         baked_artifact_id: qwen3-0.6b-s25-detailed
         compatible_model_families: [qwen3]
         compatible_runtimes: [genie]
         compatible_quantizations: [w4a16]
-        verification_status: unverified
+        verification_status: verified
 
   - profile_id: friendly
     display_name: Friendly

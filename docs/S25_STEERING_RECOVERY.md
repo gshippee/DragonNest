@@ -31,6 +31,19 @@ match. The phone binaries are preserved as physical evidence; the release ZIPs
 remain the authoritative release provenance. Do not collapse these into a
 false byte-for-byte claim.
 
+For DragonNest execution, the active external cache now uses the recovered
+phone-class dual-phase bundles rather than the older prompt-only release
+copies. `scripts/artifact_tools/stage_s25_geniex_artifacts.py --verify-only`
+validates the committed per-file inventory and these tree hashes:
+
+- Base: `efc5728ba3ac7ee4a5bc2ee7fc8aaad8e875d66625234d71180dcec74a695827`
+- Concise: `eaa310354020e460d0b7862de4871a031fad8d48c0c2551241a2c78a82f4eb0e`
+- Detailed: `460e2c1cbff39607210ef0a6c9ac0fd603729d39046327dce7dc9405f1cf93eb`
+
+The former Base/Concise prompt-only cache trees were moved aside with explicit
+`prompt-only-invalid` names; they were not deleted and cannot be provisioned
+by the active inventory.
+
 ## Exact static bake
 
 The source is `Qwen/Qwen3-0.6B` revision

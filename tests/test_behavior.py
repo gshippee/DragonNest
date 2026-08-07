@@ -47,7 +47,7 @@ def test_demo_profiles_are_exact_baked_realizations(registry):
         SteeringRealizationMode.BAKED_PROFILE
     ]
     assert detailed.realizations[0].baked_artifact_id == "qwen3-0.6b-s25-detailed"
-    assert detailed.realizations[0].verification_status == "unverified"
+    assert detailed.realizations[0].verification_status == "verified"
     assert detailed.fallback_policy == BehaviorFallbackPolicy.EXACT_ONLY
 
 

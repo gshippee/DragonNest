@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,11 +32,11 @@ public final class AndroidArtifactRegistry {
 
     private AndroidArtifactRegistry(Path root, Map<String, AndroidModelArtifact> artifacts) {
         this.root = root;
-        this.artifacts = Map.copyOf(artifacts);
+        this.artifacts = Collections.unmodifiableMap(new LinkedHashMap<>(artifacts));
     }
 
     public static AndroidArtifactRegistry loadInstalled(Context context) {
-        Path root = context.getFilesDir().toPath().resolve(MODEL_DIRECTORY);
+        Path root = modelRoot(context);
         Path manifest = root.resolve("manifest.json");
         if (!Files.isRegularFile(manifest)) {
             return new AndroidArtifactRegistry(root, Map.of());
@@ -46,6 +47,19 @@ public final class AndroidArtifactRegistry {
         } catch (IOException failure) {
             throw new IllegalStateException("Unable to read Android model manifest", failure);
         }
+    }
+
+    /**
+     * GenieX/QNN must mmap context binaries from a real filesystem path that is
+     * visible to the HTP runtime. The scoped external-files directory remains
+     * app-private, but unlike /data/user/0 it is accepted by the physical S25
+     * QAIRT 2.45 runtime.
+     */
+    static Path modelRoot(Context context) {
+        if (context.getExternalFilesDir(null) == null) {
+            throw new IllegalStateException("App-private external model storage is unavailable");
+        }
+        return context.getExternalFilesDir(null).toPath().resolve(MODEL_DIRECTORY);
     }
 
     static AndroidArtifactRegistry fromJson(String source, Path modelRoot) {

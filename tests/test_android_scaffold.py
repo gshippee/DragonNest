@@ -16,6 +16,7 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     }
     application = manifest.find("application")
     assert application is not None
+    assert application.attrib[f"{ANDROID}extractNativeLibs"] == "true"
     service = application.find("service")
     receiver = application.find("receiver")
 
@@ -54,6 +55,9 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     ).read_text(encoding="utf-8")
     qnn_bridge = (
         sources / "vendor/QnnRuntimeBridge.java"
+    ).read_text(encoding="utf-8")
+    geniex_bridge = (
+        sources / "vendor/GenieXRuntimeBridge.kt"
     ).read_text(encoding="utf-8")
     genie_jni = (
         android_root / "app/src/main/cpp/genie_jni.cpp"
@@ -111,9 +115,11 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "Build.SOC_MODEL" in inventory
     assert "setNpuStatus(runtimeCatalog.npuStatus())" in inventory
     assert "registry.isVerified(artifact)" in runtime_catalog
+    assert "BuildConfig.DRAGONNEST_ENABLE_MOCK_RUNTIME" in runtime_catalog
     assert "new QnnAndroidTaskExecutor" in runtime_catalog
     assert "new GenieAndroidTaskExecutor" in runtime_catalog
     assert "Checksum mismatch" in artifacts
+    assert "getExternalFilesDir(null)" in artifacts
     asset_installer = (sources / "AndroidModelAssetInstaller.java").read_text(
         encoding="utf-8"
     )
@@ -125,11 +131,19 @@ def test_android_agent_manifest_and_platform_hooks_are_present():
     assert "nativeExecutionReady" in qnn_bridge
     assert "PIPELINE_PREFILL" in qnn_bridge
     assert "PIPELINE_RESET" in qnn_bridge
+    assert 'runtimeName(): String = "genie"' in geniex_bridge
+    assert "GenieXSdk.getInstance().init" in geniex_bridge
+    assert "createWrapper(artifact).destroy()" in geniex_bridge
+    assert 'RuntimeExecutionResult(output, null, "htp")' in geniex_bridge
+    assert "MockAndroidTaskExecutor" not in geniex_bridge
     assert "GenieDialog_query" in genie_jni
     gradle = (android_root / "app/build.gradle.kts").read_text(encoding="utf-8")
     assert 'jniLibs.srcDir("../vendor/jniLibs")' in gradle
     assert 'assets.srcDir("../vendor/model-assets")' in gradle
     assert "includeModelArtifacts" in gradle
+    assert "includeS25GenieXRuntime" in gradle
+    assert "DRAGONNEST_ENABLE_MOCK_RUNTIME" in gradle
+    assert 'implementation("com.qualcomm.qti:geniex-android:0.3.5")' in gradle
     assert "compose = true" in gradle
     assert 'noCompress += "bin"' in gradle
     assert "setHardware(hardwareInventory.snapshot())" in (

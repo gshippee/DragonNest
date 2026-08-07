@@ -27,6 +27,9 @@ public final class AndroidHardwareInventory {
             socManufacturer = Build.SOC_MANUFACTURER;
             socModel = Build.SOC_MODEL;
         }
+        String platformCompatibility = "android-" + Build.SUPPORTED_ABIS[0] + "-"
+                + (socModel.isBlank() ? "unknown-soc" : socModel.toLowerCase())
+                + "-api" + Build.VERSION.SDK_INT;
         return HardwareInventory.newBuilder()
                 .setManufacturer(Build.MANUFACTURER)
                 .setModel(Build.MODEL)
@@ -42,10 +45,7 @@ public final class AndroidHardwareInventory {
                 .setNpuStatus(runtimeCatalog.npuStatus())
                 .setNpuName(runtimeCatalog.npuName())
                 .setQnnRuntimeVersion(runtimeCatalog.qnnRuntimeVersion())
-                .setCompatibilityKey(
-                        "android-" + Build.SUPPORTED_ABIS[0] + "-"
-                                + (socModel.isBlank() ? "unknown-soc" : socModel.toLowerCase())
-                                + "-api" + Build.VERSION.SDK_INT)
+                .setCompatibilityKey(runtimeCatalog.compatibilityKey(platformCompatibility))
                 .build();
     }
 }

@@ -20,8 +20,7 @@ final class AndroidModelAssetInstaller {
     private AndroidModelAssetInstaller() { }
 
     static void installIfAbsent(Context context) throws IOException {
-        Path destination = context.getFilesDir().toPath()
-                .resolve(AndroidArtifactRegistry.MODEL_DIRECTORY);
+        Path destination = AndroidArtifactRegistry.modelRoot(context);
         if (isCompleteInstall(destination)) {
             return;
         }

@@ -14,6 +14,11 @@ val includeModelArtifacts = providers.gradleProperty("includeModelArtifacts")
     .orElse("false")
     .map { it.toBoolean() }
     .get()
+val includeS25GenieXRuntime = providers.gradleProperty("includeS25GenieXRuntime")
+    .orElse(providers.environmentVariable("DRAGONNEST_ANDROID_INCLUDE_S25_GENIEX"))
+    .orElse("false")
+    .map { it.toBoolean() }
+    .get()
 
 android {
     namespace = "com.dragonnest.agent"
@@ -21,11 +26,16 @@ android {
 
     defaultConfig {
         applicationId = "com.dragonnest.agent"
-        minSdk = 26
+        minSdk = if (includeS25GenieXRuntime) 27 else 26
         targetSdk = 35
         versionCode = 8
         versionName = "0.1.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "boolean",
+            "DRAGONNEST_ENABLE_MOCK_RUNTIME",
+            (!includeS25GenieXRuntime).toString(),
+        )
     }
 
     compileOptions {
@@ -40,6 +50,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -144,7 +155,14 @@ dependencies {
     implementation("io.grpc:grpc-protobuf-lite:1.68.1")
     implementation("io.grpc:grpc-stub:1.68.1")
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Compile the fail-closed bridge in every build, but package Qualcomm's
+    // licensed GenieX runtime closure only for an explicit hardware build.
+    compileOnly("com.qualcomm.qti:geniex-android:0.3.5")
+    if (includeS25GenieXRuntime) {
+        implementation("com.qualcomm.qti:geniex-android:0.3.5")
+    }
     compileOnly("org.apache.tomcat:annotations-api:6.0.53")
     implementation(fileTree("../vendor/aars") { include("*.aar", "*.jar") })
 

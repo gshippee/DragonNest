@@ -26,7 +26,7 @@
     "runtime": "GenieX Android 0.3.5 / QAIRT 2.45.0.260326154327 / QNN HTP v79",
     "phone_context_binaries": {
       "base_part1": {"size_bytes": 311226368, "sha256": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978"},
-      "base_part2": {"size_bytes": 407248896, "sha256": "6fbfa220a305bf3df27bf943a5c86e0885518cee8e11027c098aa32ab5dd25c75"},
+      "base_part2": {"size_bytes": 407248896, "sha256": "6fbfa220a305bf3df27bf943a5c86e0885518ce8e11027c098aa32ab5dd25c75"},
       "concise_part1": {"size_bytes": 311226368, "sha256": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978"},
       "concise_part2": {"size_bytes": 407252992, "sha256": "4d91bc6c65150cfc4e52875ad224aa2f7cfd0f1246bf71caab37db6ac0a7782c"}
     }

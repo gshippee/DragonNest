@@ -61,7 +61,7 @@ models:
     steering_mode: none
     behavior_profile_id: ""
     vector_id: ""
-    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+    target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
     supported_accelerators: [htp]
     min_memory_mb: 2048
     max_context_tokens: 512
@@ -112,7 +112,7 @@ models:
       alpha: -4.0
       normalization: l2_at_injection
       vector_sha256: 7d69ff39a248a6e7df11d5fe2b533addfc19f84da75c4869a088eef8a2c32b2c
-    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+    target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
     supported_accelerators: [htp]
     min_memory_mb: 2048
     max_context_tokens: 512
@@ -164,7 +164,7 @@ models:
       alpha: 4.0
       normalization: l2_at_injection
       vector_sha256: 7d69ff39a248a6e7df11d5fe2b533addfc19f84da75c4869a088eef8a2c32b2c
-    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
+    target_compatibility_class: android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5
     supported_accelerators: [htp]
     min_memory_mb: 2048
     max_context_tokens: 512
@@ -364,7 +364,7 @@ models:
       runtime_version: QAIRT-2.45
       prompt_graph: prompt_ar128_cl512_1_of_4
       decode_graph: token_ar1_cl512_1_of_4
-      tokenizer_owner: brain
+      tokenizer_owner: s0_agent
       sampling_owner: final_stage_top1
       retains_stage_kv_cache: false
       memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
@@ -431,7 +431,7 @@ models:
       runtime_version: QAIRT-2.45
       prompt_graph: prompt_ar128_cl512_2_of_4
       decode_graph: token_ar1_cl512_2_of_4
-      tokenizer_owner: brain
+      tokenizer_owner: s0_agent
       sampling_owner: final_stage_top1
       retains_stage_kv_cache: true
       memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
@@ -494,7 +494,7 @@ models:
       runtime_version: QAIRT-2.45
       prompt_graph: prompt_ar128_cl512_3_of_4
       decode_graph: token_ar1_cl512_3_of_4
-      tokenizer_owner: brain
+      tokenizer_owner: s0_agent
       sampling_owner: final_stage_top1
       retains_stage_kv_cache: true
       memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement
@@ -561,7 +561,7 @@ models:
       runtime_version: QAIRT-2.45
       prompt_graph: prompt_ar128_cl512_4_of_4
       decode_graph: token_ar1_cl512_4_of_4
-      tokenizer_owner: brain
+      tokenizer_owner: s0_agent
       sampling_owner: final_stage_top1
       retains_stage_kv_cache: true
       memory_estimate_basis: artifact size plus conservative runtime margin; not physical measurement

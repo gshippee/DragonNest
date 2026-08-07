@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.List;
 
 public final class AndroidArtifactRegistryTest {
     @Test
@@ -40,6 +41,51 @@ public final class AndroidArtifactRegistryTest {
         assertEquals("qwen-s25", parsed.capability().getModelId());
         assertEquals("qnn", parsed.capability().getRuntimeName());
         assertEquals("htp", parsed.capability().getSupportedAccelerators(0));
+        assertFalse(parsed.capability().getWarm());
+    }
+
+    @Test
+    public void advertisesExactBakedProfileWithoutRuntimeSteering() throws Exception {
+        Path root = Files.createTempDirectory("dragonnest-baked-profile");
+        Path artifact = root.resolve("concise/model.bin");
+        Files.createDirectories(artifact.getParent());
+        Files.write(artifact, "baked concise".getBytes(StandardCharsets.UTF_8));
+        String manifest = """
+                {"models":[{
+                  "model_id":"qwen3-0.6b-s25-concise", "model_version":"s25-v1",
+                  "runtime":"genie", "artifact_path":"concise/model.bin",
+                  "checksum":"sha256:%s", "tokenizer_id":"Qwen/Qwen3-0.6B",
+                  "precision":"w4a16", "supported_accelerators":["htp"],
+                  "min_memory_mb":2048, "max_context_tokens":512,
+                  "supports_steering":false, "supports_data_parallel":false,
+                  "supports_layer_pipeline":false, "model_family":"qwen3",
+                  "role":"small_chat", "task_classes":["chat_qa"],
+                  "artifact_id":"qwen3-0.6b-s25-concise-qairt245",
+                  "steering_mode":"baked_profile", "behavior_profile_id":"concise",
+                  "target_compatibility_class":"android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5"
+                }]}""".formatted(sha256(Files.readAllBytes(artifact)));
+
+        AndroidModelArtifact parsed = AndroidArtifactRegistry.fromJson(manifest, root)
+                .all().get(0);
+
+        assertTrue(AndroidArtifactRegistry.fromJson(manifest, root).isVerified(parsed));
+        assertEquals("baked_profile", parsed.capability().getSteeringModes(0));
+        assertEquals("concise", parsed.capability().getBehaviorProfileIds(0));
+        assertFalse(parsed.capability().getSupportsSteering());
+        assertFalse(parsed.capability().getWarm());
+        assertEquals(
+                "android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5",
+                AndroidRuntimeCatalog.resolveCompatibilityKey(
+                        List.of(parsed.capability()),
+                        "android-arm64-v8a-sm8750-api35"));
+    }
+
+    @Test
+    public void genericCompatibilityRemainsWhenNoPhysicalRuntimeIsReady() {
+        assertEquals(
+                "android-arm64-v8a-sm8750-api35",
+                AndroidRuntimeCatalog.resolveCompatibilityKey(
+                        List.of(), "android-arm64-v8a-sm8750-api35"));
     }
 
     @Test

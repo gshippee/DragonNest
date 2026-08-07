@@ -49,7 +49,9 @@ public record AndroidModelArtifact(
                 .setRole(role)
                 .addAllTaskClasses(taskClasses)
                 .setMaxContextTokens(maxContextTokens)
-                .setWarm(true)
+                // Installed bytes are not a warm runtime context. Current Android
+                // bridges create and release a context for each request.
+                .setWarm(false)
                 .setQualityScore(qualityScore)
                 .setModelVersion(modelVersion)
                 .setTokenizerId(tokenizerId)
