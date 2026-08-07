@@ -401,9 +401,12 @@ models:
     size_bytes: 263131136
     context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
     input_tensor_schema:
-      - {name: add_21844, dtype: float32, shape: [1, dynamic, 2048]}
+      # Physically confirmed on X Elite (prompt graph, real chained input from
+      # stage 1's output). scale=0.018486686050891876, offset=-32808.
+      - {name: add_21844, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
     output_tensor_schema:
-      - {name: add_42314, dtype: float32, shape: [1, dynamic, 2048]}
+      # Physically confirmed on X Elite (prompt graph). scale=0.018476400524377823, offset=-32938.
+      - {name: add_42314, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
     build_provenance:
       source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
       declared_quantization: w4a16
@@ -460,9 +463,16 @@ models:
     size_bytes: 525893632
     context_profile: {context_tokens: 512, prompt_tokens: 128, decode_tokens: 1}
     input_tensor_schema:
-      - {name: add_42314, dtype: float32, shape: [1, dynamic, 2048]}
+      # Physically confirmed on X Elite (prompt graph, real chained input from
+      # stage 2's output). scale=0.018476400524377823, offset=-32938.
+      - {name: add_42314, dtype: ufixed_point_16, shape: [1, dynamic, 2048]}
     output_tensor_schema:
-      - {name: logits, dtype: float32, shape: [1, dynamic, vocab_size]}
+      # Physically confirmed on X Elite (prompt graph, full real S0->S1->S2->S3
+      # chain): vocab_size=151936 (was an unverified placeholder), dtype is
+      # quantized not float32, scale=0.0014538989635184407, offset=-25969.
+      # Real chain's top-1 token was '<think>' (id 151667) -- the expected
+      # Qwen3 reasoning-mode first token.
+      - {name: logits, dtype: ufixed_point_16, shape: [1, dynamic, 151936]}
     build_provenance:
       source: recovered Qualcomm AI Hub artifact-factory inventory d30e924
       declared_quantization: w4a16

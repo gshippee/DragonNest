@@ -56,15 +56,25 @@ model binaries, and absolute local paths where not load-bearing.
    confirmed correct** (§7) — including resolving §5's two flagged
    uncertainties (attention-mask clip is -100, not -50; KV zero-point is
    raw byte 128) with hard evidence from the binary's own metadata rather
-   than assumption. S2/S3/decode remain unexercised.
-7. `docs/results/qwen3_1_7b_pipeline_manifest.json` and
+   than assumption.
+7. **S1's decode graph, S2's prompt graph, and S3's prompt graph are all now
+   physically proven too** (§9, §10, §11) — S1 decode via a bit-exact-style
+   cross-check reconstruction (close but not exact; see §9 for the precise
+   number and the plausible reason), S2 and S3 each with the **real chained
+   output of the previous stage** as input, not a synthetic placeholder. The
+   full real chain (S0→S1→S2→S3, prompt only) was run end-to-end and its
+   top-1 predicted token is `<think>` (id 151667) — the expected Qwen3
+   reasoning-mode first token, corroborated by this same repo's
+   `genie_runner.py` docstring. That is a strong qualitative correctness
+   signal for the whole physical pipeline, not just a shape/dtype check.
+   S2's and S3's own decode graphs remain untested (§9's closing note).
+8. `docs/results/qwen3_1_7b_pipeline_manifest.json` and
    `configs/model-artifacts.yaml` **updated this session** to say
    `ufixed_point_16`/`ufixed_point_8` instead of `float32` for every tensor
-   physically confirmed quantized (S0 prompt+decode output, S1 prompt
-   input/output/shared-inputs/KV) — see §8. Stage 2/3 and S25 entries are
-   deliberately left as originally declared (`float32`), since they were
-   not physically executed this session and their dtype should not be
-   assumed to match S0/S1's. `verification_status` fields were left
+   physically confirmed quantized — now covering **all four stages'** prompt
+   graphs (S0 also decode) — see §8/§12. The S25 artifact entries are
+   deliberately left as originally declared (`float32`), since Android/S25
+   was not touched this session. `verification_status` fields were left
    unchanged (out of scope for this session's specific ask).
 
 ## 1. Artifact staging (physically verified)
@@ -512,37 +522,143 @@ different from both. This is a non-trivial invariant — repeated identical
 (token, position, masked-context) inputs must produce identical outputs
 through 10 real attention+MLP layers — and it held exactly.
 
-Per instructions, **stopping here** — S2, S3, the four-stage chain, and the
-decode loop were not attempted this session.
+This satisfied the original "stop after S1 prompt and report" instruction.
+The session then continued (explicitly requested) through S1's decode
+graph, S2, and S3 — see §9-§11.
 
-## 8. Manifest/schema updated to match physical reality
+## 8. Manifest/schema updated to match physical reality (all four stages)
 
 Both `docs/results/qwen3_1_7b_pipeline_manifest.json` and
 `configs/model-artifacts.yaml` declared `float32` for every stage-boundary,
 shared-input, and (implicitly, via absence) KV tensor — an AI-Hub-level
 assumption inherited from the manifest's original recovery, never
 physically checked until this session. Updated to `ufixed_point_16` /
-`ufixed_point_8` exactly where §4/§7 physically confirmed it:
+`ufixed_point_8` for every tensor physically confirmed quantized, in two
+passes (S0/S1 first, S2/S3 added once those stages were also proven — see
+§9-§11):
 
-- Pipeline manifest: stage 0's `prompt_graph`/`decode_graph` `embedding`
-  output dtype; stage 1's `shared_inputs` (`attention_mask`,
-  `position_ids_cos`, `position_ids_sin`) and `optional_steering_inputs`
-  (`alpha`, `steering_vector`) dtypes; a new `kv_cache.dtype` field on
-  stage 1 (didn't exist before — KV tensors had shapes but no declared
-  dtype); a new `boundary_output_tensor_dtype` field on stage 1 for
-  `add_21844`; a new top-level `physical_io_verification` block
-  summarizing which stages are confirmed vs. not.
-- `configs/model-artifacts.yaml`: `qwen3-1.7b-s0-xelite`'s
-  `output_tensor_schema` and `qwen3-1.7b-s1-xelite`'s
-  `input_tensor_schema`/`output_tensor_schema`, each with an inline comment
-  citing the real scale/offset and this document.
+- Pipeline manifest: every stage's `shared_inputs`
+  (`attention_mask`/`position_ids_cos`/`position_ids_sin`) and `kv_cache`
+  now have a physically-confirmed `dtype`; stage 0's `prompt_graph`/
+  `decode_graph` `embedding` output dtype; stage 1's
+  `optional_steering_inputs`; each stage's `boundary_output_tensor_dtype`
+  (new field, didn't exist before); stage 3's `output_logits_shape`
+  vocab_size corrected from an "unverified" placeholder to the physically
+  confirmed `151936`; a new top-level `physical_io_verification` block
+  tracking exactly which graphs are confirmed; new `kv_cache.input_name_note`
+  fields on stages 2/3 recording that `{n}` in `past_key_{n}_in` is the
+  **absolute** transformer layer index (e.g. `past_key_10_in`..
+  `past_key_19_in` for stage 2), not stage-relative 0-9/0-7 — this would
+  have been a real bug if assumed instead of checked.
+- `configs/model-artifacts.yaml`: all four `qwen3-1.7b-s{0,1,2,3}-xelite`
+  entries' `input_tensor_schema`/`output_tensor_schema`, each with an inline
+  comment citing the real scale/offset; stage 3's `logits` schema's
+  `vocab_size` placeholder replaced with the confirmed `151936`.
 
-**Deliberately left unchanged**: stage 2/3 dtypes in both files (still
-`float32` — not physically executed, don't assume they match), the S25
-artifact entries (different target, not touched this session), and every
-`verification_status` field (this session's ask was specifically about
-dtype, not verification-status bookkeeping — treating that as a separate
-decision rather than folding it in here). `ArtifactRegistry.from_yaml()`
-still loads all 13 models cleanly after the edit; full test suite still
-168/169 (the 1 failure is the same pre-existing, unrelated gRPC
-heartbeat-timing flake documented in `xelite_worker_status.md`).
+**Deliberately left unchanged**: the S25 artifact entries (different
+target, not touched this session) and every `verification_status` field
+(this session's ask was specifically about dtype, not verification-status
+bookkeeping). `ArtifactRegistry.from_yaml()` still loads all 13 models
+cleanly after every edit; full test suite still 168/169 throughout (the 1
+failure is the same pre-existing, unrelated gRPC heartbeat-timing flake
+documented in `xelite_worker_status.md`).
+
+## 9. S1 decode graph — close cross-check, not bit-exact (explained)
+
+Built a rigorous reconstruction rather than an arbitrary probe: local
+prompt position 127 (RoPE position 30, the last real prompt token) only
+ever attends to context up through and including itself. Reconstructing a
+decode call whose `past_key/value_in` is exactly `zero_384 ++ S1 prompt's
+own new-KV output for local positions 0..126` (the *real* per-position KV
+the prompt graph itself computed, not a guess), feeding the same token's
+embedding, the same RoPE position (30), and the same attend-mask, should
+reproduce the prompt graph's `add_21844` row 127 — an independent second
+computation of the same logical value through a different graph entry
+point.
+
+**Result**: not bit-exact. Dequantized max abs diff `0.776`, mean abs diff
+`0.166`, against a quantization step of `0.0185` (row 127's raw-`uint16`
+value distribution has `std≈72.4`, so the mean difference is about `0.12`
+standard deviations — small in relative terms, but a real, repeatable
+difference, not sub-quantization-step noise). Most plausible explanation,
+not confirmed further: the prompt graph computes all 128 positions through
+a **batched** attention/MLP kernel while the decode graph uses a
+**single-token-optimized** kernel — different floating/fixed-point
+summation order across 10 quantized layers can produce small but nonzero
+divergence even when both are computing the mathematically same thing. This
+was not chased down further (would require comparing intermediate
+per-layer activations, out of scope for "prove decode executes and produces
+a plausible, close-to-correct result"). Recorded honestly rather than
+rounded off to "matches" or treated as a failure.
+
+S2's and S3's own decode graphs were not attempted this session (only their
+prompt graphs — §10, §11); there's no specific reason to expect them to
+behave differently from S1's decode, but that's unverified.
+
+## 10. S2 prompt graph — physically proven with S1's real output
+
+Same pattern as S1, generalized into a shared script
+(`run_stage_prompt()`) so S2/S3 reuse the exact tested RoPE/mask/KV
+machinery rather than re-deriving it. One real discovery pulling S2's own
+metadata (not assumed from S1): **KV tensor names use the absolute
+transformer layer index**, `past_key_10_in`..`past_key_19_in`, not
+stage-relative `past_key_0_in`..`past_key_9_in` — this would have been a
+silent, wrong-tensor-name bug if S1's naming had been assumed to generalize.
+
+Ran with **S1's real, physically-computed `add_21844` output** as the
+boundary input (not a placeholder) — `qnn_runner.run_context_binary(...,
+graph_index=1, num_graphs=2)` against `qwen3-1.7b-s2-xelite.bin`, 0.82s.
+`add_42314`: shape `(1, 128, 2048)`, dtype `uint16`, `nan_count=0`. Same
+pad-row invariant as S0/S1 held: row 0 and row 1 (both padding) byte-identical,
+row 127 (real token) different from both.
+
+## 11. S3 prompt graph — physically proven, real end-to-end chain, top-1 token recorded
+
+Ran S3 twice. First with a quantized-zero **placeholder** boundary input
+(S2's real output didn't exist yet at that point in the session) purely to
+prove the graph itself executes correctly in isolation — `logits`: shape
+`(1, 128, 151936)`, dtype `uint16`, `nan_count=0`, same pad-row invariant
+held. `logits`' vocab dimension (`151936`) is now physically confirmed,
+correcting the manifest's "unverified" placeholder.
+
+Then re-ran with **S2's real output** as the boundary input — a genuine,
+complete `S0 → S1 → S2 → S3` physical forward pass through four separate
+QNN context binaries on real Hexagon HTP silicon, 3.25s for this last hop.
+Took the argmax of the last (real, non-padding) token position's
+dequantized logits:
+
+- **Top-1 token: id `151667`, logit `31.08`** — decodes to `<think>`.
+- Top-5: `<think>` (31.08), `</think>` (24.45), `<|im_end|>` (22.99),
+  `<|im_start|>` (22.89), `<tool_response>` (21.20).
+
+`<think>` as the very first predicted token is not an arbitrary-looking
+number — it is **exactly** the documented Qwen3 reasoning-mode behavior
+already recorded elsewhere in this repo:
+`src/dragon_nest/runtime/genie_runner.py`'s own docstring states "Qwen3
+always emits a `<think>...</think>` reasoning block first (this model was
+built with reasoning mode on)". Getting this specific, semantically
+meaningful token out of a from-scratch physical reconstruction — real
+tokenization, real RoPE, real attention masking, real per-tensor
+quantization, chained through four independently-compiled QNN graphs — is
+strong evidence the whole physical pipeline (not just each stage in
+isolation) is numerically correct, not merely producing plausible-shaped
+noise. This is not yet the full `phase 7/8` local four-stage prefill +
+multi-token decode loop the original bring-up plan describes (only one
+forward pass was run, no decode chaining across stages), but it is a
+significant, meaningful data point toward it.
+
+## 12. What remains (updated)
+
+- S2's and S3's own decode graphs (individually) — untested.
+- The true multi-token autoregressive decode loop, chaining KV state
+  correctly across stages between generated tokens (`phase 8` in the
+  original bring-up plan) — not attempted; S1's decode cross-check (§9)
+  suggests this is mechanically reachable but numerically imperfect
+  (non-bit-exact) in ways not yet fully characterized.
+- Full DragonNest runtime/session integration (wiring this into the
+  PREFILL/DECODE/RESET session abstractions) and stage advertisement
+  (`phase 9-10`) — not attempted, per the original plan's own ordering
+  (integrate only after the local loop is proven, and the multi-token loop
+  isn't proven yet).
+- Android/S25 — entirely out of scope this session, as instructed from the
+  start.
