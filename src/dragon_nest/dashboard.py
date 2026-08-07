@@ -916,6 +916,9 @@ def _device_dict(
                 "accelerators": model.supported_accelerators,
                 "min_memory_mb": model.min_memory_mb,
                 "warm": model.warm,
+                "artifact_id": model.artifact_id,
+                "supports_steering": model.supports_steering,
+                "steering_modes": model.steering_modes,
                 "steering_vectors": model.steering_vector_ids,
                 "segment": asdict(model.segment) if model.segment else None,
             }

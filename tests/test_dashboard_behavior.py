@@ -146,6 +146,11 @@ def test_artifact_and_steering_simulations_change_the_route():
             assert phone["runtime_steering_enabled"] is False
             assert "prompt_profile" in phone["steering_realization_modes"]
             assert phone["deployments"]
+            assert {
+                "artifact_id",
+                "supports_steering",
+                "steering_modes",
+            } <= phone["models"][0].keys()
 
     asyncio.run(scenario())
 
