@@ -45,8 +45,8 @@
     "demo_scenarios": "All scenarios passed"
   },
   "blockers": [
-    "A genuinely separate-host desktop Brain to X Elite Agent round trip is not yet physically verified."
+    "The complete S25 PersonaCare normal-RAM phone route followed by 64 MB low-RAM reroute to same-host pc-01 is not yet physically verified."
   ],
-  "next_command": ".\\scripts\\run_xelite_worker.ps1 -Brain <desktop-lan-ip>:50051",
-  "notes": "Physical Genie/HTP, HardwareRuntimeAdapter, local gRPC, and same-host LAN-interface execution are verified. Runtime steering is disabled. No secrets or proprietary paths are recorded."
+  "next_command": ".\\scripts\\run_xelite_demo.ps1",
+  "notes": "Physical Genie/HTP, HardwareRuntimeAdapter, local gRPC, and same-host LAN-interface execution are verified. The stage topology runs Brain and pc-01 on this laptop and accepts PersonaCare requests from the S25 over LAN. Runtime steering is disabled. No secrets or proprietary paths are recorded."
 }

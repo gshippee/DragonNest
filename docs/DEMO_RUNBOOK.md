@@ -6,6 +6,11 @@ telemetry, and the Brain routes behavior-aware requests to concrete
 executable deployments — visibly, with explanations, fallbacks, and
 provisioning.
 
+The stage topology is not a separate desktop Brain. The Snapdragon X Elite
+laptop runs both the Brain and its local `pc-01` Genie/HTP Device Agent. The
+Galaxy S25 Ultra runs PersonaCare plus the Android Agent and sends every user
+request to that laptop Brain over the LAN.
+
 The smoke run and simulated agents below need **no Qualcomm SDKs**. They
 exercise the real Brain/control-plane code with mock executors. The separate
 X Elite Genie command uses the hardware manifest and only advertises a model
@@ -30,7 +35,72 @@ This starts an in-process Brain plus simulated `x-elite-01` and
 `s25-ultra-01` agents and walks scenarios A–G below, printing every route
 explanation and PASS/FAIL. It must end with `All scenarios passed.`
 
-## 2. Live demo: Brain + two agents + dashboard
+## 2. Physical stage demo: phone RAM pressure reroutes to X Elite
+
+On the Snapdragon X Elite laptop, from the repository root:
+
+```powershell
+.\scripts\run_xelite_demo.ps1
+```
+
+This opens two visible windows: a LAN-visible Brain/dashboard with a 75-second
+default task timeout, and `pc-01` connected to it over loopback using the
+physically verified `qwen3-4b-genie` bundle through Genie/HTP. It prints the
+exact `<laptop-lan-ip>:50051` address for PersonaCare and the dashboard URL.
+The launcher generates a shared nontrivial enrollment token when one is not
+already set. It does not modify Windows Firewall.
+
+### Enroll PersonaCare
+
+1. Open the printed `http://<laptop-lan-ip>:8080/admin` URL.
+2. Choose **Add device**, use `<laptop-lan-ip>` and port `50051`, and create
+   the enrollment QR.
+3. On the S25, open PersonaCare, choose **Scan enrollment QR**, and scan it.
+4. Wait until both the phone and `pc-01` are connected in the dashboard.
+
+### Exact two-request procedure
+
+Preconditions:
+
+- X Elite Brain and the real `pc-01` worker are connected.
+- S25 PersonaCare is enrolled.
+- **Keep on phone** is OFF.
+- Persona is **Balanced** and no steering is active.
+- PersonaCare **Demo controls** has simulated low RAM disabled/reset.
+
+Request 1:
+
+```text
+What is the capital of Japan?
+```
+
+Use this deliberately simple wording so the classifier stays in `single`
+mode. Avoid `compare`, `analyze`, numbered lists, semicolons, and `and also`,
+which can select another execution mode. Expect origin `phone-01`, execution
+mode `single`, and selected device `phone-01`.
+
+Next open PersonaCare **Demo controls**, enable simulated low RAM, and set
+available RAM to exactly `64 MB`. The Android Agent schedules an immediate
+heartbeat on its existing gRPC connection. Wait until the dashboard phone
+card shows 64 MB; this should be nearly immediate.
+
+Request 2: send another simple chat question with the same controls. Expect:
+
+- `phone-01` rejected because 64 MB is below its model minimum;
+- selected device `pc-01`;
+- selected model `qwen3-4b-genie`;
+- runtime `genie`, accelerator `htp`;
+- PersonaCare displays `Ran on <X Elite laptop display name>`.
+
+The current thin APK executes Request 1 with `android-mock-v1`. This proves
+the phone-origin routing and live RAM-pressure transition, not phone NPU
+execution. Do not claim phone NPU execution until a real Android runtime
+artifact is integrated and physically verified.
+
+Turning **Keep on phone** ON sends `preferred_mode=private`. Under 64 MB that
+request must fail on the phone rather than fall back to the laptop.
+
+## 3. Control-plane fallback: Brain + two simulated agents + dashboard
 
 Terminal 1 — the Brain (gRPC on 50051, dashboard on 8080):
 
@@ -49,8 +119,8 @@ runs its portable mock artifacts. It does **not** claim Genie or NPU execution.
 
 The real X Elite worker is physically verified with Qwen3-4B / Genie / HTP,
 including `HardwareRuntimeAdapter`, Brain-to-Agent gRPC, and the machine's real
-LAN interface. Set the same enrollment token as the Brain and run the pinned,
-one-command launcher on the X Elite:
+LAN interface. For the stage topology use section 2. The lower-level worker
+command remains available for diagnostics:
 
 ```powershell
 $env:DRAGONNEST_ENROLLMENT_TOKEN = "<same token as Brain>"
@@ -60,8 +130,8 @@ $env:DRAGONNEST_ENROLLMENT_TOKEN = "<same token as Brain>"
 The launcher refuses ambiguous or checksum-mismatched bundles, then advertises
 `ModelCapability.model_id=qwen3-4b-genie` as installed/cold with runtime
 steering disabled. The detailed sanitized proof is in
-`docs/results/xelite_worker_status.md`. Only the genuinely separate-host
-desktop-Brain round trip remains to be physically verified.
+`docs/results/xelite_worker_status.md`. The hackathon demo does not depend on
+a separate desktop Brain.
 
 Terminal 3 — the Galaxy S25 Ultra agent (simulated locally; on the real
 phone install the Android Agent APK and point it at the Brain's LAN address):
@@ -85,7 +155,7 @@ real native probes), steering-realization chips (`runtime_vector`,
 > (gauge icon on each card) — that is also how every scenario below is
 > triggered.
 
-## 3. Scenario walkthrough (Behavior Routing panel, section 04)
+## 4. Scenario walkthrough (Behavior Routing panel, section 04)
 
 All scenarios use the **Behavior Routing** band: choose model family
 `mock`, fill the fields listed, press **Preview route** (no execution) or
@@ -154,7 +224,7 @@ explanation list is the scheduler's own narrative.
 - Preview the profile again: it now routes to
   `family-assistant-v0-baked (warm)`.
 
-## 4. Classic execution modes (unchanged)
+## 5. Classic execution modes (unchanged)
 
 The Task Submission band (section 03) still drives the original paths:
 single, data-parallel fanout/replica race, and the fixed qwen3-0.6b
@@ -162,16 +232,16 @@ layer-pipeline template (`part-a` on the phone, `part-b` on the laptop),
 including origin-preference, private mode, and disconnect recovery.
 `scripts/demo_grpc.py` remains a self-contained check for those.
 
-## 5. Fallback commands when physical hardware is unavailable
+## 6. Fallback commands when physical hardware is unavailable
 
 | Need | Command |
 | --- | --- |
 | Full scripted demo, no hardware, no dashboard | `.venv\Scripts\python.exe scripts\demo_scenarios.py` |
-| Same fleet in the dashboard without a phone | run both `run_agent.py` commands on the laptop (as in section 2) |
+| Same fleet in the dashboard without a phone | run both `run_agent.py` commands on the laptop (as in section 3) |
 | Classic modes smoke test | `.venv\Scripts\python.exe scripts\demo_grpc.py` |
 | Whole test suite | `.venv\Scripts\python.exe -m pytest -q` |
 
-## 6. Real-hardware notes
+## 7. Real-hardware notes
 
 - **X Elite laptop:** use `pc-01` and `scripts/run_xelite_worker.ps1` for the
   real worker; `x-elite-01` is the simulated/control-plane demo identity.
@@ -184,3 +254,22 @@ including origin-preference, private mode, and disconnect recovery.
   Genie JNI bundle described in `android-agent/README.md`.
 - Remaining physical Android execution/provisioning obligations are specified
   in `docs/HARDWARE_CONTRACT.md`.
+
+## 8. Next milestones: split compute, then parallel
+
+Split compute is intentionally not part of the RAM-reroute milestone. The
+Brain/router already supports `layer_pipeline`, but the classifier only marks
+a task as a layer-pipeline candidate when `preferred_mode == "quality"` and
+complexity is high. PersonaCare currently sends only `auto`, or `private` via
+**Keep on phone**, so the phone UI cannot yet request the quality/pipeline
+path automatically. The corresponding physical pipeline artifacts must also
+be installed and advertised by the phone and laptop workers.
+
+The next milestone is therefore: phone request -> Brain selects complex
+quality mode -> fixed Qwen split -> stage A on phone -> hidden boundary over
+gRPC -> stage B on X Elite -> final result returned to PersonaCare. Do not
+change the classifier until the RAM-reroute demo passes.
+
+The planner/router also already contain `data_parallel` support. New parallel
+architecture is deferred until phone-to-phone, phone-low-RAM-to-X-Elite, and
+the fixed phone-plus-X-Elite pipeline have passed in that order.

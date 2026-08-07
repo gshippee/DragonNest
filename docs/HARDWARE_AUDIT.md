@@ -22,10 +22,10 @@ QNN transcript, checksummed contexts, AI Hub job records, vector metadata, a
 baked-profile release, QAIRT 2.45.41 Android tooling, and current GenieX source.
 Proprietary SDK/model files remain outside this repository.
 
-The thin PersonaCare Android client/Agent APK was rebuilt locally after this
-audit's protocol changes:
-Android unit tests and `assembleDebug` passed. The 19,445,377-byte debug APK has
-SHA-256 `c31fc0a219227d468ec9f6f8baa42434cbf0e8d41f9450cfdf8d445b4ea38821`.
+The thin PersonaCare Android client/Agent APK was rebuilt locally after the
+immediate simulation-heartbeat change. Nine Android unit tests and
+`assembleDebug` passed. The 19,575,982-byte debug APK has SHA-256
+`fc076ff2aae5fbd60372a302828c09d85a5801cf59f95056540074e29d7efb82`.
 It intentionally contains no vendor runtime or model, so this is **verified
 locally without hardware**, not an NPU execution claim.
 
@@ -65,8 +65,9 @@ locally without hardware**, not an NPU execution claim.
 - A roughly 9 GB available-memory drop was observed during execution and
   recovered afterward. It is not yet a calibrated artifact-memory estimate.
 
-The last item not yet physically verified is a genuinely separate-host
-desktop Brain -> LAN -> X Elite worker -> LAN -> desktop Brain round trip.
+The stage demo does not require a separate desktop Brain. Its remaining
+topology proof is PersonaCare on the S25 -> LAN -> Brain on the X Elite ->
+same-host `pc-01` Agent -> real Genie/HTP -> result returned to PersonaCare.
 
 ### S25 Ultra, physical direct-QNN execution
 
@@ -128,10 +129,10 @@ Concrete answers:
 
 ## Shortest paths
 
-1. **X Elite:** the worker path is complete. Start a Brain on a separate
-   desktop, then run `scripts/run_xelite_worker.ps1 -Brain
-   <desktop-lan-ip>:50051` on the laptop and drive/verify the request from the
-   desktop through the normal HTTP submission path.
+1. **X Elite:** the worker path is complete. Run
+   `scripts/run_xelite_demo.ps1` on the laptop so the LAN-visible Brain and
+   loopback `pc-01` worker share one generated token, then enroll PersonaCare
+   against the printed laptop LAN address.
 2. **S25:** stage the smaller Qwen3-0.6B base bundle (and then concise baked
    bundle) with matching licensed runtime files, build the integrated PersonaCare
    hardware APK, install, connect its embedded Agent to the existing Brain, and
@@ -140,9 +141,9 @@ Concrete answers:
 
 ## Current blockers
 
-- The only remaining X Elite claim is a genuinely separate-host desktop Brain
-  round trip. Physical model/runtime/adapter/local-gRPC/LAN-interface evidence
-  is complete.
+- The real worker is complete. The remaining demo proof is the two-request
+  S25 flow: normal phone placement, immediate 64 MB heartbeat, then reroute to
+  same-host `pc-01` and real Genie/HTP with the result displayed in PersonaCare.
 - The DragonNest Android QAIRT/Genie bridge has not loaded either S25 bundle on
   the physical phone. The recovered static bundle was built against QAIRT 2.45
   / GenieX 0.3.5 while the current JNI staging guide targets QAIRT 2.48; the
@@ -165,18 +166,16 @@ Concrete answers:
   `InputProvider` extension point.
 - **Mocked/local only:** Brain transport tests, Android thin APK build/unit
   tests, adapter unit tests, artifact installation/lifecycle tests.
-- **Blocked/unverified:** separate-host X Elite round trip; DragonNest hardware
-  APK run; physical baked-profile comparison; full-model runtime-vector
-  generation.
+- **Blocked/unverified:** complete S25-to-laptop two-request stage flow;
+  DragonNest hardware APK run; physical baked-profile comparison; full-model
+  runtime-vector generation.
 
 ## Exact next physical commands
 
-On the X Elite laptop, after the separate desktop Brain is listening:
+On the X Elite laptop:
 
 ```powershell
-git pull
-$env:DRAGONNEST_ENROLLMENT_TOKEN = "<same token as desktop Brain>"
-.\scripts\run_xelite_worker.ps1 -Brain <desktop-lan-ip>:50051
+.\scripts\run_xelite_demo.ps1
 ```
 
 On the workstation with the S25 attached, after staging the matching licensed
