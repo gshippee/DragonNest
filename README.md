@@ -1,475 +1,375 @@
 # DragonNest
 
-DragonNest combines the best parts of the two hackathon repos in this
-workspace:
+**A trusted fabric of Snapdragon devices that share one AI workload.**
 
-- `PersonaCare`: a concrete on-device Snapdragon demo pipeline for OCR,
-  structured extraction, email drafting, speech, and local QAIRT/QNN execution.
-- `PersonaCare-Steering-Research`: tested activation steering, ONNX/QNN
-  steering validation, and layer split-compute experiments.
+You register your laptop and phone once. From then on, every request you make
+is routed to whichever device can answer it best *right now* — accounting for
+battery, heat, memory, network, and privacy — and DragonNest shows you exactly
+why it chose that device.
 
-The goal is one unified Snapdragon AI fabric:
-
-> A trusted set of Snapdragon devices can route tasks, run multimodal pipelines,
-> steer model behavior, split work across devices, and reroute around thermal,
-> battery, memory, and availability constraints.
-
-## What This Repo Is
-
-DragonNest is the umbrella product/repo for:
-
-- **SnapRouter control plane**: device/model routing, health-aware scheduling,
-  reroute, data parallelism, layer-pipeline planning, and route explainability.
-- **PersonaCare demo app**: doctor-note/photo/audio workflows that prove the
-  product value in a user-facing scenario.
-- **Steering research path**: activation-steering metadata, policy checks, and
-  QNN/Genie runtime integration.
-- **Split-compute path**: pipeline-stage model execution with hidden-state
-  boundary tensors.
-
-The first version is intentionally lightweight: it includes a runnable control
-core, mock execution, hardware runtime adapters, and extension points for gRPC
-agents, a FastAPI dashboard, and live cross-device transport.
-
-## Current Status
-
-Implemented in this scaffold:
-
-- Rule-based task classifier.
-- Steering vector registry and compatibility checks.
-- Execution planner for `single`, `data_parallel`, and `layer_pipeline`.
-- Health-aware deterministic router.
-- Mock executor for single, shard, and pipeline-stage execution.
-- Artifact manifests with path and checksum validation.
-- Ported PersonaCare QAIRT/QNN and Genie runners.
-- Runtime-aware Genie, QNN graph, and QNN layer-pipeline executor adapters.
-- Opt-in Qualcomm AI Hub device-lab adapter and live steering/boundary proof
-  for remote Snapdragon 8 Elite and Snapdragon X Elite hardware.
-- Registry lifecycle for healthy, degraded, stale, and offline devices.
-- Stable task IDs, unique attempts, result fencing, cancellation state, and one
-  offline fallback retry.
-- Persistent bidirectional gRPC registration/control streams with health,
-  task assignment, results, reconnect, and graceful shutdown.
-- Synchronous gRPC single-device submission with disconnect fallback.
-- Concurrent remote data-parallel shard dispatch, per-shard retry, and stable
-  deterministic reduction.
-- Origin-bound private routing and first-success replica races with loser
-  cancellation and late-result fencing.
-- Remote layer-pipeline stage dispatch with checksummed tensor boundaries and
-  compatible-stage fallback.
-- Platform telemetry abstraction with live memory/CPU collection, measured
-  Brain RTT, active-task/model-warm reporting, and immediate network-change
-  refresh.
-- Persistent device simulation overlays for offline, thermal, battery, load,
-  memory, reachability, and RTT conditions.
-- Production-mode mTLS transport with verified client-certificate fingerprint
-  tracking, revocation, and certificate rotation on reconnect.
-- Buildable Android Agent APK with a foreground service, persistent generated
-  gRPC client, mock task/shard/pipeline executor, cancellation, reconnect
-  backoff, network callbacks, Keystore enrollment storage, live telemetry,
-  graceful shutdown, settings UI, and simulation controls.
-- FastAPI dashboard/API with health, simulations, task submission, steering,
-  route traces, progress, results, and live events.
-- Behavior-aware deployment scheduler: behavior profiles with explicit
-  steering realizations (runtime vector / baked profile / prompt profile /
-  none) and fallback policies, an artifact catalog with per-device deployment
-  states, feasibility filtering with projected-memory fits, an explainable
-  deterministic cost model, a provisioning state machine behind a mock AI Hub
-  adapter, and dashboard panels for candidates, rejections, and provisioning.
-  See [docs/BEHAVIOR_SCHEDULER.md](docs/BEHAVIOR_SCHEDULER.md).
-- Native Windows memory/battery telemetry probes for Snapdragon X Elite
-  laptops.
-- Deterministic demo fleet (X Elite laptop + Galaxy S25 Ultra) and scenario
-  runner covering warm preference, behavior locality, thermal reroute, memory
-  rejection, steering fallback, disconnect recovery, and provisioning. See
-  [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md).
-- Unit and integration tests for routing, runtimes, disconnects, and recovery.
-
-Not implemented yet:
-
-- On-target smoke testing of the DragonNest runtime adapters.
-- On-target validation of real QNN layer boundaries over the live transport.
-- Actual on-device QNN layer-pipeline execution on a Snapdragon target. The
-  Android Agent now has a direct QAIRT 2.48 Genie JNI bridge for verified S25
-  bundles, plus artifact validation and dynamic capability registration. A
-  matching licensed SDK, S25-targeted model bundle, and physical smoke test are
-  still required before it is a release claim.
-
-## Repository Layout
-
-```text
-DragonNest/
-|-- README.md
-|-- pyproject.toml
-|-- requirements.txt
-|-- proto/
-|   `-- dragonnest.proto
-|-- configs/
-|   |-- brain.yaml
-|   |-- dev-fabric.yaml
-|   |-- model-artifacts.yaml
-|   `-- steering-vectors.yaml
-|-- android-agent/                     # Android foreground-agent package
-|-- docs/
-|   |-- ARCHITECTURE.md
-|   |-- MIGRATION_PLAN.md
-|   |-- SNAPROUTER.md
-|   `-- SPEC.md
-|-- scripts/
-|   |-- check_artifacts.py
-|   |-- demo_mock.py
-|   |-- demo_recovery.py
-|   |-- demo_grpc.py
-|   `-- hash_artifact.py
-|-- src/
-|   `-- dragon_nest/
-|       |-- __init__.py
-|       |-- artifacts.py
-|       |-- classifier.py
-|       |-- dispatch.py
-|       |-- executors.py
-|       |-- models.py
-|       |-- planner.py
-|       |-- registry.py
-|       |-- router.py
-|       |-- steering.py
-|       |-- tasks.py
-|       |-- runtime/
-|       `-- transport/
-`-- tests/
+```
+                 ┌──────────────────────────────────────┐
+   User  ───────▶│  BRAIN  (laptop)                     │
+   web app       │  classify → plan → route → explain   │
+   :8080/        │  dashboard :8080  ·  gRPC :50051     │
+                 └───────┬──────────────────┬───────────┘
+                         │                  │
+                 ┌───────▼──────┐   ┌───────▼──────┐
+                 │ Agent pc-01  │   │ Agent phone  │   ← devices report live
+                 │ X Elite/HTP  │   │ S25 / APK    │     telemetry + capability
+                 └──────────────┘   └──────────────┘
 ```
 
-## Quick Start
+Three things make it more than a load balancer:
 
-```bash
-cd DragonNest
-.venv/bin/python -m pytest -q
-.venv/bin/python scripts/demo_mock.py
-.venv/bin/python scripts/demo_recovery.py
-.venv/bin/python scripts/demo_grpc.py
-.venv/bin/python scripts/demo_scenarios.py
-.venv/bin/python scripts/check_artifacts.py
+| Capability | What it means |
+|---|---|
+| **Health-aware routing** | Reroutes around thermal, battery, memory, and disconnect events mid-flight, with a one-retry fallback. |
+| **Behavior steering** | Answer style (concise / balanced / detailed) is a routed capability — runtime steering vector, baked profile, or prompt profile, with declared fallbacks. |
+| **Split execution** | One task can run on one device, shard across several, or run as a layer pipeline with hidden-state boundaries handed device to device. |
+
+---
+
+## Start here
+
+| I am… | Go to |
+|---|---|
+| Setting up the fabric, running the Brain, adding devices | [Admin guide](#admin-guide) |
+| Just want to connect my phone and ask questions | [User guide](#user-guide) |
+| Evaluating / demoing this in 5 minutes | [Zero-hardware demo](#2-verify-the-install-no-hardware-needed) |
+| Looking for design detail | [Documentation map](#documentation-map) |
+
+---
+
+## Dependencies
+
+**Required for everything in the Admin and User guides:** Python 3.10 or newer
+on Windows, macOS, or Linux. Nothing else. `pip install -e ".[dev]"` pulls in:
+
+| Package | Used for |
+|---|---|
+| `fastapi` + `uvicorn` | Dashboard and REST API |
+| `grpcio`, `protobuf>=7.35.1` | Brain ⇄ Agent control plane |
+| `httpx` | HTTP endpoint devices |
+| `pydantic`, `PyYAML` | Request models and config files |
+| `numpy` | Steering vectors and boundary tensors |
+| `qrcode` | Device enrollment codes |
+| `grpcio-tools`, `pytest` *(dev extra)* | Proto regeneration and tests |
+
+**Only for optional paths:**
+
+| Path | Needs |
+|---|---|
+| Android app | JDK 17, Android SDK 35, `adb` |
+| Real Snapdragon NPU execution | QAIRT 2.48 SDK with Genie, plus the model bundle referenced by `configs/model-artifacts.yaml` — setup in [docs/HARDWARE_CONTRACT.md](docs/HARDWARE_CONTRACT.md) |
+| X Elite local model tooling | `pip install -e ".[xelite]"` → `psutil`, `torch`, `transformers`, `sentencepiece` |
+| Qualcomm AI Hub validation | A **separate** venv from `requirements-ai-hub.txt` (`qai-hub` pins protobuf 6; DragonNest needs protobuf 7) |
+
+No Qualcomm SDK, no phone, and no special network hardware are needed for
+setup, tests, or the demo — without them, Agents execute with a mock executor
+behind the real control plane.
+
+---
+
+## Admin guide
+
+The admin runs the Brain, decides which devices are trusted, and watches the
+fabric. All admin commands run from the repository root.
+
+### 1. Install
+
+```powershell
+py -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-Create the environment and install for editable development first:
+<details>
+<summary>macOS / Linux equivalent</summary>
 
 ```bash
 python -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"
 ```
 
-On Windows PowerShell, use the venv executables under `.venv\Scripts`:
+Every command below works the same way — substitute `.venv/bin/python` for
+`.venv\Scripts\python.exe`, and forward slashes for backslashes.
+</details>
+
+### 2. Verify the install (no hardware needed)
 
 ```powershell
-py -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe scripts\demo_scenarios.py
 ```
 
-## gRPC Brain And Agents
+`demo_scenarios.py` boots an in-process Brain plus two simulated devices and
+walks the full feature set — warm-model preference, behavior locality, thermal
+reroute, memory rejection, steering fallback, disconnect recovery, and
+provisioning — printing each route explanation and PASS/FAIL. It must end with
+`All scenarios passed.` This is the fastest way to see what DragonNest does.
 
-With the virtual environment active, start the Brain and two Agents in separate
-terminals:
-
-```bash
-python scripts/run_brain.py
-python scripts/run_agent.py --device-id phone-01
-python scripts/run_agent.py --device-id pc-01
-python scripts/submit_task.py "Compare both options and recommend one."
-```
-
-On Windows PowerShell, use `.venv\Scripts\python.exe` in each terminal instead:
+### 3. Start the Brain
 
 ```powershell
 .venv\Scripts\python.exe scripts\run_brain.py
-.venv\Scripts\python.exe scripts\run_agent.py --device-id phone-01
+```
+
+That single process serves everything:
+
+| URL | Who | What |
+|---|---|---|
+| `http://<host>:8080/` | User | The ask-a-question app |
+| `http://<host>:8080/admin` | Admin | Device registry, live requests, route traces |
+| `http://<host>:8080/regimes` | Admin | What each device can actually achieve, and why |
+| `<host>:50051` | Devices | gRPC control plane for Agents |
+
+It binds `0.0.0.0` so phones on the same Wi‑Fi can reach it. Use
+`--http-host 127.0.0.1` to restrict it to this machine. State (devices,
+profiles, endpoints) persists in `local/dragonnest-state.sqlite3` and is
+restored on restart.
+
+Useful flags: `--http-port`, `--address` (gRPC), `--enrollment-token`,
+`--default-task-timeout-ms`, `--state-db`. Run with `--help` for the full list.
+
+### 4. Add devices
+
+Pick whichever applies. A device becomes routable only after it registers and
+reports a capability.
+
+**a. A local software agent** — the quickest way to have something to route to:
+
+```powershell
 .venv\Scripts\python.exe scripts\run_agent.py --device-id pc-01
+.venv\Scripts\python.exe scripts\run_agent.py --device-id phone-01
+```
+
+Run each in its own terminal. They connect to `127.0.0.1:50051` with the
+default `dev-token` and execute with a mock executor — real control plane,
+simulated compute.
+
+**b. A phone running the DragonNest Android app** — see
+[Connect your phone](#2-connect-your-phone) in the user guide. As admin you can
+also drive the same flow from **Add device** on `/admin`.
+
+**c. A trusted HTTP inference endpoint** — for a box that speaks HTTP instead
+of gRPC:
+
+```powershell
+$env:DRAGONNEST_HTTP_ENDPOINT_ADMIN_TOKEN = "replace-me"
+$env:EDGE_API_TOKEN = "endpoint-bearer-token"
+.venv\Scripts\python.exe scripts\run_brain.py --http-endpoint-allow-host edge-box.local
+```
+
+Then register it under **Advanced → Add HTTP Endpoint Device** on `/admin`.
+The credential field takes an *environment variable name* (`EDGE_API_TOKEN`),
+never a secret value — secrets are never written to SQLite. Hostnames must be
+listed with `--http-endpoint-allow-host`; literal IPs must fall inside a
+`--http-endpoint-allow-cidr`. The endpoint must implement `GET /health`,
+`GET /info`, `POST /execute`, `POST /execute_shard`,
+`POST /execute_pipeline_stage`, and `POST /cancel`. `/info` metadata is
+validated before it can become a routing capability.
+
+### 5. Drive the dashboard
+
+`/admin` is the fabric console. Top level shows the three things you watch
+during operation:
+
+- **Device Registry** — every device, live telemetry, and health state
+  (healthy / degraded / stale / offline). The **Simulate** control forces
+  offline, thermal, battery, load, memory, reachability, or RTT conditions on
+  any device so you can prove reroute behavior on demand.
+- **Live Requests** — every task from the user app and from admin, streaming.
+- **Selected Request** — pick any request to see **Why Brain chose this route**
+  as an ordered trace, plus the result and its timings.
+
+Everything else is folded under **Advanced** so it stays out of the way:
+manual task submission, behavior routing candidates and rejections, steering
+vectors, provisioning jobs, and HTTP endpoints.
+
+`/regimes` answers a different question — not "where did this go?" but "what is
+this fabric capable of?" It maps the achievable tradeoffs per task class, per
+model, and across cross-device pipelines.
+
+### 6. Submit tasks from the CLI (optional)
+
+```powershell
 .venv\Scripts\python.exe scripts\submit_task.py "Compare both options and recommend one."
 ```
 
-Every other `python scripts\...` example below the same substitution applies:
-replace `python` with `.venv\Scripts\python.exe` and, for multi-line commands,
-replace the `\` line-continuation with PowerShell's backtick `` ` ``.
+```powershell
+# Keep it on the originating device — never leaves the phone
+.venv\Scripts\python.exe scripts\submit_task.py `
+  --preferred-mode private --origin-device-id phone-01 "Rewrite this private note."
 
-The dashboard listens on `0.0.0.0:8080` by default (reachable at
-`http://127.0.0.1:8080` locally, and at the machine's LAN/hotspot address for
-other devices — pass `--http-host 127.0.0.1` to restrict it to loopback only).
-QR enrollment auto-detects the Brain's LAN-reachable address via
-`/api/server-info` even when the dashboard itself is opened over `127.0.0.1`,
-so scanning the code works from a phone on the same Wi-Fi network or a laptop
-Mobile Hotspot without needing a USB connection.
+# Race the same shard on two devices, take the first success
+.venv\Scripts\python.exe scripts\submit_task.py `
+  --execution-mode data_parallel --reducer first_success "Answer this quickly."
 
-The Agent reconnects with exponential backoff. A stream loss fails active task,
-shard, or pipeline-stage attempts, and the Brain retries each once on the next
-eligible compatible device. Run `python scripts/demo_grpc.py` for a
-self-contained forced-disconnect, parallel-fanout, and layer-pipeline demo.
-
-Private routing requires the originating device explicitly:
-
-```bash
-python scripts/submit_task.py \
-  --preferred-mode private \
-  --origin-device-id phone-01 \
-  "Rewrite this private note."
-```
-
-Run the same shard on two devices and accept the first successful result:
-
-```bash
-python scripts/submit_task.py \
-  --execution-mode data_parallel \
-  --reducer first_success \
-  "Answer this low-latency request."
-```
-
-Agent-side simulation flags feed the same telemetry contract as real platform
-measurements:
-
-```bash
-python scripts/run_agent.py --device-id phone-01 \
+# Simulate a hot, loaded, high-latency phone
+.venv\Scripts\python.exe scripts\run_agent.py --device-id phone-01 `
   --simulate-thermal 0.95 --simulate-load 0.90 --simulate-rtt 180
 ```
 
+### 7. Production transport (optional)
+
 Production mode requires mutual TLS. The Brain verifies that each registration
-fingerprint matches the certificate authenticated by gRPC:
+fingerprint matches the certificate gRPC authenticated:
 
-```bash
-python scripts/run_brain.py --production \
-  --tls-certificate certs/brain.crt --tls-key certs/brain.key \
-  --tls-client-ca certs/device-ca.crt
-python scripts/run_agent.py --device-id phone-01 \
-  --tls-ca certs/device-ca.crt \
-  --tls-certificate certs/phone-01.crt --tls-key certs/phone-01.key
+```powershell
+.venv\Scripts\python.exe scripts\run_brain.py --production `
+  --tls-certificate certs\brain.crt --tls-key certs\brain.key `
+  --tls-client-ca certs\device-ca.crt
+.venv\Scripts\python.exe scripts\run_agent.py --device-id phone-01 `
+  --tls-ca certs\device-ca.crt `
+  --tls-certificate certs\phone-01.crt --tls-key certs\phone-01.key
 ```
 
-Regenerate checked-in protobuf bindings after editing the contract:
+QR enrollment is a **development-mode** onboarding path; production enrollment
+must issue an mTLS client certificate rather than a token credential.
 
-```bash
-scripts/generate_proto.sh
-```
+---
 
-## HTTP Endpoint Devices
+## User guide
 
-The Brain can also call trusted inference endpoints over HTTP. This control
-plane is disabled by default. Enable it with an admin token and explicit
-network policy:
+As a user you never touch a config file. You install the app, connect your
+phone once, say what you care about, and ask.
 
-```bash
-export DRAGONNEST_HTTP_ENDPOINT_ADMIN_TOKEN="replace-me"
-export EDGE_API_TOKEN="endpoint-bearer-token"
-python scripts/run_brain.py \
-  --enable-http-endpoints \
-  --http-endpoint-allow-host edge-box.local
-```
+### 1. Install the Android app
 
-Use the admin dashboard to register the endpoint. Its credential field is an
-environment variable name such as `EDGE_API_TOKEN`; secret values are never
-stored in SQLite. Literal IP endpoint URLs must fall within a configured
-`--http-endpoint-allow-cidr`. DNS hostnames must be explicitly listed with
-`--http-endpoint-allow-host`.
-
-Endpoint configuration persists in the Brain state database and is restored
-on restart. Profile context is denied by default and must be enabled for each
-trusted endpoint. The endpoint implements this JSON API:
-
-```text
-GET  /health
-GET  /info
-POST /execute
-POST /execute_shard
-POST /execute_pipeline_stage
-POST /cancel
-```
-
-The Brain sends the same task, steering, timeout, shard, and boundary fields
-used by the gRPC transport. `/info` metadata is validated before it becomes a
-routing capability. Registration, discovery, and removal require the endpoint
-admin bearer token.
-
-## Android APK
-
-`android-agent` is the in-repository **PersonaCare Android client package**.
-The PersonaCare Compose UI and the DragonNest foreground Agent/gRPC runtime are
-two layers of the same APK; it is not a separate competing client. The older
-adjacent PersonaCare repository is source/provenance for pipelines and runtime
-experiments, while this package is the integrated DragonNest Android client.
-
-With JDK 17 and Android SDK 35 available, build and test the Android Agent:
+With JDK 17 and Android SDK 35 installed:
 
 ```bash
 scripts/build_android.sh
-```
-
-All build caches default to `/tmp/dragonnest-toolchain`. The APK is produced at
-`android-agent/app/build/outputs/apk/debug/app-debug.apk`. Install it with:
-
-```bash
 adb install -r android-agent/app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.dragonnest.agent/.AgentSettingsActivity
 ```
 
-Use `10.0.2.2:50051` from the Android emulator or the Brain host's LAN address
-from a physical device. See [android-agent/README.md](android-agent/README.md)
-for configuration and verification details.
+One APK holds both the Compose care UI and the long-lived Device Agent
+(foreground service, gRPC stream, telemetry, reconnect backoff). Point it at
+`10.0.2.2:50051` from the emulator, or the Brain host's LAN address from a
+physical phone. Details: [android-agent/README.md](android-agent/README.md).
 
-For QR enrollment, open the dashboard, select **Add device**, enter the Brain
-host's LAN address and gRPC port, and generate the code. In the APK, select
-**Scan enrollment QR** and confirm the address. The five-minute bootstrap
-credential is bound to the first device ID that registers; the Brain returns a
-device-specific reconnect credential which the APK replaces in Android
-Keystore. Unused sessions can be cancelled and expire automatically. This is a
-development-mode onboarding path; production QR enrollment must issue an mTLS
-client certificate instead of a token credential.
+### 2. Connect your phone
 
-The Add Device form also creates a durable personal profile containing the
-person and device names, routing preference, and optional steering
-vector/alpha/position defaults. The claimed device is associated with that
-profile in `local/dragonnest-state.sqlite3`. Tasks submitted with that device as
-their origin inherit the saved preference and steering policy unless profile
-steering is disabled or an explicit steering request is supplied.
+1. Open `http://<brain-host>:8080/` in a browser (your laptop, or the phone
+   itself — it installs as a PWA via the **Install** button).
+2. Select **Show QR code**. If the Brain is reachable on more than one network,
+   choose the one your phone is on.
+3. On the phone, open the DragonNest Android app and select
+   **Scan enrollment QR**, then confirm the address.
+4. The card flips to **Your DragonNest is ready**. You're paired.
 
-At registration, Android Agents also report automatic static inventory: device
-manufacturer/model, Android/API version, SoC where Android exposes it, CPU
-ABIs/core count, storage, and QNN/NPU probe status. Live memory, thermal, and
-load remain heartbeat telemetry. For normal tasks, the Brain now prefers an
-eligible origin device before routing to a more capable remote fallback.
+The QR carries a bootstrap credential that expires in five minutes and binds to
+the **first** device that registers with it. The Brain immediately swaps it for
+a device-specific reconnect credential, which the app stores in Android
+Keystore. Unused codes can be cancelled and expire on their own.
 
-## Product Threads
+> No phone handy? Copy the credential from the QR payload and claim it with a
+> software agent instead: `run_agent.py --device-id phone-01 --enrollment-token <credential>`.
 
-DragonNest keeps three product threads under one roof:
+### 3. Set your preferences
 
-1. **Multimodal care demo**
-   - OCR -> structured extraction -> drafted email -> TTS/audio.
-   - Based on the practical `PersonaCare` pipeline.
+Under **Your preferences**, three choices shape every request:
 
-2. **Trusted Snapdragon fabric**
-   - Brain + Device Agents.
-   - Health-aware routing and reroute.
-   - Single-device, data-parallel, and layer-pipeline execution.
+| Field | Options | Effect |
+|---|---|---|
+| Name | free text | Names the durable personal profile |
+| What matters most? | Balanced · Fast answers · Keep it on this device · Best quality | Routing preference — "keep it on this device" pins execution to your phone |
+| Answer style | Balanced · Concise · Detailed | Behavior steering; the Brain picks a runtime vector, a baked profile, or a prompt profile depending on what the chosen device supports |
 
-3. **Behavior control**
-   - Vector steering metadata and policy.
-   - Runtime steering where supported.
-   - Compiled steering variants where runtime steering is unavailable.
+Saved preferences live in the Brain's profile store and apply to every task
+that originates from your device — no need to restate them.
 
-## Source Repo Relationship
+### 4. Ask
 
-This repo should not blindly vendor the two source repos. Use them as follows:
+Type into **Ask DragonNest** and send. The **Response** card shows the state
+and then the answer. Behind the scenes the Brain classifies the request, checks
+which devices are healthy and warm, prefers your own device when it's eligible,
+and falls back to a more capable one when it isn't. If a device drops
+mid-request, the task is retried once on the next compatible device — you just
+see a slightly slower answer.
 
-- Keep the ported `PersonaCare` QNN and Genie runners aligned with fixes proven
-  against real hardware.
-- Port tested steering/split-compute modules from `PersonaCare-Steering-Research`
-  behind DragonNest interfaces.
-- Keep generated artifacts, downloaded model binaries, and hardware-specific
-  cache files out of git.
+Curious where an answer actually ran? Ask your admin to open the same request
+in `/admin` → **Selected Request** → **Why Brain chose this route**.
 
-## Hardware Runtime Configuration
+---
 
-The evidence-classified device/runtime audit, benchmark record, and steering
-provenance are in [docs/HARDWARE_AUDIT.md](docs/HARDWARE_AUDIT.md),
-[docs/HARDWARE_BENCHMARKS.md](docs/HARDWARE_BENCHMARKS.md), and
-[docs/STEERING_VECTOR_PROVENANCE.md](docs/STEERING_VECTOR_PROVENANCE.md).
-`configs/hardware-fabric.yaml` is the real-hardware inventory; the mock-focused
-`configs/dev-fabric.yaml` remains unchanged for development and tests.
+## Reference
 
-The manifest at `configs/model-artifacts.yaml` describes the validated
-PersonaCare Genie bundle and split-compute QNN artifacts. Set the referenced
-paths and checksums before starting an Agent:
+### Commands
 
-```powershell
-$env:GENIE_DIR = "C:\path\to\qwen3_4b-genie-w4a16-qualcomm_snapdragon_x_elite"
-$env:QWEN3_4B_GENIE_SHA256_TREE = "sha256-tree:<bundle-tree-sha256>"
-$env:QWEN3_SPLIT_PART_A_QNN = "C:\path\to\part_a.bin"
-$env:QWEN3_SPLIT_PART_A_SHA256 = "sha256:<file-sha256>"
-$env:QWEN3_SPLIT_PART_B_QNN = "C:\path\to\part_b.bin"
-$env:QWEN3_SPLIT_PART_B_SHA256 = "sha256:<file-sha256>"
-python scripts/hash_artifact.py $env:GENIE_DIR
-python scripts/hash_artifact.py $env:QWEN3_SPLIT_PART_A_QNN
-python scripts/hash_artifact.py $env:QWEN3_SPLIT_PART_B_QNN
-python scripts/check_artifacts.py
+| Command | Purpose |
+|---|---|
+| `pytest -q` | Unit + integration tests |
+| `scripts/demo_scenarios.py` | Full 7-scenario fabric demo, no hardware |
+| `scripts/demo_mock.py` | Minimal routing walkthrough |
+| `scripts/demo_recovery.py` | Failure and retry behavior |
+| `scripts/demo_grpc.py` | Forced disconnect, parallel fanout, layer pipeline |
+| `scripts/run_brain.py` | Start the Brain + dashboard |
+| `scripts/run_agent.py` | Start a Device Agent |
+| `scripts/submit_task.py` | Submit a task from the CLI |
+| `scripts/check_artifacts.py` | Validate artifact paths and checksums |
+| `scripts/hash_artifact.py` | Compute an artifact hash for the manifest |
+| `scripts/probe_hardware.py` | Physical execution proof on real hardware |
+| `scripts/build_android.sh` | Build the Android APK |
+| `scripts/generate_proto.sh` | Regenerate protobuf bindings after editing `proto/` |
+
+### Configuration
+
+| File | Role |
+|---|---|
+| `configs/brain.yaml` | Brain defaults |
+| `configs/dev-fabric.yaml` | Mock device inventory for dev and tests |
+| `configs/hardware-fabric.yaml` | Real Snapdragon device inventory |
+| `configs/demo-fleet.yaml` | Deterministic X Elite + S25 demo fleet |
+| `configs/model-artifacts.yaml` | Artifact paths and checksums |
+| `configs/artifact-catalog.yaml` | Per-device deployment state |
+| `configs/behavior-profiles.yaml` | Behavior profiles and steering fallback policy |
+| `configs/steering-vectors.yaml` | Steering vector registry |
+
+### Layout
+
+```text
+DragonNest/
+├── proto/dragonnest.proto      # device ⇄ Brain contract
+├── configs/                    # fabric, artifact, behavior, steering config
+├── scripts/                    # entry points, demos, hardware tooling
+├── src/dragon_nest/
+│   ├── classifier · planner · router · dispatch   # the routing core
+│   ├── registry · telemetry · regimes             # device state and capability
+│   ├── behavior · steering · scheduler            # behavior-aware deployment
+│   ├── executors · runtime/                       # mock + QNN/Genie execution
+│   ├── transport/                                 # gRPC brain/agent, HTTP devices
+│   ├── dashboard.py · web/                        # FastAPI + user/admin/regimes UI
+│   └── enrollment · profiles · provisioning
+├── android-agent/              # Android app: care UI + Device Agent, one APK
+├── AskQuery/ · Image2Audio/    # on-device OCR / TTS / ASR pipelines
+├── docs/                       # architecture, runbooks, hardware evidence
+└── tests/
 ```
 
-On physical hardware, `scripts/probe_hardware.py` wraps the existing
-`ExecutionPlan`/executor path and writes a secret-free JSON proof. It reports an
-artifact as warm only when a persistent runtime context is actually retained;
-the current Genie CLI is correctly reported as installed but cold.
+### Documentation map
 
-An Agent must advertise only artifacts reported as `READY`. The checked-in
-manifest does not imply that the external model binaries are present.
+| Doc | Read it for |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Component design and data flow |
+| [docs/SPEC.md](docs/SPEC.md) | Complete behavioral specification |
+| [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) | Scripted physical two-device demo |
+| [docs/SNAPROUTER.md](docs/SNAPROUTER.md) | Routing and scheduling internals |
+| [docs/BEHAVIOR_SCHEDULER.md](docs/BEHAVIOR_SCHEDULER.md) | Behavior profiles, cost model, provisioning |
+| [docs/HARDWARE_CONTRACT.md](docs/HARDWARE_CONTRACT.md) | What a device must implement and prove for real QNN/Genie execution |
+| [docs/HARDWARE_AUDIT.md](docs/HARDWARE_AUDIT.md) · [HARDWARE_BENCHMARKS.md](docs/HARDWARE_BENCHMARKS.md) | Evidence-classified device audit and measurements |
+| [docs/STEERING_VECTOR_PROVENANCE.md](docs/STEERING_VECTOR_PROVENANCE.md) | Where each steering vector came from |
+| [android-agent/README.md](android-agent/README.md) | APK build, QNN/Genie runtime builds |
 
-### Local physical proof (`probe_hardware.py`)
+### Troubleshooting
 
-Run this once `GENIE_DIR`, `QWEN3_4B_GENIE_SHA256_TREE`, and
-`scripts\check_artifacts.py` all pass, to exercise
-`ExecutionPlan -> HardwareRuntimeAdapter -> GenieExecutor -> local Genie/HTP`
-end to end and capture a secret-free proof record:
-
-```powershell
-.venv\Scripts\python.exe scripts\probe_hardware.py `
-  --device-id pc-01 `
-  --model-id qwen3-4b-genie `
-  --compatibility-key windows-arm64-x1e-v73-qairt-2.48 `
-  --runtime-name genie `
-  --runtime-version QAIRT-2.48 `
-  --accelerator-available `
-  --execute `
-  --output "$env:TEMP\dragonnest-xelite-proof.json"
-```
-
-The proof JSON must show: ARM64 host architecture, the exact compatibility
-key, matching runtime name/version, accelerator availability, passed artifact
-validation, successful execution, a nonempty output and output SHA-256, and
-no mock executor in the execution path. Never commit the proof file itself —
-keep it under `%TEMP%` and commit only its SHA-256
-(`(Get-FileHash -Algorithm SHA256 "$env:TEMP\dragonnest-xelite-proof.json").Hash`)
-where a proof record is needed.
-
-### X Elite coordination mailbox
-
-`coordination/xelite/STATUS.json` is the sanitized, file-mediated handoff for
-physical Snapdragon X Elite proof runs — see
-[coordination/xelite/README.md](coordination/xelite/README.md) and
-[coordination/xelite/AGENT_PROMPT.md](coordination/xelite/AGENT_PROMPT.md).
-It records host identity, runtime/artifact validation state, execution
-results, latencies, and proof/output hashes only — never tokens, credentials,
-SDK binaries, model bundles, or absolute bundle paths.
-
-## Qualcomm AI Hub Validation
-
-AI Hub can validate QNN compilation, inference, profiling, steering numerics,
-and sequential split-boundary compatibility on remote Snapdragon hardware. It
-does not emulate an Android Agent, provide live device-to-device transport, or
-replace APK JNI integration with the QNN SDK.
-
-Use a dedicated environment because `qai-hub==0.53.0` requires protobuf 6 while
-the DragonNest gRPC environment uses protobuf 7. Keep its home and cache outside
-the repository:
-
-```bash
-python3 -m venv /tmp/dragonnest-aihub-venv
-HOME=/tmp/dragonnest-aihub-home \
-  PIP_CACHE_DIR=/tmp/dragonnest-aihub-cache \
-  /tmp/dragonnest-aihub-venv/bin/pip install -r requirements-ai-hub.txt
-HOME=/tmp/dragonnest-aihub-home \
-  /tmp/dragonnest-aihub-venv/bin/qai-hub configure --api_token '<token>'
-```
-
-The validation command is dry-run by default. `--submit` explicitly consumes
-AI Hub quota. It compiles a steering stage for a phone-class target, feeds its
-real output boundary into a second stage on a PC-class target, profiles both,
-and writes a secret-free proof record under `/tmp`:
-
-```bash
-HOME=/tmp/dragonnest-aihub-home \
-  /tmp/dragonnest-aihub-venv/bin/python scripts/validate_ai_hub.py
-HOME=/tmp/dragonnest-aihub-home \
-  /tmp/dragonnest-aihub-venv/bin/python scripts/validate_ai_hub.py --submit
-```
-
-The first submitted run prints linked model IDs. Pass them back through
-`--stage-0-model-id` and `--stage-1-model-id` to rerun inference/profile checks
-without recompiling.
-
-See [docs/MIGRATION_PLAN.md](docs/MIGRATION_PLAN.md) for the staged merge plan.
-See [docs/SPEC.md](docs/SPEC.md) for the complete DragonNest coding-agent
-specification.
+| Symptom | Fix |
+|---|---|
+| `ModuleNotFoundError: uvicorn` | You ran system `python`. Use `.venv\Scripts\python.exe`. |
+| Dashboard loads, no devices listed | No Agent is running, or its `--brain` address / `--enrollment-token` doesn't match the Brain's. |
+| Phone can't reach the Brain | Brain must bind `0.0.0.0` (the default), phone must be on the same network, and the host firewall must allow ports 8080 and 50051. |
+| QR scan fails or expires | Sessions last five minutes and bind to the first device that registers. Cancel and generate a new one. |
+| Task rejected, no eligible device | Check **Advanced → Behavior Routing** on `/admin` for the rejection reason (memory fit, capability, compatibility key). |
+| Agent starts but advertises nothing | Its artifacts failed path/checksum validation. Run `scripts/check_artifacts.py`. |
+| Stale devices after a restart | Delete `local/dragonnest-state.sqlite3` to reset the fabric to empty. |
