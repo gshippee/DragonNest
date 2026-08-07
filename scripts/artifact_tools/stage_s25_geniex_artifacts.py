@@ -25,6 +25,25 @@ REQUIRED_FILES = {
     "tokenizer.json",
 }
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9.-]+$")
+RUNTIME_VECTOR_MODE = "runtime_vector"
+# Sidecar that makes a bundle self-declare its auxiliary inputs to GenieX, and
+# the validated layer-7 unit vector the aux path binds. Both must be present
+# before an artifact may advertise runtime_vector.
+AUX_SIDECAR = "aux_inputs.json"
+VECTOR_FILE = "steering_vector_layer7_unit.bin"
+# Runtime name of the forked GenieX closure. Kept distinct from "genie" so the
+# stock runtime that serves the accepted Base path is never re-pointed.
+STEERING_RUNTIME = "genie_aux"
+STEERING_RUNTIME_VERSION = "GenieX-fork-aux-0.3.5 / QAIRT-2.45"
+# The complete S25 Local catalog. --model-id provisions a subset; the default
+# is this exact set, so a silently shrinking inventory fails instead of
+# quietly narrowing what the device is expected to advertise.
+FULL_S25_CATALOG = {
+    "qwen3-0.6b-s25-base",
+    "qwen3-0.6b-s25-concise",
+    "qwen3-0.6b-s25-detailed",
+    "qwen3-0.6b-s25-runtime-steerable",
+}
 EXPECTED_GRAPHS = {
     "prompt_ar128_cl512_1_of_2",
     "token_ar1_cl512_1_of_2",
@@ -44,6 +63,18 @@ def parse_args() -> argparse.Namespace:
         "--verify-only",
         action="store_true",
         help="verify the external cache and inventory without connecting to a phone",
+    )
+    parser.add_argument(
+        "--reuse-verified",
+        action="store_true",
+        help=(
+            "leave an app-private bundle in place when every one of its files "
+            "already hashes exactly as the inventory expects, instead of "
+            "re-pushing and replacing it. The manifest still advertises it. "
+            "Use when adding a model to a device that already serves a "
+            "physically accepted one: an already-correct bundle is never "
+            "deleted, so a transfer failure cannot take it down."
+        ),
     )
     parser.add_argument(
         "--model-id",
@@ -82,10 +113,13 @@ def digest_file(path: Path) -> str:
 def digest_tree(root: Path) -> tuple[str, dict[str, str]]:
     digest = hashlib.sha256()
     file_hashes: dict[str, str] = {}
-    # Release archives may sit beside their extracted contents. They are
-    # provenance, not runtime inputs, and must not consume app-private storage.
+    # Release archives and provenance notes may sit beside their extracted
+    # contents. They are provenance, not runtime inputs, and must not consume
+    # app-private storage.
     for path in sorted(
-        item for item in root.rglob("*") if item.is_file() and item.suffix.lower() != ".zip"
+        item
+        for item in root.rglob("*")
+        if item.is_file() and item.suffix.lower() not in {".zip", ".md"}
     ):
         relative = path.relative_to(root).as_posix()
         file_hashes[relative] = digest_file(path)
@@ -103,7 +137,14 @@ def discover_bundle(root: Path) -> Path:
     matches: list[Path] = []
     for candidate in candidates:
         names = {item.name for item in candidate.iterdir() if item.is_file()}
-        bins = sorted(name for name in names if name.endswith(".bin"))
+        # A runtime-steerable bundle carries the steering vector as a sibling
+        # .bin. It is an input tensor, not a context shard, so it must not
+        # count toward the exactly-two-shard requirement below.
+        bins = sorted(
+            name
+            for name in names
+            if name.endswith(".bin") and name != VECTOR_FILE
+        )
         if REQUIRED_FILES.issubset(names) and bins == ["part1_of_2.bin", "part2_of_2.bin"]:
             matches.append(candidate)
     if len(matches) != 1:
@@ -136,9 +177,14 @@ def select_records(
     the full catalog wishes were installed.
     """
     if model_ids is None:
-        if len(records) != 3:
+        present = {record["model_id"] for record in records}
+        if present != FULL_S25_CATALOG:
+            missing = sorted(FULL_S25_CATALOG - present)
+            unexpected = sorted(present - FULL_S25_CATALOG)
             raise RuntimeError(
-                "S25 GenieX inventory must contain exactly Base, Concise, and Detailed"
+                "S25 GenieX inventory must contain exactly "
+                f"{sorted(FULL_S25_CATALOG)}; missing={missing} "
+                f"unexpected={unexpected}"
             )
         return records
     requested = list(dict.fromkeys(model_ids))
@@ -162,16 +208,61 @@ def assert_safe(record: dict[str, Any]) -> None:
         raise RuntimeError(
             f"{record['model_id']} does not declare the complete prompt/decode graph set"
         )
+    if record.get("steering_mode") == RUNTIME_VECTOR_MODE:
+        assert_runtime_steerable(record)
+    elif record.get("steering_vector_ids") or record.get("supported_steering_layers"):
+        raise RuntimeError(
+            f"{record['model_id']} advertises steering vectors/layers without "
+            f"steering_mode {RUNTIME_VECTOR_MODE}"
+        )
+
+
+def assert_runtime_steerable(record: dict[str, Any]) -> None:
+    """A runtime-steerable record must ship everything the aux path needs.
+
+    Advertising ``runtime_vector`` without the compiled aux inputs or the
+    validated vector would let the scheduler route a steered request to a
+    bundle that silently answers unsteered -- the one failure mode that looks
+    exactly like success.
+    """
+    files = record.get("files", {})
+    for required in (AUX_SIDECAR, VECTOR_FILE):
+        if required not in files:
+            raise RuntimeError(
+                f"{record['model_id']} declares {RUNTIME_VECTOR_MODE} but its "
+                f"inventory has no {required}"
+            )
+    if not record.get("steering_vector_ids"):
+        raise RuntimeError(
+            f"{record['model_id']} declares {RUNTIME_VECTOR_MODE} without a vector id"
+        )
+    if not record.get("supported_steering_layers"):
+        raise RuntimeError(
+            f"{record['model_id']} declares {RUNTIME_VECTOR_MODE} without an "
+            "injection layer"
+        )
+    if record.get("behavior_profile_id"):
+        raise RuntimeError(
+            f"{record['model_id']} is a runtime-steerable base and must not be "
+            "bound to a single behavior profile; alpha selects the behavior"
+        )
 
 
 def manifest_entry(record: dict[str, Any], tree_hash: str) -> dict[str, Any]:
     profile = str(record.get("behavior_profile_id", ""))
-    mode = "baked_profile" if profile else "none"
+    runtime_steerable = record.get("steering_mode") == RUNTIME_VECTOR_MODE
+    if runtime_steerable:
+        mode = RUNTIME_VECTOR_MODE
+    else:
+        mode = "baked_profile" if profile else "none"
     return {
         "model_id": record["model_id"],
         "artifact_id": record["artifact_id"],
         "model_version": record["model_version"],
-        "runtime": "genie",
+        # Only the runtime-steerable bundle is served by the forked closure.
+        # Base/Concise/Detailed stay on the stock GenieX runtime they were
+        # physically accepted on.
+        "runtime": STEERING_RUNTIME if runtime_steerable else "genie",
         "artifact_path": record["model_id"],
         "checksum": f"sha256-tree:{tree_hash}",
         "tokenizer_id": record["tokenizer_id"],
@@ -179,21 +270,42 @@ def manifest_entry(record: dict[str, Any], tree_hash: str) -> dict[str, Any]:
         "supported_accelerators": ["htp"],
         "min_memory_mb": 2048,
         "max_context_tokens": 512,
-        "supports_steering": False,
+        "supports_steering": runtime_steerable,
         "supports_data_parallel": True,
         "supports_layer_pipeline": False,
         "model_family": "qwen3",
         "role": "small_chat",
         "task_classes": ["chat_qa", "summarization", "translation_rewrite"],
         "quality_score": 0.70,
-        "steering_vector_ids": [],
-        "supported_steering_layers": [],
-        "runtime_version": "GenieX-0.3.5 / QAIRT-2.45",
+        "steering_vector_ids": list(record.get("steering_vector_ids", [])),
+        "supported_steering_layers": list(record.get("supported_steering_layers", [])),
+        "runtime_version": (
+            STEERING_RUNTIME_VERSION if runtime_steerable else "GenieX-0.3.5 / QAIRT-2.45"
+        ),
         "steering_mode": mode,
         "behavior_profile_id": profile,
         "target_compatibility_class": "android-arm64-v8a-sm8750-v79-qairt-2.45-geniex-0.3.5",
         "runtime_options": {"backend": "htp", "max_new_tokens": 96},
     }
+
+
+def already_installed(
+    args: argparse.Namespace, model_id: str, file_hashes: dict[str, str]
+) -> bool:
+    """True when every app-private file of ``model_id`` already matches.
+
+    Any missing file, mismatched hash, or unreadable path answers False, so a
+    partially-written bundle is always replaced rather than trusted.
+    """
+    target = f"{MODEL_ROOT}/{model_id}"
+    for relative, expected in file_hashes.items():
+        try:
+            actual = phone_sha256(args, f"{target}/{relative}", app_private=True)
+        except (subprocess.CalledProcessError, IndexError):
+            return False
+        if actual != expected:
+            return False
+    return True
 
 
 def phone_sha256(args: argparse.Namespace, path: str, *, app_private: bool) -> str:
@@ -233,11 +345,20 @@ def main() -> None:
     if not args.serial:
         raise RuntimeError("--serial is required unless --verify-only is used")
 
+    reused: set[str] = set()
+    if args.reuse_verified:
+        for record, _, _, file_hashes in prepared:
+            if already_installed(args, record["model_id"], file_hashes):
+                reused.add(record["model_id"])
+                print(f"  reusing verified app-private bundle: {record['model_id']}")
+
     remote_root = f"/data/local/tmp/dragonnest-geniex-{uuid.uuid4().hex}"
     shell(args, f"mkdir -p '{remote_root}'")
     try:
         # Upload and verify the shell-owned temporary copy before changing app-private state.
         for record, bundle, _, file_hashes in prepared:
+            if record["model_id"] in reused:
+                continue
             remote = f"{remote_root}/{record['model_id']}"
             shell(args, f"mkdir -p '{remote}'")
             for relative in file_hashes:
@@ -262,6 +383,8 @@ def main() -> None:
         run_as(args, f"mkdir -p '{MODEL_ROOT}'")
         for record, _, _, file_hashes in prepared:
             model_id = record["model_id"]
+            if model_id in reused:
+                continue
             incoming = f"{MODEL_ROOT}/.{model_id}.incoming"
             final = f"{MODEL_ROOT}/{model_id}"
             run_as(

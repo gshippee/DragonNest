@@ -2,6 +2,7 @@ package com.dragonnest.agent
 
 import android.app.Activity
 import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
@@ -32,6 +33,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
@@ -74,6 +77,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -159,6 +163,7 @@ private fun ConnectScreen(viewModel: PersonaCareViewModel, onContinue: () -> Uni
     var port by rememberSaveable { mutableStateOf(viewModel.currentPort()) }
     var code by rememberSaveable { mutableStateOf("") }
     var useTls by rememberSaveable { mutableStateOf(viewModel.currentTls()) }
+    var dashboardPort by rememberSaveable { mutableStateOf(viewModel.currentDashboardPort()) }
     var error by rememberSaveable { mutableStateOf("") }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -203,6 +208,15 @@ private fun ConnectScreen(viewModel: PersonaCareViewModel, onContinue: () -> Uni
             singleLine = true,
         )
         OutlinedTextField(
+            value = dashboardPort,
+            onValueChange = { dashboardPort = it.filter(Char::isDigit); error = "" },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Dashboard port") },
+            supportingText = { Text("Used to read replies aloud. Usually 8080.") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+        )
+        OutlinedTextField(
             value = code,
             onValueChange = { code = it; error = "" },
             modifier = Modifier.fillMaxWidth(),
@@ -234,7 +248,7 @@ private fun ConnectScreen(viewModel: PersonaCareViewModel, onContinue: () -> Uni
         }
         Button(
             onClick = {
-                runCatching { viewModel.saveConnection(host, port, code, useTls) }
+                runCatching { viewModel.saveConnection(host, port, code, useTls, dashboardPort) }
                     .onSuccess { onContinue() }
                     .onFailure { error = it.message ?: "Could not save this connection" }
             },
@@ -268,6 +282,9 @@ private fun ProfileScreen(
     var about by rememberSaveable { mutableStateOf(existing?.profileText().orEmpty()) }
     var persona by rememberSaveable {
         mutableStateOf(existing?.personaId() ?: UserProfile.PERSONA_BALANCED)
+    }
+    var steeringAlpha by rememberSaveable {
+        mutableStateOf(existing?.steeringAlpha() ?: 0f)
     }
     var error by rememberSaveable { mutableStateOf("") }
 
@@ -319,10 +336,14 @@ private fun ProfileScreen(
                 fontWeight = FontWeight.SemiBold,
             )
             PersonaSelector(selected = persona, onSelected = { persona = it })
+            SteeringStrengthSlider(
+                value = steeringAlpha,
+                onValueChange = { steeringAlpha = it; error = "" },
+            )
             if (error.isNotBlank()) InlineError(error)
             Button(
                 onClick = {
-                    runCatching { viewModel.saveProfile(name, about, persona) }
+                    runCatching { viewModel.saveProfile(name, about, persona, steeringAlpha) }
                         .onSuccess { onSaved() }
                         .onFailure { error = it.message ?: "Could not save your profile" }
                 },
@@ -350,9 +371,19 @@ private fun ChatScreen(
     }
     var showDemoControls by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val context = LocalContext.current
 
     if (showDemoControls) {
         DemoControlsDialog(viewModel = viewModel, onDismiss = { showDemoControls = false })
+    }
+
+    // A speech failure is transient and not part of the conversation, so it is
+    // surfaced beside the chat rather than appended to it as a message.
+    LaunchedEffect(chat.speechError) {
+        chat.speechError?.let { error ->
+            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+            viewModel.consumeSpeechError()
+        }
     }
 
     LaunchedEffect(chat.messages.size, chat.sending) {
@@ -423,7 +454,12 @@ private fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(chat.messages, key = { it.id }) { message ->
-                    MessageBubble(message)
+                    MessageBubble(
+                        message,
+                        synthesizing = chat.synthesizingMessageId == message.id,
+                        speaking = chat.speakingMessageId == message.id,
+                        onSpeak = viewModel::speak,
+                    )
                 }
                 if (chat.sending) {
                     item("sending") {
@@ -596,6 +632,57 @@ private fun PersonaSelector(selected: String, onSelected: (String) -> Unit) {
     }
 }
 
+/**
+ * Activation-steering strength applied on top of the selected response style.
+ *
+ * Centre means "use the style's own calibrated setting", which is what every
+ * request did before this control existed. Moving off centre sends an explicit
+ * strength with the request. The range matches the validated bounds of the
+ * layer-7 vector, so the slider cannot produce a value Brain would reject.
+ */
+@Composable
+private fun SteeringStrengthSlider(value: Float, onValueChange: (Float) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Steering strength",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                if (kotlin.math.abs(value) < 0.01f) {
+                    "Profile default"
+                } else {
+                    String.format("%+.1f", value)
+                },
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = { onValueChange((it * 2f).toInt() / 2f) },
+            valueRange = UserProfile.ALPHA_MIN..UserProfile.ALPHA_MAX,
+            modifier = Modifier.fillMaxWidth().testTag("steering_strength"),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Shorter", style = MaterialTheme.typography.labelSmall)
+            Text("Longer", style = MaterialTheme.typography.labelSmall)
+        }
+        Text(
+            "Applies only where the device runs a steerable model; otherwise " +
+                "your response style is used on its own.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
 @Composable
 private fun CompactToggle(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -647,13 +734,19 @@ private fun EmptyConversation(name: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(
+    message: ChatMessage,
+    synthesizing: Boolean = false,
+    speaking: Boolean = false,
+    onSpeak: (ChatMessage) -> Unit = {},
+) {
     val alignment = if (message.fromUser) Alignment.CenterEnd else Alignment.CenterStart
     val background = when {
         message.failed -> MaterialTheme.colorScheme.secondaryContainer
         message.fromUser -> MaterialTheme.colorScheme.primaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
+    val canSpeak = !message.fromUser && !message.failed && message.text.isNotBlank()
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
         Column(
             modifier = Modifier
@@ -664,6 +757,34 @@ private fun MessageBubble(message: ChatMessage) {
                 .animateContentSize(),
         ) {
             Text(message.text, lineHeight = 22.sp)
+            if (canSpeak) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = { onSpeak(message) },
+                        enabled = !synthesizing,
+                        modifier = Modifier.testTag("speak_${message.id}"),
+                    ) {
+                        when {
+                            synthesizing -> CircularProgressIndicator(
+                                Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            speaking -> Icon(
+                                Icons.Outlined.Stop,
+                                contentDescription = "Stop reading aloud",
+                            )
+                            else -> Icon(
+                                Icons.AutoMirrored.Outlined.VolumeUp,
+                                contentDescription = "Read this reply aloud",
+                            )
+                        }
+                    }
+                }
+            }
             if (!message.fromUser && message.deviceName.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))

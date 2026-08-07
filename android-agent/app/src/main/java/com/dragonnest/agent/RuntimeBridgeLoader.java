@@ -11,6 +11,13 @@ final class RuntimeBridgeLoader {
                     "com.dragonnest.agent.vendor.GenieXRuntimeBridge",
                     "com.dragonnest.agent.vendor.GenieRuntimeBridge"
             };
+            // Runtime activation steering runs on a forked GenieX closure whose
+            // sonames were renamed so it cannot displace the stock runtime
+            // above. Keeping it behind its own runtime name is what makes the
+            // physically accepted Base path immune to steering changes.
+            case "genie_aux" -> new String[] {
+                    "com.dragonnest.agent.vendor.GenieXSteeringRuntimeBridge"
+            };
             default -> new String[0];
         };
         for (String className : classNames) {

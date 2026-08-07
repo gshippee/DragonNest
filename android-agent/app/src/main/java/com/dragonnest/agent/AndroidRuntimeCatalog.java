@@ -64,6 +64,9 @@ public final class AndroidRuntimeCatalog implements AndroidTaskExecutor {
             registry = AndroidArtifactRegistry.fromJson("{\"models\":[]}",
                     AndroidArtifactRegistry.modelRoot(context));
         }
+        for (String skipped : registry.skippedEntries()) {
+            Log.w(TAG, "Ignoring unusable Android manifest entry -- " + skipped);
+        }
         Map<String, AndroidRuntimeBridge> bridges = new LinkedHashMap<>();
         boolean npuAvailable = false;
         String availableNpuName = "";

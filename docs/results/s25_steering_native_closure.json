@@ -1,0 +1,98 @@
+{
+  "source_apk": "C:\\Users\\qc_de\\AppData\\Local\\Temp\\claude\\C--Users-qc-de-OneDrive-Desktop-Workspace-DragonNest\\64ddc0a2-3123-4cbf-833b-d732ed021190\\scratchpad\\steerlab-wt\\geniex-steering\\proofs\\steerlab-app-debug.apk",
+  "source_apk_sha256": "ea1eaaeee98322e8f4adf88a28839058a5c97180e8638f6007a4f78cda3f0341",
+  "staged_dir": "android-agent\\vendor\\jniLibs\\arm64-v8a",
+  "renames": {
+    "libgeniex.so": "libgnxfrk.so",
+    "libgeniex_core.so": "libgnxfrk_core.so",
+    "libgeniex-proc.so": "libgnxfrk-proc.so",
+    "libgeniex_vlm.so": "libgnxfrk_vlm.so",
+    "libgeniex-proc-vision.so": "libgnxfrk-proc-vision.so"
+  },
+  "kept_filenames": [
+    "libgeniex_plugin.so",
+    "libsteeringlab_jni.so"
+  ],
+  "libraries": [
+    {
+      "source_name": "libgeniex.so",
+      "staged_name": "libgnxfrk.so",
+      "size_bytes": 19872072,
+      "source_sha256": "12b1ae3e2bb72b25ea03550dfec98be54cacc38e291050b560853be63a9a6e0d",
+      "staged_sha256": "33c64fa09089453dc70d665278e7f972685cf10e08a91f9258f96cb902272711",
+      "patched_references": {
+        "libgeniex.so": 1
+      }
+    },
+    {
+      "source_name": "libgeniex_core.so",
+      "staged_name": "libgnxfrk_core.so",
+      "size_bytes": 24785360,
+      "source_sha256": "d6d40aacdb07b4335c6c7f486b2daebf9f1501be8fec65d1c862278813cb0a42",
+      "staged_sha256": "48a01769c4a1d7c507c25fafa16d89d82278e96a9ddd91b8f8aeb864e6cc5351",
+      "patched_references": {
+        "libgeniex_core.so": 1,
+        "libgeniex-proc.so": 1
+      }
+    },
+    {
+      "source_name": "libgeniex-proc.so",
+      "staged_name": "libgnxfrk-proc.so",
+      "size_bytes": 29491136,
+      "source_sha256": "c09f526d10730fe3676bea7353a3357ebf5be884fad01b9d18349bc5f8146434",
+      "staged_sha256": "bc5cb6c2ff33a6e19fcaac139ee60ab9f6fb5493a02881e11fabca3b4aa6e6c6",
+      "patched_references": {
+        "libgeniex-proc.so": 1
+      }
+    },
+    {
+      "source_name": "libgeniex_vlm.so",
+      "staged_name": "libgnxfrk_vlm.so",
+      "size_bytes": 5859472,
+      "source_sha256": "930169e5e1290790c4d30fb190bd27fe456838456432459290ee9817007dc249",
+      "staged_sha256": "e26e820fba718d883377c8cb5a04660b9ba9ef18609b1eed769788e1134de4ee",
+      "patched_references": {
+        "libgeniex_core.so": 1,
+        "libgeniex-proc.so": 1,
+        "libgeniex_vlm.so": 1,
+        "libgeniex-proc-vision.so": 1
+      }
+    },
+    {
+      "source_name": "libgeniex-proc-vision.so",
+      "staged_name": "libgnxfrk-proc-vision.so",
+      "size_bytes": 4545256,
+      "source_sha256": "8eda29eb936d309461951a53eda363fe8d8e99963c1af58c63be68bab4d73a24",
+      "staged_sha256": "5e96e14ee81adb06e94700bb6f6cb2ce54eee8e38425a7bf761bdcd36e8e6c52",
+      "patched_references": {
+        "libgeniex-proc.so": 1,
+        "libgeniex-proc-vision.so": 1
+      }
+    },
+    {
+      "source_name": "libgeniex_plugin.so",
+      "staged_name": "libgeniex_plugin.so",
+      "size_bytes": 5678064,
+      "source_sha256": "cca8133fc9933f596049257ca55527f1c6f6877e57dc40fa444484913efbe900",
+      "staged_sha256": "7e26a83c6d09a36c2b1911c745e4921a7ed7a3173ad7d15774ae360158b7c03a",
+      "patched_references": {
+        "libgeniex.so": 1,
+        "libgeniex_core.so": 1,
+        "libgeniex-proc.so": 1,
+        "libgeniex_vlm.so": 1,
+        "libgeniex-proc-vision.so": 1
+      }
+    },
+    {
+      "source_name": "libsteeringlab_jni.so",
+      "staged_name": "libsteeringlab_jni.so",
+      "size_bytes": 1425760,
+      "source_sha256": "a6954d29f5702c16229de80d3c420748861902f417e80e613a67024e5c457396",
+      "staged_sha256": "77a25572ca750955fe686e2e71fba01a16a21267efb3bb8182f2ec170faf80ba",
+      "patched_references": {
+        "libgeniex.so": 1
+      }
+    }
+  ],
+  "stock_aar_collisions": []
+}

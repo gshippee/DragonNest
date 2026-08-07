@@ -84,6 +84,42 @@
         "tokenizer.json": "be75606093db2094d7cd20f3c2f385c212750648bd6ea4fb2bf507a6a4c55506",
         "tokenizer_config.json": "40d1fbd86f2b8600724575315e9fa543f2cae298317a7107b1b63df85e0fc2f3"
       }
+    },
+    {
+      "model_id": "qwen3-0.6b-s25-runtime-steerable",
+      "artifact_id": "qwen3-0.6b-w4a16-sm8750-runtime-vector-l7-qairt245",
+      "model_version": "c1899de289a04d12100db370d81485cdf75e47ca",
+      "tokenizer_id": "Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca",
+      "behavior_profile_id": "",
+      "steering_mode": "runtime_vector",
+      "steering_vector_ids": [
+        "concise-vs-verbose-layer-7"
+      ],
+      "supported_steering_layers": [
+        7
+      ],
+      "source_directory": "runtime-steerable",
+      "bundle_directory_name": "qwen3-0.6b-runtime-steerable-sm8750",
+      "sha256_tree": "e7ae40e91db941a7d3c68db01abf35c6a1a91248f0d32eb9481974d6aba9afae",
+      "graph_names": [
+        "prompt_ar128_cl512_1_of_2",
+        "token_ar1_cl512_1_of_2",
+        "prompt_ar128_cl512_2_of_2",
+        "token_ar1_cl512_2_of_2"
+      ],
+      "geniex_autoregressive_ready": true,
+      "files": {
+        "aux_inputs.json": "0394473f5db7a9c3e23089b27d19c7563fb1e08abc63e71615eae4bc1acee8c6",
+        "config.json": "660db3b73d788119c04535e48cf9be5f55bc3100841a718637ae695b442f27dd",
+        "genie_config.json": "6ddc9ba81608fe47afba7572441ece4f73caaba6525c5c753e57a11d1e53208d",
+        "htp_backend_ext_config.json": "09d3b915c784116f96fa4d612d8c1f2fac0e32952e5eb2f1a8f79bf48a9cda94",
+        "metadata.json": "5dd35f066018d98dc896aacd094bb4ea54700352293c74a8490a715909cff50e",
+        "part1_of_2.bin": "87ee07c2f24f10a75662b579061c29d6725d9a84edaf654c723429e473b1c978",
+        "part2_of_2.bin": "c189fe74ae05b44695534191fbdeaed9f23f577d9e9d1695882fec206b6c863e",
+        "steering_vector_layer7_unit.bin": "800f3248289f97164d0936a567a16b93e16ecbfabbb5d0ec08a811ca0cb76305",
+        "tokenizer.json": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "tokenizer_config.json": "d5d09f07b48c3086c508b30d1c9114bd1189145b74e982a265350c923acd8101"
+      }
     }
   ]
 }

@@ -548,6 +548,15 @@ class DeterministicRouter:
                     # realization, not a generic full model. It must never
                     # compete for an unprofiled/balanced request.
                     continue
+                elif not steering.enabled and model.supports_steering and (
+                    tuple(model.steering_modes)
+                    == (SteeringMode.RUNTIME_VECTOR.value,)
+                ):
+                    # A bundle that exists only to be steered is likewise not a
+                    # generic full model. Serving Balanced from it would move
+                    # the request onto a different artifact and runtime while
+                    # still reporting an unsteered realization.
+                    continue
                 if require_data_parallel and not model.supports_data_parallel:
                     continue
                 if not self._has_model_memory(device, model):

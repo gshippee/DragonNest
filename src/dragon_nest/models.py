@@ -42,6 +42,11 @@ class RuntimeName(StrEnum):
     MOCK = "mock"
     GENIE = "genie"
     QNN = "qnn"
+    # Forked GenieX closure that exposes alpha/steering_vector as compiled
+    # auxiliary inputs. Deliberately a separate runtime rather than a flag on
+    # GENIE: it ships its own native libraries, so a deployment on stock GenieX
+    # keeps executing exactly as it was physically accepted.
+    GENIE_AUX = "genie_aux"
 
 
 class SteeringMode(StrEnum):

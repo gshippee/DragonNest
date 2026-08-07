@@ -164,7 +164,11 @@ class SteeringRegistry:
             )
         if mode == SteeringMode.NONE:
             return False, "enabled steering request cannot use mode none"
-        if not model.supports_steering and not model.steering_vector_ids:
+        if not model.supports_steering:
+            # A model may still list vectors it was *baked* from; only
+            # supports_steering means "this deployment can bind a vector at
+            # request time". Accepting one without it would send a vector to a
+            # runtime that silently ignores it and answers unsteered.
             return False, f"model {model.model_id} has no runtime_vector input"
         vector = self._vectors.get(spec.vector_id)
         if vector is None:

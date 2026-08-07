@@ -89,6 +89,15 @@ if (includeModelArtifacts) {
     android.sourceSets.getByName("main").assets.srcDir("../vendor/model-assets")
 }
 
+// The forked GenieX closure that serves the "genie_aux" runtime-steering
+// runtime. Its sonames were renamed to libgnxfrk*.so by
+// scripts/artifact_tools/stage_steering_native_closure.py precisely so it can
+// sit beside the stock geniex-android AAR instead of displacing it, so
+// packaging it cannot change how the accepted Base path executes.
+if (includeS25GenieXRuntime) {
+    android.sourceSets.getByName("main").jniLibs.srcDir("../vendor/steering-jniLibs")
+}
+
 val mainProto = (
     android.sourceSets.getByName("main") as ExtensionAware
 ).extensions.getByName("proto") as SourceDirectorySet

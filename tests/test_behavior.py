@@ -34,21 +34,37 @@ def test_registry_loads_demo_profiles(registry):
     } <= ids
 
 
-def test_demo_profiles_are_exact_baked_realizations(registry):
-    concise = registry.get("concise")
-    detailed = registry.get("detailed")
-    assert [r.mode for r in concise.realizations] == [
-        SteeringRealizationMode.BAKED_PROFILE
-    ]
-    assert concise.realizations[0].baked_artifact_id == "qwen3-0.6b-s25-concise"
-    assert concise.realizations[0].verification_status == "verified"
-    assert concise.fallback_policy == BehaviorFallbackPolicy.EXACT_ONLY
-    assert [r.mode for r in detailed.realizations] == [
-        SteeringRealizationMode.BAKED_PROFILE
-    ]
-    assert detailed.realizations[0].baked_artifact_id == "qwen3-0.6b-s25-detailed"
-    assert detailed.realizations[0].verification_status == "verified"
-    assert detailed.fallback_policy == BehaviorFallbackPolicy.EXACT_ONLY
+def test_demo_profiles_prefer_runtime_vector_over_baked(registry):
+    """Concise/Detailed resolve the runtime vector first, baked bake second.
+
+    Both realize the *same* profile: the runtime path steers the shared
+    steerable bundle by alpha, the baked path runs the pre-compiled artifact.
+    The ladder must never widen past those two into prompt conditioning.
+    """
+    for profile_id, baked_artifact, alpha_sign in (
+        ("concise", "qwen3-0.6b-s25-concise", -1),
+        ("detailed", "qwen3-0.6b-s25-detailed", +1),
+    ):
+        profile = registry.get(profile_id)
+        assert [r.mode for r in profile.realizations] == [
+            SteeringRealizationMode.RUNTIME_VECTOR,
+            SteeringRealizationMode.BAKED_PROFILE,
+        ]
+        runtime, baked = profile.realizations
+        assert runtime.vector_id == "concise-vs-verbose-layer-7"
+        assert runtime.injection_layer == 7
+        assert runtime.alpha * alpha_sign > 0
+        assert runtime.compatible_runtimes == ("genie_aux",)
+        assert runtime.verification_status == "verified"
+        assert baked.baked_artifact_id == baked_artifact
+        assert baked.verification_status == "verified"
+        assert profile.fallback_policy == (
+            BehaviorFallbackPolicy.ALLOW_BAKED_EQUIVALENT
+        )
+        assert profile.allowed_modes() == (
+            SteeringRealizationMode.RUNTIME_VECTOR,
+            SteeringRealizationMode.BAKED_PROFILE,
+        )
 
 
 def test_fallback_ladder_expands_with_policy():

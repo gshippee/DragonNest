@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 import grpc
 import httpx
 
-from ..behavior import BehaviorProfileRegistry
+from ..behavior import BehaviorProfileRegistry, SteeringRealizationMode
 from ..classifier import RuleBasedTaskClassifier
 from ..deployments import (
     ArtifactCatalog,
@@ -859,16 +859,32 @@ class BrainService(pb_grpc.BrainControlServicer):
             )
             profile_realization = SteeringMode.RUNTIME_VECTOR.value
         elif not steering.enabled and use_profile_steering and persona_id != "balanced":
-            profile_realization = SteeringMode.BAKED_PROFILE.value
-            steering = SteeringSpec(
-                enabled=False,
-                mode=SteeringMode.BAKED_PROFILE.value,
-                behavior_profile_id=persona_id,
+            # Preference ladder for the *same* profile: bind the calibrated
+            # vector at runtime when some enrolled device actually exposes the
+            # aux inputs, otherwise run the separately compiled baked artifact.
+            # Both realize the requested persona; neither is prompt conditioning.
+            runtime_vector = self._runtime_vector_for_persona(
+                persona_id, request.origin_device_id
             )
-            profile_steering_reason = (
-                f"Profile requested {persona_id!r}; Brain selected a separately "
-                "executable baked activation profile and sent no runtime vector."
-            )
+            if runtime_vector is not None:
+                profile_realization = SteeringMode.RUNTIME_VECTOR.value
+                steering = runtime_vector
+                profile_steering_reason = (
+                    f"Profile requested {persona_id!r}; Brain bound steering "
+                    f"vector {steering.vector_id} at layer {steering.target_layer} "
+                    f"as a runtime activation input."
+                )
+            else:
+                profile_realization = SteeringMode.BAKED_PROFILE.value
+                steering = SteeringSpec(
+                    enabled=False,
+                    mode=SteeringMode.BAKED_PROFILE.value,
+                    behavior_profile_id=persona_id,
+                )
+                profile_steering_reason = (
+                    f"Profile requested {persona_id!r}; Brain selected a separately "
+                    "executable baked activation profile and sent no runtime vector."
+                )
         elif steering.enabled:
             profile_realization = SteeringMode.RUNTIME_VECTOR.value
         if steering.enabled and self.steering_registry is None:
@@ -2229,6 +2245,55 @@ class BrainService(pb_grpc.BrainControlServicer):
                 )
         # ProfileStore performs the canonical string and numeric validation.
         return values
+
+    def _runtime_vector_for_persona(
+        self, persona_id: str, origin_device_id: str
+    ) -> SteeringSpec | None:
+        """Build a runtime-vector spec if a device can genuinely honour it.
+
+        Returns ``None`` whenever anything is missing -- no behavior registry,
+        no steering registry, a profile that does not declare a runtime vector,
+        or no enrolled device advertising the exact vector and layer. Callers
+        then fall back to the baked realization of the same profile. This
+        deliberately never *approximates*: an unrunnable runtime vector must
+        become a baked bake or a refusal, never a quietly unsteered answer.
+        """
+        if self.behavior_registry is None or self.steering_registry is None:
+            return None
+        try:
+            profile = self.behavior_registry.get(persona_id)
+        except Exception:
+            return None
+        if SteeringRealizationMode.RUNTIME_VECTOR not in profile.allowed_modes():
+            return None
+        realization = profile.realization_for(
+            SteeringRealizationMode.RUNTIME_VECTOR
+        )
+        if realization is None or not realization.vector_id:
+            return None
+        spec = SteeringSpec(
+            enabled=True,
+            vector_id=realization.vector_id,
+            model_family=profile.base_model_family,
+            target_layer=realization.injection_layer,
+            alpha=realization.alpha,
+            positions=realization.positions,
+            mode=SteeringMode.RUNTIME_VECTOR.value,
+            behavior_profile_id=persona_id,
+        )
+        for record in self.registry.records():
+            device = record.device
+            if origin_device_id and device.device_id != origin_device_id:
+                # A Local/origin-pinned request can only be served by the
+                # origin device, so another device's capability must not
+                # decide this request's realization.
+                continue
+            for model in device.models:
+                if not model.supports_steering:
+                    continue
+                if self.steering_registry.validate(spec, model)[0]:
+                    return spec
+        return None
 
     def _steering_for_profile(self, profile: PersonalProfile) -> SteeringSpec:
         if self.steering_registry is None:

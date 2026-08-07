@@ -30,10 +30,20 @@ def test_s25_geniex_inventory_maps_profiles_to_exact_artifacts():
         "qwen3-0.6b-s25-base",
         "qwen3-0.6b-s25-concise",
         "qwen3-0.6b-s25-detailed",
+        "qwen3-0.6b-s25-runtime-steerable",
     }
     assert records["qwen3-0.6b-s25-base"]["behavior_profile_id"] == ""
     assert records["qwen3-0.6b-s25-concise"]["behavior_profile_id"] == "concise"
     assert records["qwen3-0.6b-s25-detailed"]["behavior_profile_id"] == "detailed"
+    # The runtime-steerable bundle realizes Concise *and* Detailed by alpha, so
+    # binding it to one profile would misdescribe it.
+    steerable = records["qwen3-0.6b-s25-runtime-steerable"]
+    assert steerable["behavior_profile_id"] == ""
+    assert steerable["steering_mode"] == "runtime_vector"
+    assert steerable["steering_vector_ids"] == ["concise-vs-verbose-layer-7"]
+    assert steerable["supported_steering_layers"] == [7]
+    assert "aux_inputs.json" in steerable["files"]
+    assert "steering_vector_layer7_unit.bin" in steerable["files"]
     for record in records.values():
         assert record["geniex_autoregressive_ready"] is True
         assert set(record["graph_names"]) == {
@@ -69,13 +79,27 @@ def test_s25_manifest_is_fail_closed_and_never_claims_runtime_steering():
     assert stager.MODEL_ROOT.startswith(
         "/sdcard/Android/data/com.dragonnest.agent/files/"
     )
-    for entry in entries.values():
+    stock = {k: v for k, v in entries.items() if k != "qwen3-0.6b-s25-runtime-steerable"}
+    for entry in stock.values():
+        # The accepted Base/Concise/Detailed path must keep advertising the
+        # stock runtime it was physically accepted on, and must never claim
+        # runtime steering it cannot perform.
         assert entry["runtime"] == "genie"
         assert entry["runtime_version"] == "GenieX-0.3.5 / QAIRT-2.45"
         assert entry["supported_accelerators"] == ["htp"]
         assert entry["supports_steering"] is False
         assert entry["steering_vector_ids"] == []
         assert entry["checksum"].startswith("sha256-tree:")
+
+    steerable = entries["qwen3-0.6b-s25-runtime-steerable"]
+    assert steerable["runtime"] == "genie_aux"
+    assert steerable["runtime_version"] == "GenieX-fork-aux-0.3.5 / QAIRT-2.45"
+    assert steerable["supports_steering"] is True
+    assert steerable["steering_mode"] == "runtime_vector"
+    assert steerable["steering_vector_ids"] == ["concise-vs-verbose-layer-7"]
+    assert steerable["supported_steering_layers"] == [7]
+    assert steerable["behavior_profile_id"] == ""
+    assert steerable["checksum"].startswith("sha256-tree:")
     assert entries["qwen3-0.6b-s25-base"]["steering_mode"] == "none"
     assert entries["qwen3-0.6b-s25-concise"]["steering_mode"] == "baked_profile"
     assert entries["qwen3-0.6b-s25-detailed"]["steering_mode"] == "baked_profile"
@@ -101,7 +125,7 @@ def test_s25_stager_rejects_prompt_only_inventory():
         raise AssertionError("prompt-only inventory was accepted")
 
 
-def test_s25_stager_model_id_defaults_to_all_three():
+def test_s25_stager_model_id_defaults_to_full_catalog():
     stager = _stager()
     inventory = json.loads(
         (ROOT / "docs/results/s25_geniex_artifacts.json").read_text(
@@ -111,11 +135,7 @@ def test_s25_stager_model_id_defaults_to_all_three():
     records = inventory["artifacts"]
     selected = stager.select_records(records, None)
     assert selected == records
-    assert {record["model_id"] for record in selected} == {
-        "qwen3-0.6b-s25-base",
-        "qwen3-0.6b-s25-concise",
-        "qwen3-0.6b-s25-detailed",
-    }
+    assert {record["model_id"] for record in selected} == stager.FULL_S25_CATALOG
 
 
 def test_s25_stager_model_id_default_rejects_incomplete_catalog():
@@ -133,7 +153,8 @@ def test_s25_stager_model_id_default_rejects_incomplete_catalog():
     try:
         stager.select_records(incomplete, None)
     except RuntimeError as failure:
-        assert "exactly Base, Concise, and Detailed" in str(failure)
+        assert "qwen3-0.6b-s25-runtime-steerable" in str(failure)
+        assert "missing=" in str(failure)
     else:
         raise AssertionError("incomplete default catalog was accepted")
 
