@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.dragonnest.geniexsteeringlab'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.dragonnest.geniexsteeringlab"
+        minSdk 31
+        targetSdk 34
+        versionCode 1
+        versionName "0.1-steeringlab"
+        ndk { abiFilters 'arm64-v8a' }
+    }
+
+    buildTypes {
+        debug { }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    sourceSets {
+        main {
+            // Prebuilt forked GenieX stack + QNN runtime + our JNI shim.
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    // Prebuilt .so files are already stripped appropriately; don't re-strip
+    // vendor QNN blobs.
+    packagingOptions {
+        doNotStrip "**/*.so"
+        jniLibs { useLegacyPackaging false }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+}

@@ -1,0 +1,17 @@
+{
+  "checkpoint": "baseline (pre-aux-wiring) geniex-qairt unit suite on x64 Linux (WSL Ubuntu 24.04, gcc 13.3)",
+  "date": "2026-08-07",
+  "geniex_revision": "3de683b86112bfe3028adbc2fd2f615d5af937b5",
+  "geniex_qairt_revision": "abf961f047436b4593bb1cbb21bda13d9443ef3b",
+  "build": "cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DGENIEX_BUILD_TESTS=ON -DGENIEX_BUILD_EXAMPLES=OFF",
+  "result": "145/147 passed",
+  "known_linux_host_failures": [
+    "VLMModel.TextOnlySkipsVisionEncode (SEGFAULT in VLMModel dtor)",
+    "VLMModel.WithPixelDataEncodesVisionOnce (SEGFAULT in VLMModel dtor)"
+  ],
+  "notes": [
+    "Upstream CI only builds these tests on windows-11-arm; the two VLM teardown segfaults reproduce with zero steering-related code wired in and are unrelated to this fork's changes (VLM path untouched).",
+    "Fork-local build-portability fixes required for any Linux host build: DmaBufAllocator.cpp added to test targets that compile IOTensor.cpp; _putenv_s replaced with a portable setenv shim in llm_model_test.cpp / vlm_model_test.cpp.",
+    "Regression gate for all subsequent fork changes: the remaining 145 tests must stay green."
+  ]
+}

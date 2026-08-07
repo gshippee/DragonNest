@@ -1,0 +1,52 @@
+{
+  "checkpoint": "physical runtime-steering mechanism proof on Galaxy S25 Ultra",
+  "date": "2026-08-07",
+  "device": {
+    "model": "SM-S938U1 (Galaxy S25 Ultra)",
+    "soc": "Snapdragon 8 Elite (sun), Hexagon HTP v79",
+    "adb_serial": "R3CXC0805HW",
+    "workdir": "/data/local/tmp/geniexsteeringlab (own namespace; no existing demo package touched)"
+  },
+  "runtime": {
+    "stack": "forked GenieX geniex-qairt core (branch steering/aux-inputs, base abf961f + commits 68ed0f5/428adc0/afd4afc) built for aarch64-android with NDK r27c",
+    "binary": "examples/aux_steering_probe linking libgeniex_core.so + libgeniex-proc.so",
+    "qnn_backend": "vendored libQnnHtp.so / libQnnHtpV79Stub.so / libQnnHtpV79Skel.so (geniex-qairt third-party/android)"
+  },
+  "model": {
+    "kind": "tiny LLM-shaped steering-capable context pair (mirrors tests/testing/llm_fixture.hpp tensor set)",
+    "graphs": ["prefill_ar4_cl16_1_of_1", "token_ar1_cl16_1_of_1"],
+    "aux_graph_inputs": {"alpha": "float32 [1]", "steering_vector": "float32 [1,1,8]"},
+    "math": "logits = (input_embeds + alpha * steering_vector) @ W + eps*ReduceSum(attention_mask); KV passthrough slices",
+    "compiled_with": "QAIRT 2.45.41 x86_64-linux qairt-converter + qnn-context-binary-generator offline HTP prepare (dsp_arch v79, soc_model 69), in WSL — one-time compile; never recompiled during value changes",
+    "bundle_files": ["prefill.bin (53248 B)", "decode.bin (53248 B)", "aux_inputs.json", "embedding_weights.raw", "genie_config.json", "tokenizer.json", "tokenizer_config.json"]
+  },
+  "results": {
+    "load": {"load_ms": 527, "load_count": 1},
+    "stock_equivalence": "no-aux run and alpha=0 run produced identical logits (checksum -31.0908, argmax 14)",
+    "forward_logits_sweep_vecA": [
+      {"alpha": 0, "argmax": 14, "checksum": -31.0908, "ms": 2},
+      {"alpha": 1, "argmax": 3, "checksum": -33.3789, "ms": 0},
+      {"alpha": -2, "argmax": 5, "checksum": -26.5088, "ms": 0},
+      {"alpha": 5, "argmax": 3, "checksum": -42.541, "ms": 0}
+    ],
+    "vector_swap_vecB_alpha1": {"argmax": 2, "checksum": -27.3486},
+    "numerical_validation": {
+      "method": "device delta logits(alpha)-logits(0) vs exact fp32 alpha*(vec@W); mask term cancels",
+      "max_abs_error": {"alpha_1": 0.0019, "alpha_-2": 0.0018, "alpha_5": 0.0062, "vecB_1": 0.0016},
+      "argmax_match": "4/4 (alphas 1,-2,5 and vecB) — HTP fp16-level agreement"
+    },
+    "decode_phase_generate": [
+      {"alpha": 0, "generated_tokens": 4, "text": "/%/%", "ms": 5},
+      {"alpha": 5, "generated_tokens": 4, "text": "$$$$", "ms": 3},
+      {"alpha": -2, "generated_tokens": 4, "text": "&&&&", "ms": 4}
+    ],
+    "no_recompile_no_reload": "all sweeps ran inside one process against one loaded context (load_count 1, reload_count 0); alpha/vector changes were pure runtime tensor writes"
+  },
+  "conclusions": [
+    "Runtime-variable activation-steering inputs flow end-to-end through forked GenieX (GenerationConfig::aux_inputs -> AuxTensorInputProvider -> Graph::write) on physical HTP v79.",
+    "Both prompt (prefill) and decode graphs receive the values each execution.",
+    "alpha=0 is bit-identical to stock unsteered execution.",
+    "Changing alpha or the vector changes actual NPU outputs with fp16-level agreement to the analytic reference."
+  ],
+  "known_issue": "current geniex-qairt (abf961f) fails to LOAD the QAIRT-2.45-era AI Hub Qwen3-0.6B bundle ('vector' out_of_range during init) — reproduced with UNPATCHED baseline auto_llm, i.e. a stock incompatibility predating this fork; the full-Qwen semantic proof needs a fresh AI Hub export."
+}

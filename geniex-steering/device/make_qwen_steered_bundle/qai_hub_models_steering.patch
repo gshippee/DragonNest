@@ -1,0 +1,31 @@
+diff --git a/src/qai_hub_models/models/_shared/llm/model.py b/src/qai_hub_models/models/_shared/llm/model.py
+index e77ca02..7c59a87 100644
+--- a/src/qai_hub_models/models/_shared/llm/model.py
++++ b/src/qai_hub_models/models/_shared/llm/model.py
+@@ -1242,7 +1242,15 @@ class LLMPartBase:
+ 
+         Base returns None for everything (text LLMs have no extra inputs).
+         Subclasses (e.g. VLMs with deepstack tensors) override this.
++
++        SteeringLab: runtime activation-steering inputs are recognized here so
++        checkpoints rewritten by bake_runtime_steering.py compile with the
++        correct fixed shapes on every graph.
+         """
++        if name == "steering_vector":
++            return TensorSpec(shape=(1, 1, self.hidden_size), dtype="float32")
++        if name == "alpha":
++            return TensorSpec(shape=(1,), dtype="float32")
+         return None
+ 
+     def get_graph_output_spec(self, graph_name: str) -> OutputSpec:
+@@ -1402,6 +1410,10 @@ class DynamicSplitPartBase(LLMPartBase, torch.nn.Module, MultiGraphWorkbenchMode
+         for name in onnx_input_names:
+             if name in full_inputs:
+                 result[name] = full_inputs[name]
++            elif name == "steering_vector":
++                result[name] = [np.zeros((1, 1, self.hidden_size), dtype=np.float32)]
++            elif name == "alpha":
++                result[name] = [np.zeros((1,), dtype=np.float32)]
+             else:
+                 # Intermediate hidden state (not in full model inputs)
+                 # found by process of elimination

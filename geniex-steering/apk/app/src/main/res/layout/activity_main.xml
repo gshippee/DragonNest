@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="#0D1117">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="SteerLab ▸ GenieX runtime activation steering"
+        android:textColor="#3DDC84"
+        android:textStyle="bold"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/model_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="model: not loaded"
+        android:textColor="#8B949E"
+        android:typeface="monospace"
+        android:textSize="11sp"
+        android:paddingBottom="6dp" />
+
+    <TextView
+        android:id="@+id/alpha_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="alpha = +0.0"
+        android:textColor="#E6EDF3"
+        android:typeface="monospace"
+        android:textSize="15sp" />
+
+    <SeekBar
+        android:id="@+id/alpha_seek"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="4dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="vector: "
+            android:textColor="#8B949E"
+            android:textSize="13sp" />
+
+        <Spinner
+            android:id="@+id/vector_spinner"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <EditText
+        android:id="@+id/prompt_edit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="prompt"
+        android:text="Explain why the sky is blue."
+        android:textColor="#E6EDF3"
+        android:textColorHint="#4B5563"
+        android:textSize="13sp"
+        android:maxLines="3" />
+
+    <Button
+        android:id="@+id/generate_btn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Generate on HTP" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="output"
+        android:textColor="#58A6FF"
+        android:textSize="11sp"
+        android:paddingTop="6dp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1.1">
+
+        <TextView
+            android:id="@+id/output_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#E6EDF3"
+            android:textSize="13sp"
+            android:padding="4dp"
+            android:background="#161B22" />
+    </ScrollView>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="diagnostics ▸ prefill / decode graph aux-binding (from geniex_llm_get_aux_stats)"
+        android:textColor="#58A6FF"
+        android:textSize="11sp"
+        android:paddingTop="6dp" />
+
+    <ScrollView
+        android:id="@+id/diag_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@+id/diag_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#7EE787"
+            android:typeface="monospace"
+            android:textSize="10sp"
+            android:padding="4dp"
+            android:background="#010409" />
+    </ScrollView>
+</LinearLayout>

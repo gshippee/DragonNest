@@ -1,0 +1,48 @@
+{
+  "checkpoint": "full-Qwen semantic runtime-steering proof on Galaxy S25 Ultra (CLI + SteerLab APK)",
+  "date": "2026-08-07",
+  "bundle": {
+    "source": "fresh AI Hub export of Qwen3-0.6B W4A16 with RUNTIME steering inputs at layer 7",
+    "pipeline": "bake_runtime_steering.py (ONNX input insertion + encodings) + patched ai-hub-models qwen3_0_6b export --runtime geniex_qairt --sequence-lengths 128,1 --context-lengths 512 --device 'Samsung Galaxy S25 (Family)'",
+    "link_job_part2": "jgznmqz6g",
+    "graphs": ["prompt_ar128_cl512_1_of_2", "prompt_ar128_cl512_2_of_2", "token_ar1_cl512_1_of_2", "token_ar1_cl512_2_of_2"],
+    "aux_inputs_part2": {
+      "alpha": {"shape": [1], "dtype": "uint16", "scale": 0.0003662221133708954, "zero_point": 32768},
+      "steering_vector": {"shape": [1, 1, 1024], "dtype": "uint16", "scale": 1.5259254723787308e-05, "zero_point": 32768}
+    },
+    "sidecar": "aux_inputs.json {\"aux_inputs\": [\"alpha\", \"steering_vector\"]}",
+    "note": "dual-phase export also fixes the loader incompatibility that blocks the 2026-08-04 prompt-only bundles"
+  },
+  "cli_results": {
+    "binary": "aux_steering_probe (geniex-qairt core path), /data/local/tmp/geniexsteeringlab",
+    "prompt": "ChatML 'Explain why the sky is blue.' (20 ids), greedy, 48-token cap",
+    "vector": "unit(vector_layer_7.pt) — verbosity axis (positive=verbose)",
+    "load_ms": 1083,
+    "runs": [
+      {"alpha": 0, "tokens": 48, "ms": 406, "text_start": "The sky appears blue because of the way light interacts with air and molecules in the atmosphere. Here's a simplified explanation: 1. ..."},
+      {"alpha": 8, "tokens": 48, "ms": 403, "character": "fuller connected prose to the cap"},
+      {"alpha": -8, "tokens": 35, "ms": 290, "early_eos": true, "text": "The sky is blue because it's a place where the sun is. The sun is a bright source of light. When the sun is shining, the sky is blue."}
+    ],
+    "random_vector_control": "same-norm random vector at alpha ±8 perturbs wording but does NOT reproduce the concise/verbose axis (both directions hit the 48-token cap; no early EOS)",
+    "no_reload": "load_count 1 / reload_count 0 across every sweep",
+    "stock_equivalence": "C-ABI run with NO aux inputs on the steered bundle → 0 aux writes, coherent text ('Hello! What can I do for you today?') — guaranteed by the zero-fill-at-load fix"
+  },
+  "apk_results": {
+    "package": "com.dragonnest.geniexsteeringlab (SteerLab 0.1), full public C-ABI path incl. geniex_llm_apply_chat_template / geniex_llm_generate(aux) / geniex_llm_get_aux_stats",
+    "model_ready": "load 997 ms, context loads: 1 (reused hereafter)",
+    "requests": [
+      {"req": 1, "alpha": 0.0, "ms": 802, "gen_tokens": 96, "tps": 123.0, "prefill_aux_writes": 2, "decode_aux_writes": 192, "output_character": "normal multi-paragraph explanation"},
+      {"req": 2, "alpha": 10.0, "ms": 797, "gen_tokens": 96, "tps": 123.7, "prefill_aux_writes": 2, "decode_aux_writes": 192, "output_character": "elaborate structured breakdown with bold headers (quality drift at the extreme, as expected on 0.6B W4A16)"},
+      {"req": 3, "alpha": -10.0, "ms": 188, "gen_tokens": 21, "tps": 125.9, "prefill_aux_writes": 2, "decode_aux_writes": 40, "early_eos": true, "output": "The sky is blue because it is a place where the sun, moon, and stars are visible."}
+    ],
+    "totals_after_demo": {"prefill_writes": 6, "decode_writes": 424, "aux_requests": "3/3", "context_loads": 1},
+    "screenshots": ["screenshots/steerlab_ready.png", "screenshots/steerlab_alpha_0.png", "screenshots/steerlab_alpha_plus10.png", "screenshots/steerlab_alpha_minus10.png"],
+    "packaging_lessons": [
+      "APK needs uses-native-library libcdsprpc.so/libadsprpc.so for HTP access (Android 12+ vendor namespace)",
+      "flat jniLibs requires manual geniex_register_plugin (Registry::scan_plugins expects <dir>/<plugin>/ subdirs)",
+      "full .so closure: libgeniex + plugin + core + vlm + proc + proc-vision + 5 QNN libs; hand-linked JNI must use -static-libstdc++",
+      "bundle loads from app-internal ext4 storage; app-external FUSE path failed QNN context load"
+    ]
+  },
+  "device_rules_respected": "own package/dirs only; no existing demo package or artifact touched; user notified before device use"
+}
