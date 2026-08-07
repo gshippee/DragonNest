@@ -4,6 +4,7 @@ import base64
 import binascii
 import contextlib
 import os
+import time
 from typing import Any
 
 import httpx
@@ -169,6 +170,139 @@ class HttpDeviceSession:
         self.closed = True
 
 
+class OpenAIChatDeviceSession:
+    """Adapts an OpenAI-compatible ``/chat/completions`` API to the common
+    protobuf session contract, for endpoints that don't implement
+    DragonNest's own HTTP endpoint contract (see :class:`HttpDeviceSession`)
+    but do speak the OpenAI chat-completions shape (e.g. Cirrascale
+    Inference Cloud). No ``/health`` or ``/info`` routes are assumed to
+    exist, so those are answered locally instead of probed."""
+
+    transport = "http_endpoint"
+
+    def __init__(self, endpoint: HttpEndpoint, client: httpx.AsyncClient):
+        self.device_id = endpoint.device.device_id
+        self.endpoint = endpoint
+        self.allow_profile_context = endpoint.allow_profile_context
+        self._client = client
+        self.closed = False
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.endpoint.credential_env:
+            credential = os.environ.get(self.endpoint.credential_env, "")
+            if not credential:
+                raise DeviceOfflineError(
+                    f"credential environment variable "
+                    f"{self.endpoint.credential_env!r} is not set"
+                )
+            headers["Authorization"] = f"Bearer {credential}"
+        return headers
+
+    async def fetch_health(self) -> HealthState:
+        return HealthState(reachable=True)
+
+    async def fetch_info(self) -> dict[str, Any]:
+        return {}
+
+    async def _chat(
+        self, model_id: str, request_text: str, timeout_seconds: float
+    ) -> dict[str, Any]:
+        if self.closed:
+            raise DeviceOfflineError(f"device {self.device_id} endpoint is closed")
+        started = time.monotonic()
+        try:
+            response = await self._client.post(
+                f"{self.endpoint.base_url.rstrip('/')}/chat/completions",
+                json={
+                    "model": model_id,
+                    "messages": [{"role": "user", "content": request_text}],
+                    "stream": False,
+                },
+                headers=self._headers(),
+                timeout=min(timeout_seconds, self.endpoint.request_timeout_seconds),
+                follow_redirects=False,
+            )
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPStatusError as exc:
+            return {
+                "success": False,
+                "error_code": f"HTTP_{exc.response.status_code}",
+                "error_message": exc.response.text[:500],
+            }
+        except (httpx.HTTPError, ValueError) as exc:
+            raise DeviceOfflineError(
+                f"OpenAI-compatible device {self.device_id} request failed: {exc}"
+            ) from exc
+        latency_ms = int((time.monotonic() - started) * 1000)
+        choices = body.get("choices") or []
+        if not choices:
+            return {
+                "success": False,
+                "error_code": "EMPTY_RESPONSE",
+                "error_message": "provider returned no choices",
+            }
+        content = str((choices[0].get("message") or {}).get("content", ""))
+        return {
+            "success": True,
+            "output_text": content,
+            "metrics": {
+                "model_id": model_id,
+                "runtime_name": "openai_chat",
+                "execution_latency_ms": latency_ms,
+            },
+        }
+
+    async def execute(
+        self, command: pb.ExecuteTask, timeout_seconds: float
+    ) -> pb.TaskResult:
+        body = await self._chat(command.model_id, command.request_text, timeout_seconds)
+        return _task_result(body, command.task_id, command.attempt_id, self.device_id)
+
+    async def execute_shard(
+        self, command: pb.ExecuteShard, timeout_seconds: float
+    ) -> pb.PartialTaskResult:
+        body = await self._chat(command.model_id, command.request_text, timeout_seconds)
+        result = _task_result(body, command.task_id, command.attempt_id, self.device_id)
+        return pb.PartialTaskResult(
+            task_id=result.task_id,
+            attempt_id=result.attempt_id,
+            shard_id=command.shard_id,
+            device_id=result.device_id,
+            success=result.success,
+            output_text=result.output_text,
+            error_code=result.error_code,
+            error_message=result.error_message,
+            metrics=result.metrics,
+        )
+
+    async def execute_pipeline_stage(
+        self, command: pb.ExecutePipelineStage, timeout_seconds: float
+    ) -> pb.PipelineStageResult:
+        body = await self._chat(command.model_id, command.request_text, timeout_seconds)
+        result = _task_result(body, command.task_id, command.attempt_id, self.device_id)
+        return pb.PipelineStageResult(
+            task_id=result.task_id,
+            attempt_id=result.attempt_id,
+            stage_id=command.stage_id,
+            device_id=result.device_id,
+            success=result.success,
+            output_text=result.output_text,
+            error_code=result.error_code,
+            error_message=result.error_message,
+            metrics=result.metrics,
+            output_boundary=None,
+        )
+
+    async def cancel(self, task_id: str, attempt_id: str, reason: str) -> None:
+        del task_id, attempt_id, reason
+
+    async def close(self, graceful: bool = False) -> None:
+        del graceful
+        self.closed = True
+
+
 async def fetch_endpoint_info(
     client: httpx.AsyncClient,
     base_url: str,
@@ -262,6 +396,8 @@ def _health_from_json(body: dict[str, Any]) -> HealthState:
         thermal_level=float(body.get("thermal_level", -1)),
         cpu_utilization=float(body.get("cpu_utilization", -1)),
         accelerator_utilization=float(body.get("accelerator_utilization", -1)),
+        gpu_utilization=float(body.get("gpu_utilization", -1)),
+        npu_utilization=float(body.get("npu_utilization", -1)),
         available_memory_mb=int(body.get("available_memory_mb", 0)),
         network_rtt_ms=float(body.get("network_rtt_ms", -1)),
         reachable=bool(body.get("reachable", True)),

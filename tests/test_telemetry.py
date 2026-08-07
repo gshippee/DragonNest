@@ -24,11 +24,26 @@ class MutableTelemetry:
         return self.snapshot
 
 
-def test_system_telemetry_uses_unknown_for_unavailable_accelerator():
+def test_system_telemetry_reports_accelerator_utilization():
     device = load_devices(ROOT / "configs/dev-fabric.yaml")[0]
     snapshot = SystemTelemetry(device).sample()
 
-    assert snapshot.health.accelerator_utilization == -1
+    if sys.platform == "win32":
+        # Real GPU/NPU utilization via the `\GPU Engine` performance counter
+        # (the NPU enumerates as its own compute-only adapter on Copilot+
+        # hardware) — either a real fraction, or -1 if this machine's driver
+        # doesn't expose the counter category at all.
+        assert snapshot.health.gpu_utilization == -1 or 0 <= snapshot.health.gpu_utilization <= 1
+        assert snapshot.health.npu_utilization == -1 or 0 <= snapshot.health.npu_utilization <= 1
+        assert snapshot.health.accelerator_utilization == max(
+            snapshot.health.gpu_utilization, snapshot.health.npu_utilization
+        )
+    else:
+        # Not implemented on this platform yet — must stay honestly unknown,
+        # never a fabricated number.
+        assert snapshot.health.accelerator_utilization == -1
+        assert snapshot.health.gpu_utilization == -1
+        assert snapshot.health.npu_utilization == -1
     assert snapshot.health.available_memory_mb >= 0
     assert snapshot.health.battery_pct >= -1
     assert snapshot.warm_model_ids

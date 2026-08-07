@@ -67,6 +67,8 @@ public final class AgentConfiguration {
                 optionalFloat("simulation_thermal"),
                 optionalFloat("simulation_cpu"),
                 optionalFloat("simulation_accelerator"),
+                optionalFloat("simulation_gpu"),
+                optionalFloat("simulation_npu"),
                 optionalFloat("simulation_rtt"),
                 optionalLong("simulation_memory_mb"),
                 preferences.getBoolean("simulation_offline", false));
@@ -77,6 +79,8 @@ public final class AgentConfiguration {
             Float thermal,
             Float cpu,
             Float accelerator,
+            Float gpu,
+            Float npu,
             Float rtt,
             boolean offline) {
         SharedPreferences.Editor editor = preferences.edit();
@@ -84,6 +88,8 @@ public final class AgentConfiguration {
         putOptional(editor, "simulation_thermal", thermal);
         putOptional(editor, "simulation_cpu", cpu);
         putOptional(editor, "simulation_accelerator", accelerator);
+        putOptional(editor, "simulation_gpu", gpu);
+        putOptional(editor, "simulation_npu", npu);
         putOptional(editor, "simulation_rtt", rtt);
         editor.putBoolean("simulation_offline", offline).apply();
     }

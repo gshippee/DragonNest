@@ -45,12 +45,13 @@ function renderDevices() {
       inventory.npu_status ? `NPU ${inventory.npu_status}` : ""
     ].filter(Boolean).map((value) => `<span class="chip">${esc(value)}</span>`).join("");
     const isHttpEndpoint = device.transport === "http_endpoint";
+    const endpointLabel = device.endpoint_provider === "openai_chat" ? "OpenAI-compatible" : isHttpEndpoint ? "HTTP endpoint" : "";
     const steeringModes = (device.steering_realization_modes || []).filter((mode) => mode !== "none").map((mode) => `<span class="chip chip-mode">${esc(mode)}</span>`).join("");
     const deployments = (device.deployments || []).filter((item) => item.state !== "absent").map((item) => `<span class="chip chip-${esc(item.state)}">${esc(item.artifact_id)} · ${esc(item.state)}</span>`).join("");
     return `<article class="device-card ${statusClass(device.status)}">
       <div class="device-title"><div><h3>${esc(device.display_name)}</h3><p>${esc(device.device_id)} · ${esc(device.platform)} · ${device.connected ? "stream connected" : "disconnected"}</p></div><div><span class="status-pill ${statusClass(device.status)}">${esc(device.status)}</span> <button class="icon-btn simulate" data-device="${esc(device.device_id)}" title="Simulate device state" aria-label="Simulate ${esc(device.display_name)}"><i data-lucide="gauge"></i></button>${isHttpEndpoint ? ` <button class="icon-btn remove-endpoint" data-device="${esc(device.device_id)}" title="Remove endpoint" aria-label="Remove ${esc(device.display_name)}"><i data-lucide="trash-2"></i></button>` : ""}</div></div>
-      <div class="metrics"><div class="metric"><span>Battery</span><strong>${h.battery_pct < 0 ? "Unknown" : `${decimal(h.battery_pct, 0)}%${h.charging ? " charging" : ""}`}</strong></div><div class="metric"><span>Thermal</span><strong>${decimal(h.thermal_level)}</strong></div><div class="metric"><span>Memory</span><strong>${h.available_memory_mb === 0 ? "Unknown" : fmt(h.available_memory_mb, " MB")}</strong></div><div class="metric"><span>Accelerator</span><strong>${h.accelerator_utilization < 0 ? "Unknown" : `${decimal(h.accelerator_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>Network RTT</span><strong>${h.network_rtt_ms < 0 ? "Unknown" : `${decimal(h.network_rtt_ms, 0)} ms`}</strong></div><div class="metric"><span>Active</span><strong>${device.active_tasks.length}</strong></div></div>
-      <div class="model-list">${isHttpEndpoint ? '<span class="chip">HTTP endpoint</span>' : ""}${hardware}${steeringModes}${deployments}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
+      <div class="metrics"><div class="metric"><span>Battery</span><strong>${h.battery_pct < 0 ? "Unknown" : `${decimal(h.battery_pct, 0)}%${h.charging ? " charging" : ""}`}</strong></div><div class="metric"><span>Thermal</span><strong>${decimal(h.thermal_level)}</strong></div><div class="metric"><span>Memory</span><strong>${h.available_memory_mb === 0 ? "Unknown" : fmt(h.available_memory_mb, " MB")}</strong></div><div class="metric"><span>CPU</span><strong>${h.cpu_utilization < 0 ? "Unknown" : `${decimal(h.cpu_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>GPU</span><strong>${(h.gpu_utilization ?? -1) < 0 ? "Unknown" : `${decimal(h.gpu_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>NPU</span><strong>${(h.npu_utilization ?? -1) < 0 ? "Unknown" : `${decimal(h.npu_utilization * 100, 0)}%`}</strong></div><div class="metric"><span>Network RTT</span><strong>${h.network_rtt_ms < 0 ? "Unknown" : `${decimal(h.network_rtt_ms, 0)} ms`}</strong></div><div class="metric"><span>Active</span><strong>${device.active_tasks.length}</strong></div></div>
+      <div class="model-list">${endpointLabel ? `<span class="chip">${esc(endpointLabel)}</span>` : ""}${hardware}${steeringModes}${deployments}${personal ? `<span class="chip">${esc(personal.person_name)}</span>${personal.steering_vector_id ? `<span class="chip">${esc(personal.steering_vector_id)} @ ${personal.steering_alpha}</span>` : ""}` : ""}${models || '<span class="chip">No advertised models</span>'}</div>
     </article>`;
   }).join("") : '<div class="empty">No registered devices</div>';
   document.querySelectorAll(".simulate").forEach((button) => button.addEventListener("click", () => openSimulation(button.dataset.device)));
@@ -242,6 +243,7 @@ function openEndpointDialog() {
   $("endpoint-display-name").value = "";
   $("endpoint-base-url").value = "";
   $("endpoint-admin-token").value = sessionStorage.getItem("endpointAdminToken") || "";
+  $("endpoint-provider").value = "dragonnest";
   $("endpoint-credential-env").value = "";
   $("endpoint-profile-context").checked = false;
   $("endpoint-model-id").value = "endpoint-model";
@@ -252,8 +254,43 @@ function openEndpointDialog() {
   $("endpoint-total-memory").value = "0";
   $("endpoint-auto-discover").checked = true;
   $("endpoint-submit").disabled = false;
-  toggleEndpointMode();
+  applyProviderMode();
   $("endpoint-dialog").showModal();
+}
+
+const ENDPOINT_PROVIDER_COPY = {
+  dragonnest: {
+    credentialLabel: "Credential environment variable",
+    credentialPlaceholder: "ENDPOINT_API_TOKEN",
+    modelIdLabel: "Model ID",
+    modelIdPlaceholder: "",
+  },
+  openai_chat: {
+    credentialLabel: "API key environment variable",
+    credentialPlaceholder: "CIRRASCALE_API_KEY",
+    modelIdLabel: "Model IDs (comma-separated)",
+    modelIdPlaceholder: "Llama-3.1-8B, Llama-3.1-70B",
+  },
+};
+
+function applyProviderMode() {
+  const provider = $("endpoint-provider").value;
+  const isOpenAi = provider === "openai_chat";
+  const copy = ENDPOINT_PROVIDER_COPY[provider];
+  $("endpoint-credential-env-field").firstChild.textContent = copy.credentialLabel;
+  $("endpoint-credential-env").placeholder = copy.credentialPlaceholder;
+  $("endpoint-model-id-field").firstChild.textContent = copy.modelIdLabel;
+  $("endpoint-model-id").placeholder = copy.modelIdPlaceholder;
+  $("endpoint-auto-discover-row").hidden = isOpenAi;
+  $("endpoint-fetch").hidden = isOpenAi;
+  for (const id of ["endpoint-model-family-field", "endpoint-model-role-field", "endpoint-task-classes-field"]) {
+    $(id).hidden = isOpenAi;
+  }
+  if (isOpenAi) {
+    $("endpoint-auto-discover").checked = false;
+    $("endpoint-model-id").value = "";
+  }
+  toggleEndpointMode();
 }
 
 function endpointHeaders() {
@@ -285,6 +322,10 @@ function applyDiscoveredInfo(info) {
 }
 
 async function fetchEndpointDetails() {
+  if ($("endpoint-provider").value === "openai_chat") {
+    toast("Auto-discovery isn't supported for OpenAI-compatible endpoints; enter model IDs manually");
+    return;
+  }
   const baseUrl = $("endpoint-base-url").value.trim();
   if (!baseUrl) { toast("Enter an endpoint URL first"); return; }
   const button = $("endpoint-fetch"); button.disabled = true;
@@ -298,30 +339,50 @@ async function fetchEndpointDetails() {
   finally { button.disabled = false; }
 }
 
+function endpointModelsPayload(provider) {
+  const maxContextTokens = Number($("endpoint-max-context").value) || 0;
+  if (provider === "openai_chat") {
+    return $("endpoint-model-id").value.split(",").map((item) => item.trim()).filter(Boolean).map((modelId) => ({
+      model_id: modelId,
+      model_family: "openai-compatible",
+      role: "general",
+      task_classes: ["chat_qa"],
+      max_context_tokens: maxContextTokens,
+      warm: true,
+      quality_score: 0.6
+    }));
+  }
+  if ($("endpoint-auto-discover").checked) return [];
+  return [{
+    model_id: $("endpoint-model-id").value.trim(),
+    model_family: $("endpoint-model-family").value.trim(),
+    role: $("endpoint-model-role").value.trim(),
+    task_classes: $("endpoint-task-classes").value.split(",").map((item) => item.trim()).filter(Boolean),
+    max_context_tokens: maxContextTokens,
+    warm: true,
+    quality_score: 0.6
+  }];
+}
+
 async function registerEndpoint(event) {
   event.preventDefault();
   const button = $("endpoint-submit"); button.disabled = true;
   const deviceId = $("endpoint-device-id").value.trim();
-  const autoDiscover = $("endpoint-auto-discover").checked;
+  const provider = $("endpoint-provider").value;
   try {
+    const models = endpointModelsPayload(provider);
+    if (provider === "openai_chat" && !models.length) throw new Error("Enter at least one model ID");
     await api("/api/rest-devices", {
       method: "POST", headers: endpointHeaders(),
       body: JSON.stringify({
         device_id: deviceId,
         display_name: $("endpoint-display-name").value.trim(),
+        provider,
         base_url: $("endpoint-base-url").value.trim(),
         credential_env: $("endpoint-credential-env").value.trim(),
         allow_profile_context: $("endpoint-profile-context").checked,
         total_memory_mb: Number($("endpoint-total-memory").value) || 0,
-        models: autoDiscover ? [] : [{
-          model_id: $("endpoint-model-id").value.trim(),
-          model_family: $("endpoint-model-family").value.trim(),
-          role: $("endpoint-model-role").value.trim(),
-          task_classes: $("endpoint-task-classes").value.split(",").map((item) => item.trim()).filter(Boolean),
-          max_context_tokens: Number($("endpoint-max-context").value) || 0,
-          warm: true,
-          quality_score: 0.6
-        }]
+        models
       })
     });
     $("endpoint-dialog").close();
@@ -433,6 +494,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("endpoint-cancel").addEventListener("click", () => $("endpoint-dialog").close());
   $("endpoint-fetch").addEventListener("click", fetchEndpointDetails);
   $("endpoint-auto-discover").addEventListener("change", toggleEndpointMode);
+  $("endpoint-provider").addEventListener("change", applyProviderMode);
   $("enrollment-form").addEventListener("submit", createEnrollment);
   $("enrollment-close").addEventListener("click", closeEnrollment);
   $("enrollment-cancel").addEventListener("click", closeEnrollment);

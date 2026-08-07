@@ -20,6 +20,19 @@ from dragon_nest.transport.brain import (
 
 
 async def run(args) -> None:
+    http_endpoint_admin_token = os.environ.get(args.http_endpoint_admin_token_env, "")
+    if (
+        args.enable_http_endpoints
+        and not http_endpoint_admin_token
+        and not args.production
+    ):
+        http_endpoint_admin_token = args.enrollment_token
+        print(
+            f"{args.http_endpoint_admin_token_env} is not set; using --enrollment-token "
+            f"({http_endpoint_admin_token!r}) as the HTTP endpoint admin token for local "
+            f"dev. Set {args.http_endpoint_admin_token_env} to override, or pass "
+            "--production to require it explicitly."
+        )
     service = BrainService(
         BrainServiceConfig(
             brain_id=args.brain_id,
@@ -30,9 +43,7 @@ async def run(args) -> None:
             tls_client_ca_path=str(args.tls_client_ca or ""),
             state_db_path=str(args.state_db),
             http_endpoint_registration_enabled=args.enable_http_endpoints,
-            http_endpoint_admin_token=os.environ.get(
-                args.http_endpoint_admin_token_env, ""
-            ),
+            http_endpoint_admin_token=http_endpoint_admin_token,
             http_endpoint_allowed_cidrs=tuple(
                 args.http_endpoint_allow_cidr or ("127.0.0.0/8", "::1/128")
             ),
@@ -73,9 +84,25 @@ def main() -> None:
     parser.add_argument("--tls-certificate", type=Path)
     parser.add_argument("--tls-key", type=Path)
     parser.add_argument("--tls-client-ca", type=Path)
-    parser.add_argument("--http-host", default="127.0.0.1")
+    parser.add_argument("--http-host", default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=8080)
-    parser.add_argument("--enable-http-endpoints", action="store_true")
+    parser.add_argument(
+        "--enable-http-endpoints",
+        dest="enable_http_endpoints",
+        action="store_true",
+        default=True,
+        help=(
+            "Enable the HTTP endpoint API (manual entry + auto-discovery in the "
+            "admin dashboard, and re-registration of persisted endpoints on "
+            "startup). Enabled by default."
+        ),
+    )
+    parser.add_argument(
+        "--disable-http-endpoints",
+        dest="enable_http_endpoints",
+        action="store_false",
+        help="Disable the HTTP endpoint API.",
+    )
     parser.add_argument(
         "--http-endpoint-admin-token-env",
         default="DRAGONNEST_HTTP_ENDPOINT_ADMIN_TOKEN",

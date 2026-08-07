@@ -191,7 +191,7 @@ class ModelSegment(_message.Message):
     def __init__(self, pipeline_id: _Optional[str] = ..., start_layer: _Optional[int] = ..., end_layer: _Optional[int] = ..., total_layers: _Optional[int] = ..., includes_embedding: _Optional[bool] = ..., includes_lm_head: _Optional[bool] = ...) -> None: ...
 
 class HealthUpdate(_message.Message):
-    __slots__ = ("device_id", "timestamp_ms", "battery_pct", "charging", "thermal_level", "cpu_utilization", "accelerator_utilization", "available_memory_mb", "network_rtt_ms", "reachable", "active_task_ids", "simulated_constraint", "warm_model_ids")
+    __slots__ = ("device_id", "timestamp_ms", "battery_pct", "charging", "thermal_level", "cpu_utilization", "accelerator_utilization", "available_memory_mb", "network_rtt_ms", "reachable", "active_task_ids", "simulated_constraint", "warm_model_ids", "gpu_utilization", "npu_utilization")
     DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     TIMESTAMP_MS_FIELD_NUMBER: _ClassVar[int]
     BATTERY_PCT_FIELD_NUMBER: _ClassVar[int]
@@ -205,6 +205,8 @@ class HealthUpdate(_message.Message):
     ACTIVE_TASK_IDS_FIELD_NUMBER: _ClassVar[int]
     SIMULATED_CONSTRAINT_FIELD_NUMBER: _ClassVar[int]
     WARM_MODEL_IDS_FIELD_NUMBER: _ClassVar[int]
+    GPU_UTILIZATION_FIELD_NUMBER: _ClassVar[int]
+    NPU_UTILIZATION_FIELD_NUMBER: _ClassVar[int]
     device_id: str
     timestamp_ms: int
     battery_pct: float
@@ -218,7 +220,9 @@ class HealthUpdate(_message.Message):
     active_task_ids: _containers.RepeatedScalarFieldContainer[str]
     simulated_constraint: bool
     warm_model_ids: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, device_id: _Optional[str] = ..., timestamp_ms: _Optional[int] = ..., battery_pct: _Optional[float] = ..., charging: _Optional[bool] = ..., thermal_level: _Optional[float] = ..., cpu_utilization: _Optional[float] = ..., accelerator_utilization: _Optional[float] = ..., available_memory_mb: _Optional[int] = ..., network_rtt_ms: _Optional[float] = ..., reachable: _Optional[bool] = ..., active_task_ids: _Optional[_Iterable[str]] = ..., simulated_constraint: _Optional[bool] = ..., warm_model_ids: _Optional[_Iterable[str]] = ...) -> None: ...
+    gpu_utilization: float
+    npu_utilization: float
+    def __init__(self, device_id: _Optional[str] = ..., timestamp_ms: _Optional[int] = ..., battery_pct: _Optional[float] = ..., charging: _Optional[bool] = ..., thermal_level: _Optional[float] = ..., cpu_utilization: _Optional[float] = ..., accelerator_utilization: _Optional[float] = ..., available_memory_mb: _Optional[int] = ..., network_rtt_ms: _Optional[float] = ..., reachable: _Optional[bool] = ..., active_task_ids: _Optional[_Iterable[str]] = ..., simulated_constraint: _Optional[bool] = ..., warm_model_ids: _Optional[_Iterable[str]] = ..., gpu_utilization: _Optional[float] = ..., npu_utilization: _Optional[float] = ...) -> None: ...
 
 class ExecuteTask(_message.Message):
     __slots__ = ("task_id", "attempt_id", "request_text", "model_id", "timeout_ms", "steering")

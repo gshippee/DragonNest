@@ -52,6 +52,8 @@ class HealthState:
     thermal_level: float = -1
     cpu_utilization: float = -1
     accelerator_utilization: float = -1
+    gpu_utilization: float = -1
+    npu_utilization: float = -1
     available_memory_mb: int = 0
     network_rtt_ms: float = -1
     reachable: bool = True

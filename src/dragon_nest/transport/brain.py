@@ -55,7 +55,7 @@ from ..registry import DeviceRecord, DeviceRegistry
 from ..router import DeterministicRouter
 from ..steering import SteeringRegistry
 from ..tasks import AttemptState, TaskRecord, TaskStore
-from .http_device import HttpDeviceSession, fetch_endpoint_info
+from .http_device import HttpDeviceSession, OpenAIChatDeviceSession, fetch_endpoint_info
 from .sessions import DeviceSession, SessionConflictError, SessionRegistry
 from .conversion import (
     device_from_registration,
@@ -498,7 +498,10 @@ class BrainService(pb_grpc.BrainControlServicer):
                 f"{existing.transport}"
             )
         await self._cancel_http_poll(endpoint.device.device_id)
-        session = HttpDeviceSession(endpoint, self._http_client)
+        session_cls = (
+            OpenAIChatDeviceSession if endpoint.provider == "openai_chat" else HttpDeviceSession
+        )
+        session = session_cls(endpoint, self._http_client)
         await self.sessions.register(session, replace_same_transport=True)
         record = self.registry.register(endpoint.device)
         if persist:

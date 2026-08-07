@@ -23,6 +23,9 @@ class EndpointError(ValueError):
     pass
 
 
+ENDPOINT_PROVIDERS = ("dragonnest", "openai_chat")
+
+
 @dataclass(frozen=True)
 class HttpEndpoint:
     device: Device
@@ -32,6 +35,7 @@ class HttpEndpoint:
     health_timeout_seconds: float = 5.0
     poll_interval_seconds: float = 5.0
     allow_profile_context: bool = False
+    provider: str = "dragonnest"
 
     def __post_init__(self) -> None:
         if not self.device.device_id.strip():
@@ -48,6 +52,8 @@ class HttpEndpoint:
             raise EndpointError("health_timeout_seconds must be positive")
         if self.poll_interval_seconds < 1:
             raise EndpointError("poll_interval_seconds must be at least 1")
+        if self.provider not in ENDPOINT_PROVIDERS:
+            raise EndpointError(f"provider must be one of {ENDPOINT_PROVIDERS}")
 
 
 class HttpEndpointStore:
@@ -75,10 +81,22 @@ class HttpEndpointStore:
                     allow_profile_context INTEGER NOT NULL DEFAULT 0,
                     device_json TEXT NOT NULL,
                     created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
+                    updated_at REAL NOT NULL,
+                    provider TEXT NOT NULL DEFAULT 'dragonnest'
                 )
                 """
             )
+            existing_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(http_endpoints)"
+                ).fetchall()
+            }
+            if "provider" not in existing_columns:
+                self._connection.execute(
+                    "ALTER TABLE http_endpoints "
+                    "ADD COLUMN provider TEXT NOT NULL DEFAULT 'dragonnest'"
+                )
 
     def put(self, endpoint: HttpEndpoint) -> HttpEndpoint:
         now = time.time()
@@ -92,8 +110,8 @@ class HttpEndpointStore:
                     device_id, base_url, credential_env,
                     request_timeout_seconds, health_timeout_seconds,
                     poll_interval_seconds, allow_profile_context, device_json,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, provider
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(device_id) DO UPDATE SET
                     base_url=excluded.base_url,
                     credential_env=excluded.credential_env,
@@ -102,7 +120,8 @@ class HttpEndpointStore:
                     poll_interval_seconds=excluded.poll_interval_seconds,
                     allow_profile_context=excluded.allow_profile_context,
                     device_json=excluded.device_json,
-                    updated_at=excluded.updated_at
+                    updated_at=excluded.updated_at,
+                    provider=excluded.provider
                 """,
                 (
                     endpoint.device.device_id,
@@ -115,6 +134,7 @@ class HttpEndpointStore:
                     payload,
                     now,
                     now,
+                    endpoint.provider,
                 ),
             )
         return self.get(endpoint.device.device_id)
@@ -156,6 +176,7 @@ def _endpoint(row: sqlite3.Row) -> HttpEndpoint:
         health_timeout_seconds=row["health_timeout_seconds"],
         poll_interval_seconds=row["poll_interval_seconds"],
         allow_profile_context=bool(row["allow_profile_context"]),
+        provider=row["provider"],
     )
 
 

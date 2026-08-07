@@ -5,16 +5,19 @@ public record SimulationState(
         Float thermalLevel,
         Float cpuUtilization,
         Float acceleratorUtilization,
+        Float gpuUtilization,
+        Float npuUtilization,
         Float networkRttMs,
         Long availableMemoryMb,
         boolean offline) {
     public static SimulationState none() {
-        return new SimulationState(null, null, null, null, null, null, false);
+        return new SimulationState(null, null, null, null, null, null, null, null, false);
     }
 
     public TelemetrySnapshot apply(TelemetrySnapshot source) {
         boolean enabled = batteryPercentage != null || thermalLevel != null
                 || cpuUtilization != null || acceleratorUtilization != null
+                || gpuUtilization != null || npuUtilization != null
                 || networkRttMs != null || availableMemoryMb != null || offline;
         if (!enabled) {
             return source;
@@ -27,6 +30,8 @@ public record SimulationState(
                 cpuUtilization != null ? cpuUtilization : source.cpuUtilization(),
                 acceleratorUtilization != null
                         ? acceleratorUtilization : source.acceleratorUtilization(),
+                gpuUtilization != null ? gpuUtilization : source.gpuUtilization(),
+                npuUtilization != null ? npuUtilization : source.npuUtilization(),
                 networkRttMs != null ? networkRttMs : source.networkRttMs(),
                 source.activeTaskIds(),
                 source.warmModelIds(),

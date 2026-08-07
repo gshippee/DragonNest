@@ -191,7 +191,13 @@ Every other `python scripts\...` example below the same substitution applies:
 replace `python` with `.venv\Scripts\python.exe` and, for multi-line commands,
 replace the `\` line-continuation with PowerShell's backtick `` ` ``.
 
-The dashboard is available at `http://127.0.0.1:8080` by default.
+The dashboard listens on `0.0.0.0:8080` by default (reachable at
+`http://127.0.0.1:8080` locally, and at the machine's LAN/hotspot address for
+other devices — pass `--http-host 127.0.0.1` to restrict it to loopback only).
+QR enrollment auto-detects the Brain's LAN-reachable address via
+`/api/server-info` even when the dashboard itself is opened over `127.0.0.1`,
+so scanning the code works from a phone on the same Wi-Fi network or a laptop
+Mobile Hotspot without needing a USB connection.
 
 The Agent reconnects with exponential backoff. A stream loss fails active task,
 shard, or pipeline-stage attempts, and the Brain retries each once on the next

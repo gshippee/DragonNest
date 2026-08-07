@@ -9,6 +9,8 @@ public record TelemetrySnapshot(
         long availableMemoryMb,
         float cpuUtilization,
         float acceleratorUtilization,
+        float gpuUtilization,
+        float npuUtilization,
         float networkRttMs,
         List<String> activeTaskIds,
         List<String> warmModelIds,

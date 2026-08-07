@@ -172,18 +172,24 @@
       <label class="field">Device ID<input id="endpoint-device-id" type="text" maxlength="200" required></label>
       <label class="field">Display name<input id="endpoint-display-name" type="text" maxlength="120" placeholder="Auto-filled if left blank"></label>
       <label class="field">Admin token<input id="endpoint-admin-token" type="password" maxlength="500" autocomplete="off" required></label>
+      <label class="field">Provider
+        <select id="endpoint-provider">
+          <option value="dragonnest">DragonNest endpoint (implements /health, /info, /execute)</option>
+          <option value="openai_chat">OpenAI-compatible (POST /chat/completions)</option>
+        </select>
+      </label>
       <div class="control-grid">
         <label class="field">Endpoint URL<input id="endpoint-base-url" type="url" placeholder="https://host:port" maxlength="500" required></label>
-        <label class="field">Credential environment variable<input id="endpoint-credential-env" type="text" maxlength="120" placeholder="ENDPOINT_API_TOKEN"></label>
+        <label class="field" id="endpoint-credential-env-field">Credential environment variable<input id="endpoint-credential-env" type="text" maxlength="120" placeholder="ENDPOINT_API_TOKEN"></label>
         <button id="endpoint-fetch" class="btn-secondary" type="button"><i data-lucide="refresh-cw"></i><span>Fetch details</span></button>
       </div>
-      <label class="check-row"><input id="endpoint-auto-discover" type="checkbox" checked>Auto-discover models from this endpoint (GET /info)</label>
+      <label id="endpoint-auto-discover-row" class="check-row"><input id="endpoint-auto-discover" type="checkbox" checked>Auto-discover models from this endpoint (GET /info)</label>
       <label class="check-row"><input id="endpoint-profile-context" type="checkbox">Allow profile context</label>
       <div id="endpoint-manual-fields" class="control-grid" hidden>
-        <label class="field">Model ID<input id="endpoint-model-id" type="text" maxlength="200" value="endpoint-model"></label>
-        <label class="field">Model family<input id="endpoint-model-family" type="text" maxlength="120" value="endpoint"></label>
-        <label class="field">Role<input id="endpoint-model-role" type="text" maxlength="60" value="general"></label>
-        <label class="field">Task classes<input id="endpoint-task-classes" type="text" value="chat_qa" placeholder="comma-separated"></label>
+        <label class="field" id="endpoint-model-id-field">Model ID<input id="endpoint-model-id" type="text" maxlength="200" value="endpoint-model"></label>
+        <label class="field" id="endpoint-model-family-field">Model family<input id="endpoint-model-family" type="text" maxlength="120" value="endpoint"></label>
+        <label class="field" id="endpoint-model-role-field">Role<input id="endpoint-model-role" type="text" maxlength="60" value="general"></label>
+        <label class="field" id="endpoint-task-classes-field">Task classes<input id="endpoint-task-classes" type="text" value="chat_qa" placeholder="comma-separated"></label>
         <label class="field">Max context tokens<input id="endpoint-max-context" type="number" min="0" value="4096"></label>
       </div>
       <label class="field">Total memory (MB)<input id="endpoint-total-memory" type="number" min="0" value="0" placeholder="Auto"></label>

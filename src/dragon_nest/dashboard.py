@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import socket
 from io import BytesIO
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -36,6 +37,35 @@ from .transport.sessions import SessionConflictError
 WEB_ROOT = Path(__file__).with_name("web")
 
 
+def _detect_lan_addresses() -> list[str]:
+    """All LAN-reachable IPv4 addresses bound to this host's interfaces.
+
+    A host can have more than one live network (e.g. a workshop Wi-Fi that
+    isolates clients from each other, plus a laptop-hosted Mobile Hotspot
+    the phone actually joined), so callers must not assume a single
+    "the" address is correct without knowing which network the other
+    device is on.
+    """
+    addresses: list[str] = []
+    try:
+        _, _, host_addresses = socket.gethostbyname_ex(socket.gethostname())
+        for address in host_addresses:
+            if not address.startswith("127.") and address not in addresses:
+                addresses.append(address)
+    except OSError:
+        pass
+    if not addresses:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(("8.8.8.8", 80))
+                address = sock.getsockname()[0]
+            if address and not address.startswith("127."):
+                addresses.append(address)
+        except OSError:
+            pass
+    return addresses
+
+
 class SteeringRequest(BaseModel):
     enabled: bool = False
     vector_id: str = ""
@@ -68,6 +98,8 @@ class SimulationRequest(BaseModel):
     available_memory_mb: int | None = Field(default=None, ge=0)
     cpu_utilization: float | None = Field(default=None, ge=0, le=1)
     accelerator_utilization: float | None = Field(default=None, ge=0, le=1)
+    gpu_utilization: float | None = Field(default=None, ge=0, le=1)
+    npu_utilization: float | None = Field(default=None, ge=0, le=1)
     network_rtt_ms: float | None = Field(default=None, ge=0)
     # Deployment/steering overlays (not health fields):
     artifact_states: dict[str, str] | None = None  # artifact_id -> ArtifactState
@@ -200,6 +232,7 @@ class RestDeviceRegistration(BaseModel):
     base_url: str = Field(min_length=1, max_length=500)
     model_config = ConfigDict(extra="forbid")
 
+    provider: str = Field(default="dragonnest", pattern=r"^(dragonnest|openai_chat)$")
     credential_env: str = Field(
         default="", max_length=120, pattern=r"^$|^[A-Za-z_][A-Za-z0-9_]*$"
     )
@@ -283,6 +316,10 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
             "task_count": len(service.tasks.records()),
         }
 
+    @app.get("/api/server-info")
+    async def api_server_info():
+        return {"lan_addresses": _detect_lan_addresses()}
+
     @app.get("/api/devices")
     async def api_devices():
         return [_device_dict(service, record) for record in service.registry.records()]
@@ -313,6 +350,15 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
         platform = request.platform
         total_memory_mb = request.total_memory_mb
         hardware = request.hardware
+        if not models and request.provider == "openai_chat":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "OpenAI-compatible endpoints don't expose DragonNest's /info "
+                    "route; supply `models` explicitly (one entry per model id "
+                    "you want to route to)"
+                ),
+            )
         if not models:
             info = await _probe_http_endpoint(
                 service, request.base_url, request.credential_env
@@ -386,6 +432,7 @@ def create_dashboard_app(service: BrainService) -> FastAPI:
                 health_timeout_seconds=request.health_timeout_seconds,
                 poll_interval_seconds=request.poll_interval_seconds,
                 allow_profile_context=request.allow_profile_context,
+                provider=request.provider,
             )
             await service.register_http_device(endpoint)
         except (EndpointError, SessionConflictError) as exc:
@@ -836,6 +883,7 @@ def _device_dict(
         "status": record.status.value,
         "connected": record.stream_connected,
         "transport": "http_endpoint" if endpoint else "grpc_stream",
+        "endpoint_provider": endpoint.provider if endpoint else "",
         "base_url": (
             endpoint.base_url if endpoint and include_endpoint_details else ""
         ),
@@ -851,6 +899,8 @@ def _device_dict(
             "thermal_level": device.health.thermal_level,
             "cpu_utilization": device.health.cpu_utilization,
             "accelerator_utilization": device.health.accelerator_utilization,
+            "gpu_utilization": device.health.gpu_utilization,
+            "npu_utilization": device.health.npu_utilization,
             "available_memory_mb": device.health.available_memory_mb,
             "network_rtt_ms": device.health.network_rtt_ms,
             "reachable": device.health.reachable,

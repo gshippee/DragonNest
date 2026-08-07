@@ -131,6 +131,8 @@ message HealthUpdate {
   repeated string active_task_ids = 11;
   bool simulated_constraint = 12;
   repeated string warm_model_ids = 13;
+  float gpu_utilization = 14;   // -1 = unavailable on this platform/driver
+  float npu_utilization = 15;   // -1 = unavailable on this platform/driver
 }
 
 message ExecuteTask {

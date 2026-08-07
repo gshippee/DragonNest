@@ -164,6 +164,8 @@ public final class GrpcAgentConnection implements AgentConnection {
                 .setThermalLevel(telemetry.thermalLevel())
                 .setCpuUtilization(telemetry.cpuUtilization())
                 .setAcceleratorUtilization(telemetry.acceleratorUtilization())
+                .setGpuUtilization(telemetry.gpuUtilization())
+                .setNpuUtilization(telemetry.npuUtilization())
                 .setAvailableMemoryMb(telemetry.availableMemoryMb())
                 .setNetworkRttMs(networkRttMs >= 0 ? networkRttMs : telemetry.networkRttMs())
                 .setReachable(telemetry.reachable())

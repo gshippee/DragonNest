@@ -71,6 +71,9 @@
   <dialog id="enrollment-dialog">
     <form id="enrollment-form">
       <div class="dialog-head"><h2>Connect your phone</h2><button id="enrollment-close" class="icon-btn" type="button" aria-label="Close"><i data-lucide="x"></i></button></div>
+      <label id="enrollment-host-row" class="field" hidden>Network your phone is on
+        <select id="enrollment-host"></select>
+      </label>
       <div id="enrollment-code" class="enrollment-code">
         <img id="enrollment-qr" alt="DragonNest enrollment QR code" width="256" height="256">
         <strong id="enrollment-status">Preparing code</strong>

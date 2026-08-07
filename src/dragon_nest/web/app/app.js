@@ -146,14 +146,47 @@ function resetEnrollment() {
   $("enrollment-status").textContent = "Preparing code";
   $("enrollment-expiry").textContent = "";
   $("enrollment-qr").removeAttribute("src");
+  $("enrollment-host-row").hidden = true;
+  $("enrollment-host").innerHTML = "";
+}
+
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", ""]);
+
+// Candidate Brain addresses a phone might need to reach, most likely first.
+// window.location.hostname is included when it isn't loopback because it's
+// the address that's known to work right now (it's how this page loaded).
+async function candidateBrainHosts() {
+  const pageHost = window.location.hostname;
+  const candidates = LOOPBACK_HOSTNAMES.has(pageHost) ? [] : [pageHost];
+  try {
+    const info = await api("/api/server-info");
+    for (const address of info.lan_addresses || []) {
+      if (!candidates.includes(address)) candidates.push(address);
+    }
+  } catch { /* server-info unavailable; fall back to what we already have */ }
+  if (!candidates.length) candidates.push(pageHost || "127.0.0.1");
+  return candidates;
 }
 
 async function createEnrollment() {
   try {
+    const hosts = await candidateBrainHosts();
+    const picker = $("enrollment-host");
+    picker.innerHTML = hosts.map((host) => `<option value="${esc(host)}">${esc(host)}</option>`).join("");
+    $("enrollment-host-row").hidden = hosts.length < 2;
+    await refreshEnrollmentQr();
+  } catch (error) {
+    $("enrollment-status").textContent = "Could not create a code";
+    toast(error.message);
+  }
+}
+
+async function refreshEnrollmentQr() {
+  try {
     const session = await api("/api/enrollment-sessions", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        brain_host: window.location.hostname || "127.0.0.1",
+        brain_host: $("enrollment-host").value || (await candidateBrainHosts())[0],
         brain_port: 50051,
         use_tls: window.location.protocol === "https:",
         ttl_seconds: 300,
@@ -162,6 +195,7 @@ async function createEnrollment() {
     state.enrollment = session;
     $("enrollment-qr").src = `${session.qr_url}?t=${Date.now()}`;
     updateEnrollmentStatus(session);
+    clearInterval(window.__enrollmentTimer);
     window.__enrollmentTimer = setInterval(pollEnrollment, 1000);
   } catch (error) {
     $("enrollment-status").textContent = "Could not create a code";
@@ -213,6 +247,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("add-device").addEventListener("click", openEnrollment);
   $("enrollment-close").addEventListener("click", closeEnrollment);
   $("enrollment-cancel").addEventListener("click", closeEnrollment);
+  $("enrollment-host").addEventListener("change", refreshEnrollmentQr);
   $("forget-device").addEventListener("click", forgetDevice);
   $("profile-form").addEventListener("submit", saveProfile);
   $("task-form").addEventListener("submit", submitTask);
