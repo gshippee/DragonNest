@@ -45,6 +45,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="verify the external cache and inventory without connecting to a phone",
     )
+    parser.add_argument(
+        "--model-id",
+        action="append",
+        default=None,
+        help=(
+            "restrict verification/provisioning to this model_id; may be "
+            "repeated. Default is every record in the inventory (Base, "
+            "Concise, and Detailed). A device only ever advertises the "
+            "models it was actually given -- provisioning a subset is not "
+            "a weaker check, it is a smaller, still-exact one."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -112,6 +124,31 @@ def run_as(args: argparse.Namespace, command: str) -> str:
     return adb(args, "shell", remote)
 
 
+def select_records(
+    records: list[dict[str, Any]], model_ids: list[str] | None
+) -> list[dict[str, Any]]:
+    """Select inventory records to verify/provision.
+
+    Default (model_ids is None) requires the full Base+Concise+Detailed
+    catalog -- that is the readiness gate for a complete S25 Local rollout.
+    An explicit model_ids subset (e.g. just Base) is a smaller, still-exact
+    check: a device should advertise what it was actually given, not what
+    the full catalog wishes were installed.
+    """
+    if model_ids is None:
+        if len(records) != 3:
+            raise RuntimeError(
+                "S25 GenieX inventory must contain exactly Base, Concise, and Detailed"
+            )
+        return records
+    requested = list(dict.fromkeys(model_ids))
+    by_id = {record["model_id"]: record for record in records}
+    missing = [model_id for model_id in requested if model_id not in by_id]
+    if missing:
+        raise RuntimeError(f"--model-id requested {missing} not present in inventory")
+    return [by_id[model_id] for model_id in requested]
+
+
 def assert_safe(record: dict[str, Any]) -> None:
     for field in ("model_id", "artifact_id", "source_directory"):
         value = str(record[field])
@@ -171,9 +208,7 @@ def main() -> None:
     if args.package != PACKAGE:
         raise RuntimeError(f"this physical provisioning flow is restricted to {PACKAGE}")
     inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
-    records = inventory.get("artifacts", [])
-    if len(records) != 3:
-        raise RuntimeError("S25 GenieX inventory must contain exactly Base, Concise, and Detailed")
+    records = select_records(inventory.get("artifacts", []), args.model_id)
 
     prepared: list[tuple[dict[str, Any], Path, str, dict[str, str]]] = []
     for record in records:

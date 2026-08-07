@@ -101,6 +101,91 @@ def test_s25_stager_rejects_prompt_only_inventory():
         raise AssertionError("prompt-only inventory was accepted")
 
 
+def test_s25_stager_model_id_defaults_to_all_three():
+    stager = _stager()
+    inventory = json.loads(
+        (ROOT / "docs/results/s25_geniex_artifacts.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    records = inventory["artifacts"]
+    selected = stager.select_records(records, None)
+    assert selected == records
+    assert {record["model_id"] for record in selected} == {
+        "qwen3-0.6b-s25-base",
+        "qwen3-0.6b-s25-concise",
+        "qwen3-0.6b-s25-detailed",
+    }
+
+
+def test_s25_stager_model_id_default_rejects_incomplete_catalog():
+    stager = _stager()
+    inventory = json.loads(
+        (ROOT / "docs/results/s25_geniex_artifacts.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    incomplete = [
+        record
+        for record in inventory["artifacts"]
+        if record["model_id"] == "qwen3-0.6b-s25-base"
+    ]
+    try:
+        stager.select_records(incomplete, None)
+    except RuntimeError as failure:
+        assert "exactly Base, Concise, and Detailed" in str(failure)
+    else:
+        raise AssertionError("incomplete default catalog was accepted")
+
+
+def test_s25_stager_model_id_subset_selects_only_requested_profile():
+    stager = _stager()
+    inventory = json.loads(
+        (ROOT / "docs/results/s25_geniex_artifacts.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    selected = stager.select_records(
+        inventory["artifacts"], ["qwen3-0.6b-s25-base"]
+    )
+    assert [record["model_id"] for record in selected] == ["qwen3-0.6b-s25-base"]
+
+
+def test_s25_stager_model_id_subset_rejects_unknown_model():
+    stager = _stager()
+    inventory = json.loads(
+        (ROOT / "docs/results/s25_geniex_artifacts.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    try:
+        stager.select_records(inventory["artifacts"], ["qwen3-0.6b-s25-nonexistent"])
+    except RuntimeError as failure:
+        assert "qwen3-0.6b-s25-nonexistent" in str(failure)
+    else:
+        raise AssertionError("unknown model_id was silently accepted")
+
+
+def test_s25_stager_parses_repeated_model_id_flag():
+    stager = _stager()
+    with patch.object(
+        sys,
+        "argv",
+        [
+            "stage_s25_geniex_artifacts.py",
+            "--cache-root",
+            "cache",
+            "--inventory",
+            "inventory.json",
+            "--verify-only",
+            "--model-id",
+            "qwen3-0.6b-s25-base",
+        ],
+    ):
+        args = stager.parse_args()
+    assert args.model_id == ["qwen3-0.6b-s25-base"]
+
+
 def test_s25_stager_allows_desktop_only_cache_verification():
     stager = _stager()
     with patch.object(
