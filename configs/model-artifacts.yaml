@@ -249,3 +249,261 @@ models:
         - name: logits
           shape: [1, 32, 151936]
           dtype: float32
+
+  # ---- Qwen3-1.7B four-stage pipeline (pipeline_id: qwen3-1.7b-w4a16-demo-v1) ----
+  # Boundaries recovered directly from Qualcomm AI Hub job history (job.shapes /
+  # job.options), not from any local export script. See
+  # docs/results/qwen3_1_7b_pipeline_manifest.json for full I/O schema per
+  # stage (KV-cache tensors, attention_mask/position_ids, quantization scale/
+  # zero_point) and docs/results/demo_artifact_inventory.json for status.
+  # quantization is recorded as observed ("w4a16" job/model name vs
+  # "--quantize_full_type w8a16" actual compile flag) — this discrepancy is
+  # unresolved, not silently normalized.
+  - model_id: qwen3-1.7b-s0-s25
+    artifact_id: qwen3-1.7b-w4a16-s0-sm8750-v79-qairt245
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main (unpinned; unverified)
+    runtime: qnn
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    artifact_format: qnn_context_binary
+    quantization: w4a16 (declared) / w8a16 (observed compile flag)
+    size_bytes: 622391296
+    checksum: d1b225660e7c3307960f9bf98611cb3f1a347baa5077079973e40026a0f7b8d5
+    build_provenance: {source: recovered from Qualcomm AI Hub job history, not a local script}
+    ai_hub: {target: Samsung Galaxy S25 (Family), source_model_id: mq2yl3r7m, compile_job_ids: [j56wwdevg, jglll16eg], link_job_id: j5w4412zg, target_model_id: mnz6rpezm}
+    verification_status: verified through Qualcomm AI Hub
+    supported_accelerators: [htp]
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      start_layer: null
+      end_layer: null
+      total_layers: 28
+      includes_embedding: true
+      includes_lm_head: false
+      input_tensor: input_ids
+      output_tensor: embedding
+      output_dtype: uint16
+      output_scale: 6.988926998019451e-06
+      output_zero_point: 32232.0
+      boundary_format: qnn-quantized-uint16
+
+  - model_id: qwen3-1.7b-s1-s25
+    artifact_id: qwen3-1.7b-w4a16-s1-sm8750-v79-qairt245
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main (unpinned; unverified)
+    runtime: qnn
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    artifact_format: qnn_context_binary
+    quantization: w4a16 (declared) / w8a16 (observed compile flag)
+    size_bytes: 263028736
+    checksum: ea19932dcc54d4a4bc66af22fa21ba19094fd146f6dd3f0221788baa47d7f912
+    build_provenance: {source: recovered from Qualcomm AI Hub job history, not a local script}
+    ai_hub: {target: Samsung Galaxy S25 (Family), source_model_id: mno9ep7kn, compile_job_ids: [jp366wvxp, jgo884k4p], link_job_id: jg9ddxjq5, target_model_id: mm5r4gl9q}
+    verification_status: verified through Qualcomm AI Hub
+    supported_accelerators: [htp]
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      start_layer: 0
+      end_layer: 9
+      total_layers: 28
+      includes_embedding: false
+      includes_lm_head: false
+      input_tensor: embedding
+      output_tensor: add_21844
+      boundary_format: qnn-fp32-plus-kv-cache
+
+  - model_id: qwen3-1.7b-s2-s25
+    artifact_id: qwen3-1.7b-w4a16-s2-sm8750-v79-qairt245
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main (unpinned; unverified)
+    runtime: qnn
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    artifact_format: qnn_context_binary
+    quantization: w4a16 (declared) / w8a16 (observed compile flag)
+    size_bytes: 263024640
+    checksum: bc8e27a2e6ad10ab97cefaabce7c40b3fe5e717363e0b32b22b563c65993807a
+    build_provenance: {source: recovered from Qualcomm AI Hub job history, not a local script}
+    ai_hub: {target: Samsung Galaxy S25 (Family), source_model_id: mmr14592q, compile_job_ids: [jpv77907p, jgjqqwz75], link_job_id: jp166vyk5, target_model_id: mn05lew9q}
+    verification_status: verified through Qualcomm AI Hub
+    supported_accelerators: [htp]
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      start_layer: 10
+      end_layer: 19
+      total_layers: 28
+      includes_embedding: false
+      includes_lm_head: false
+      input_tensor: add_21844
+      output_tensor: add_42314
+      boundary_format: qnn-fp32-plus-kv-cache
+
+  - model_id: qwen3-1.7b-s3-s25
+    artifact_id: qwen3-1.7b-w4a16-s3-sm8750-v79-qairt245
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main (unpinned; unverified)
+    runtime: qnn
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45
+    artifact_format: qnn_context_binary
+    quantization: w4a16 (declared) / w8a16 (observed compile flag)
+    size_bytes: 525799424
+    checksum: 3b0444049bd9e7593568703774b9a8fc6eaf466ef5187624930f2e41990f0253
+    build_provenance: {source: recovered from Qualcomm AI Hub job history, not a local script}
+    ai_hub: {target: Samsung Galaxy S25 (Family), source_model_id: mqky32z1m, compile_job_ids: [jpeyyle75, jgznn4ozg], link_job_id: jgd22zek5, target_model_id: mqyl68exm}
+    verification_status: verified through Qualcomm AI Hub
+    supported_accelerators: [htp]
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      start_layer: 20
+      end_layer: 27
+      total_layers: 28
+      includes_embedding: false
+      includes_lm_head: true
+      input_tensor: add_42314
+      output_tensor: logits
+      boundary_format: qnn-fp32-plus-kv-cache
+
+  # X Elite counterparts: same source_model_id per stage, same options, device
+  # changed only. Submitted this session; compile/link job IDs recorded as
+  # they land. See docs/results/demo_artifact_inventory.json for live status.
+  - model_id: qwen3-1.7b-s0-xelite
+    artifact_id: qwen3-1.7b-w4a16-s0-xelite-v73
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main (unpinned; unverified)
+    runtime: qnn
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73
+    artifact_format: qnn_context_binary
+    quantization: w4a16 (declared) / w8a16 (observed compile flag)
+    size_bytes: 622391296
+    checksum: ca838bf2b1ddfaa1b0ed2b426eb798fb4e6f6437b1a28d14b217ffe9c01cec20
+    build_provenance: {source: compiled this session from the identical S25 source model mq2yl3r7m, device changed only}
+    ai_hub: {target: Snapdragon X Elite CRD, source_model_id: mq2yl3r7m, compile_job_ids: [jpv7dw0mp, jgjq7lz85], link_job_id: jgk84y32g, target_model_id: mq8py74gm}
+    verification_status: verified through Qualcomm AI Hub
+    supported_accelerators: [htp]
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      start_layer: null
+      end_layer: null
+      total_layers: 28
+      includes_embedding: true
+      includes_lm_head: false
+      input_tensor: input_ids
+      output_tensor: embedding
+      output_dtype: uint16
+      output_scale: 6.988926998019451e-06
+      output_zero_point: 32232.0
+      boundary_format: qnn-quantized-uint16
+
+  - model_id: qwen3-1.7b-s1-xelite
+    artifact_id: qwen3-1.7b-w4a16-s1-xelite-v73
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main (unpinned; unverified)
+    runtime: qnn
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73
+    artifact_format: qnn_context_binary
+    quantization: w4a16 (declared) / w8a16 (observed compile flag)
+    size_bytes: 263147520
+    checksum: 21c4d4d0dbe5bc0441e22fcf219b12a2c4518228b68455bfb9d84889245b9126
+    build_provenance: {source: compiled this session from the identical S25 source model mno9ep7kn, device changed only}
+    ai_hub: {target: Snapdragon X Elite CRD, source_model_id: mno9ep7kn, compile_job_ids: [jpeyzve05, jgznm7o6g], link_job_id: jg9dm4kw5, target_model_id: mmxg0gpyq}
+    verification_status: verified through Qualcomm AI Hub
+    supported_accelerators: [htp]
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      start_layer: 0
+      end_layer: 9
+      total_layers: 28
+      includes_embedding: false
+      includes_lm_head: false
+      input_tensor: embedding
+      output_tensor: add_21844
+      boundary_format: qnn-fp32-plus-kv-cache
+
+  - model_id: qwen3-1.7b-s2-xelite
+    artifact_id: qwen3-1.7b-w4a16-s2-xelite-v73
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main (unpinned; unverified)
+    runtime: qnn
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73
+    artifact_format: qnn_context_binary
+    quantization: w4a16 (declared) / w8a16 (observed compile flag)
+    size_bytes: 263131136
+    checksum: 4d4c9d6e987c810bd9df501997cb5daa8105cd3a91d985b28f48e395c30dbaea
+    build_provenance: {source: compiled this session from the identical S25 source model mmr14592q, device changed only}
+    ai_hub: {target: Snapdragon X Elite CRD, source_model_id: mmr14592q, compile_job_ids: [j5w4792jg, jg9dm4jv5], link_job_id: jgd23v7e5, target_model_id: mqp8xrr0n}
+    verification_status: verified through Qualcomm AI Hub
+    supported_accelerators: [htp]
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      start_layer: 10
+      end_layer: 19
+      total_layers: 28
+      includes_embedding: false
+      includes_lm_head: false
+      input_tensor: add_21844
+      output_tensor: add_42314
+      boundary_format: qnn-fp32-plus-kv-cache
+
+  - model_id: qwen3-1.7b-s3-xelite
+    artifact_id: qwen3-1.7b-w4a16-s3-xelite-v73
+    base_model: Qwen/Qwen3-1.7B
+    base_model_revision: main (unpinned; unverified)
+    runtime: qnn
+    tokenizer_fingerprint: unverified
+    steering_mode: none
+    target_compatibility_class: windows-arm64-x1e-v73
+    artifact_format: qnn_context_binary
+    quantization: w4a16 (declared) / w8a16 (observed compile flag)
+    size_bytes: 525893632
+    checksum: bfdbc0dcb7a0f73f88f25d7b21c961e8ef061fda1b96e109710dbc79f00c1ece
+    build_provenance: {source: compiled this session from the identical S25 source model mqky32z1m, device changed only}
+    ai_hub: {target: Snapdragon X Elite CRD, source_model_id: mqky32z1m, compile_job_ids: [jp16j8yl5, jgd23vel5], link_job_id: jp431wm85, target_model_id: mq37p7vrn}
+    verification_status: verified through Qualcomm AI Hub
+    supported_accelerators: [htp]
+    supports_steering: false
+    supports_data_parallel: false
+    supports_layer_pipeline: true
+    split_boundary:
+      pipeline_id: qwen3-1.7b-w4a16-demo-v1
+      start_layer: 20
+      end_layer: 27
+      total_layers: 28
+      includes_embedding: false
+      includes_lm_head: true
+      input_tensor: add_42314
+      output_tensor: logits
+      boundary_format: qnn-fp32-plus-kv-cache

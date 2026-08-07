@@ -43,7 +43,7 @@ locally without hardware**, not an NPU execution claim.
 | Custom/fork path | Current GenieX QAIRT source exposes `Graph::write(name, data)` and `InputProvider`; a fork is feasible, **inferred from official source inspection** | Same, but rebuilding/package/license practicality on the phone is **unverified** |
 | `runtime_vector` | Fixed-shape QNN graph inputs (`steering_vector`, `alpha`) are **verified through Qualcomm AI Hub** on X Elite/8 Elite classes. Runtime-vector injection in the physically verified laptop Genie generation path is **unsupported**, so capability is disabled | Full-model stock GenieX is disabled. Direct-QNN Qwen Part B dynamic input was **verified through Qualcomm AI Hub**, not in the APK or a complete generation loop |
 | `baked_profile` | Build/export is feasible by graph rewrite, **verified locally without hardware**; X Elite compiled artifact is **unverified** | Qwen3-0.6B concise layer-7 artifact compiled and bundled, **verified through Qualcomm AI Hub**. Final base/steered physical APK comparison remains **unverified** |
-| Fixed split stage | Stage-1 tensor graph compatibility is **verified through Qualcomm AI Hub**; physical laptop stage execution is **unverified** | Qwen3-0.6B two-stage and Qwen3-1.7B four-stage execution are **verified on physical hardware** |
+| Fixed split stage | Stage-1 tensor graph compatibility is **verified through Qualcomm AI Hub**; physical laptop stage execution is **unverified** | Qwen3-0.6B two-stage execution is **verified on physical hardware**. Qwen3-1.7B four-stage prompt+decode+KV-cache binaries are **verified through Qualcomm AI Hub** (compiled, downloaded, checksummed); physical on-device execution/timing is **unverified** — see correction below |
 | Install/load | External bundle discovery, tree checksum, manifest validation, installed/cold advertisement, execution, and cleanup are **verified on physical hardware**; persistent warm load remains unsupported | APK asset installer + app-private checksum registry are **verified locally without hardware**. Physical QNN proof used ADB `/data/local/tmp`; DragonNest APK install/load is **unverified** |
 | Compatibility sharing | Exact X1E/v73/QAIRT-2.48 bundle compatibility is **verified on this laptop**. Do not share its contexts with SM8750 v79; other X Elite hosts remain **unverified** | Existing artifacts target `sm8750-ac`/v79. Same-family sharing is intended but only SM-S938U1 was physically exercised; wider sharing is **unverified** |
 | Licenses/files | Required Genie/HTP 2.48 runtime files and model bundle were present and executed, **verified on physical hardware**; redistribution remains subject to their licenses | Matching arm64 QNN/Genie libraries, v79 skel/stub, model contexts, Android SDK/NDK/JDK are required. QAIRT 2.45 files used physically; redistribution rights remain subject to their licenses |
@@ -81,15 +81,30 @@ The `[1,32,1024]` boundary is 128 KiB. Top-1 agreement was 100% against the
 AI Hub and local FP32 references. Held-open Part A reported 8.4 MiB PSS and
 12.4 MiB RSS while its approximately 718 MiB context was memory-mapped.
 
-Qwen3-1.7B W4A16 four-context autoregressive proof:
+Qwen3-1.7B W4A16 four-context claim — **correction, 2026-08-07**:
 
 - prompt partition walls: 0.40, 0.53, 0.51, and 1.15 seconds;
 - warm decode partition sum: 1.73-1.77 seconds/token (about 0.56-0.58 tok/s);
 - contexts total 1,674,248,192 bytes; largest single context 622,391,296 bytes;
 - two runs produced the same four token IDs.
 
-These measurements are direct QNN process timings, not DragonNest gRPC/APK
-measurements. Temperature was not captured and remains **unverified**.
+The byte totals above are genuine and independently re-confirmed this session
+(see `docs/results/qwen3_1_7b_pipeline_manifest.json`): a 2026-08-05 AI Hub
+compile/link round for the same four parts produced 622,391,296 /
+263,028,736 / 263,024,640 / 525,799,424 bytes (1,674,244,096 total), matching
+within container-format noise. **The prompt-wall timings, the decode
+partition sum, and the "two runs, same token IDs" determinism claim are
+unverified.** A thorough recovery this session — DragonNest git history, the
+adjacent `PersonaCare-Steering-Research` repo (which explicitly lists
+on-device Genie profiling and runtime comparison as not yet done for this
+model), and the full Qualcomm AI Hub job history on the account's real token
+(500 jobs, every compile/link/profile job for `qwen3_1_7b_w4a16_part*`) —
+found no script, log, or job that produced these specific numbers. AI Hub's
+own profiling for this pipeline reports simulated per-graph estimates in
+microseconds (tens to low thousands), not the multi-hundred-millisecond wall
+times quoted here. Until a source is found, treat the timing/determinism
+line above as **unsourced, not physically verified**, and do not repeat it
+as evidence in the demo. The byte-size and quantization facts remain valid.
 
 ### Qualcomm AI Hub
 
@@ -158,7 +173,7 @@ Concrete answers:
 - **Physically verified:** Dell Latitude 7455/X1E80100 identity; Qwen3-4B
   Genie/HTP through `HardwareRuntimeAdapter`, local gRPC, and the real LAN
   interface; worker launcher; SM-S938U1 identity; QNN 2.45.41/v79 execution;
-  Qwen3-0.6B split numerics/timings; Qwen3-1.7B four-context generation.
+  Qwen3-0.6B split numerics/timings.
 - **AI-Hub verified:** fixed named QNN steering/alpha inputs; small v79->v73
   boundary chain; S25 base/baked compilation; X Elite CRD tensor stage.
 - **Source/API verified:** stock Genie/GenieX named-input boundary and custom
