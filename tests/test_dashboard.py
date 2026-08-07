@@ -255,7 +255,7 @@ def test_personal_profile_supplies_default_mode_and_steering():
             )
             assert result["steering"]["alpha"] == -1.5
             assert any(
-                "Applied personal profile 'Alex'" in reason
+                "Applied legacy personal profile 'Alex'" in reason
                 for reason in result["route_reasons"]
             )
             assert devices[0]["display_name"] == "Alex's Phone"

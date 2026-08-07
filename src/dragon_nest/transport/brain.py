@@ -44,6 +44,7 @@ from ..models import (
     PipelineStage,
     ReducerMode,
     RuntimeName,
+    SteeringMode,
     SteeringSpec,
     TaskProfile,
     TaskResult,
@@ -69,12 +70,7 @@ from .conversion import (
 )
 
 
-PERSONA_STEERING: dict[str, float | None] = {
-    "balanced": None,
-    "concise": -2.0,
-    "detailed": 2.0,
-}
-PERSONA_VECTOR_ID = "concise-vs-verbose-layer-7"
+PERSONA_IDS = frozenset({"balanced", "concise", "detailed"})
 
 
 @dataclass(frozen=True)
@@ -837,12 +833,14 @@ class BrainService(pb_grpc.BrainControlServicer):
         persona_id = request.persona_id or (
             personal_profile.persona_id if personal_profile is not None else "balanced"
         )
-        if persona_id not in PERSONA_STEERING:
+        if persona_id not in PERSONA_IDS:
             return pb.SubmitTaskResponse(
                 state="FAILED",
                 error_code="INVALID_PERSONA",
                 error_message=f"unsupported persona {persona_id!r}",
             )
+        behavior_profile_id = persona_id
+        profile_realization = SteeringMode.NONE.value
         profile_steering_reason = ""
         if (
             not steering.enabled
@@ -853,25 +851,24 @@ class BrainService(pb_grpc.BrainControlServicer):
         ):
             steering = self._steering_for_profile(personal_profile)
             profile_steering_reason = (
-                f"Applied personal profile {personal_profile.person_name!r}: "
-                f"steering {steering.vector_id} at alpha {steering.alpha}."
+                f"Applied legacy personal profile {personal_profile.person_name!r}: "
+                f"runtime activation steering {steering.vector_id} at alpha "
+                f"{steering.alpha}."
             )
-        elif not steering.enabled and use_profile_steering:
-            try:
-                steering = self._steering_for_persona(persona_id)
-            except ProfileError as exc:
-                return pb.SubmitTaskResponse(
-                    state="FAILED",
-                    error_code="STEERING_UNAVAILABLE",
-                    error_message=str(exc),
-                    origin_device_id=request.origin_device_id,
-                    reducer=reducer,
-                )
-            if steering.enabled:
-                profile_steering_reason = (
-                    f"Applied persona {persona_id!r}: steering "
-                    f"{steering.vector_id} at alpha {steering.alpha}."
-                )
+            profile_realization = SteeringMode.RUNTIME_VECTOR.value
+        elif not steering.enabled and use_profile_steering and persona_id != "balanced":
+            profile_realization = SteeringMode.BAKED_PROFILE.value
+            steering = SteeringSpec(
+                enabled=False,
+                mode=SteeringMode.BAKED_PROFILE.value,
+                behavior_profile_id=persona_id,
+            )
+            profile_steering_reason = (
+                f"Profile requested {persona_id!r}; Brain selected a separately "
+                "executable baked activation profile and sent no runtime vector."
+            )
+        elif steering.enabled:
+            profile_realization = SteeringMode.RUNTIME_VECTOR.value
         if steering.enabled and self.steering_registry is None:
             return pb.SubmitTaskResponse(
                 state="FAILED",
@@ -886,8 +883,26 @@ class BrainService(pb_grpc.BrainControlServicer):
             requested_execution_mode=execution_mode,
             steering=steering,
             origin_device_id=request.origin_device_id,
+            behavior_profile_id=behavior_profile_id,
+            profile_realization=profile_realization,
             reducer=reducer,
         )
+        if (
+            plan.execution_mode == ExecutionMode.LAYER_PIPELINE
+            and profile_realization == SteeringMode.BAKED_PROFILE.value
+        ):
+            return pb.SubmitTaskResponse(
+                task_id=plan.task_id,
+                state="FAILED",
+                error_code="PROFILE_UNAVAILABLE",
+                error_message=(
+                    f"{persona_id} has no executable realization for the requested "
+                    "distributed pipeline"
+                ),
+                origin_device_id=request.origin_device_id,
+                reducer=reducer,
+                steering=steering_to_proto(steering),
+            )
         if reducer == ReducerMode.FIRST_SUCCESS and plan.execution_mode != ExecutionMode.DATA_PARALLEL:
             return pb.SubmitTaskResponse(
                 task_id=plan.task_id,
@@ -904,6 +919,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             preferred_mode == ComputePreference.AUTO.value
             and execution_mode == ExecutionMode.AUTO.value
             and profile.complexity == "high"
+            and profile_realization != SteeringMode.BAKED_PROFILE.value
         ):
             elastic_plan = self.planner.plan(
                 request.request_text,
@@ -912,6 +928,8 @@ class BrainService(pb_grpc.BrainControlServicer):
                 requested_execution_mode=ExecutionMode.AUTO.value,
                 steering=steering,
                 origin_device_id=request.origin_device_id,
+                behavior_profile_id=behavior_profile_id,
+                profile_realization=profile_realization,
                 reducer=reducer,
             )
             elastic_plan = replace(
@@ -937,6 +955,8 @@ class BrainService(pb_grpc.BrainControlServicer):
                     error_code = "ELASTIC_UNAVAILABLE"
                 elif preferred_mode == ComputePreference.LOCAL.value:
                     error_code = "LOCAL_UNAVAILABLE"
+                if profile_realization == SteeringMode.BAKED_PROFILE.value:
+                    error_code = "PROFILE_UNAVAILABLE"
                 return pb.SubmitTaskResponse(
                     task_id=plan.task_id,
                     state="FAILED",
@@ -978,7 +998,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             )
 
         self._route_reasons[plan.task_id] = decision.reasons
-        self._steering_specs[plan.task_id] = steering
+        self._steering_specs[plan.task_id] = routed.steering
         self.task_profiles[plan.task_id] = profile
         self.execution_plans[plan.task_id] = routed
         timeout_ms = request.timeout_ms or self.config.default_task_timeout_ms
@@ -1022,7 +1042,7 @@ class BrainService(pb_grpc.BrainControlServicer):
             model_id = model_by_device.get(device.device_id)
             if model_id is None:
                 fallback_plan, fallback_decision = self.router.route(
-                    plan, profile, [device]
+                    routed, profile, [device]
                 )
                 model_id = fallback_decision.selected_model_id
                 model_by_device[device.device_id] = model_id
@@ -2187,16 +2207,8 @@ class BrainService(pb_grpc.BrainControlServicer):
             ),
         }
         persona_id = str(values["persona_id"])
-        if persona_id not in PERSONA_STEERING:
+        if persona_id not in PERSONA_IDS:
             raise ProfileError(f"unsupported persona {persona_id!r}")
-        persona_alpha = PERSONA_STEERING[persona_id]
-        if persona_alpha is None:
-            values["steering_vector_id"] = ""
-            values["steering_alpha"] = 0.0
-        else:
-            values["steering_vector_id"] = PERSONA_VECTOR_ID
-            values["steering_alpha"] = persona_alpha
-            values["steering_positions"] = "last"
         vector_id = str(values["steering_vector_id"])
         if vector_id:
             if self.steering_registry is None:
@@ -2232,20 +2244,6 @@ class BrainService(pb_grpc.BrainControlServicer):
                 default.allow_remote_vector and profile.allow_remote_vector
             ),
         )
-
-    def _steering_for_persona(self, persona_id: str) -> SteeringSpec:
-        alpha = PERSONA_STEERING[persona_id]
-        if alpha is None:
-            return SteeringSpec()
-        if self.steering_registry is None:
-            raise ProfileError(f"Persona {persona_id!r} requires steering")
-        try:
-            default = self.steering_registry.default_spec(PERSONA_VECTOR_ID)
-        except KeyError as exc:
-            raise ProfileError(
-                f"Persona {persona_id!r} is not available on this Brain"
-            ) from exc
-        return replace(default, alpha=alpha, positions="last")
 
     @staticmethod
     def _persona_from_steering(vector_id: str, alpha: float) -> str:

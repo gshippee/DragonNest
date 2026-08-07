@@ -19,6 +19,8 @@ data class ChatMessage(
     val text: String,
     val deviceName: String = "",
     val failed: Boolean = false,
+    val routeSummary: String = "",
+    val profileSummary: String = "",
 )
 
 data class ChatUiState(
@@ -96,8 +98,6 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
 
     fun submit(
         prompt: String,
-        personaId: String,
-        useProfile: Boolean,
         computePreference: ComputePreference,
     ) {
         val text = prompt.trim()
@@ -108,18 +108,19 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
             sending = true,
         )
         viewModelScope.launch {
+            val personaId = profileStore.load()?.personaId() ?: UserProfile.PERSONA_BALANCED
             val response = runCatching {
                 withContext(Dispatchers.IO) {
                     BrainTaskClient(configuration).submit(
                         text,
                         personaId,
-                        useProfile,
+                        true,
                         computePreference.wireValue,
                     )
                 }
             }
             val message = response.fold(
-                onSuccess = ::messageFromResponse,
+                onSuccess = { messageFromResponse(it, computePreference, personaId) },
                 onFailure = {
                     ChatMessage(
                         System.nanoTime(),
@@ -170,13 +171,27 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
         getApplication<Application>().startForegroundService(start)
     }
 
-    private fun messageFromResponse(response: SubmitTaskResponse): ChatMessage {
+    private fun messageFromResponse(
+        response: SubmitTaskResponse,
+        computePreference: ComputePreference,
+        requestedPersonaId: String,
+    ): ChatMessage {
         if (response.success) {
+            val realization = when (response.steering.mode) {
+                "baked_profile" -> "baked"
+                "prompt_profile" -> "prompt-conditioned"
+                "runtime_vector" -> if (response.steering.enabled) "runtime vector" else "base"
+                else -> "base"
+            }
+            val profileId = response.steering.behaviorProfileId
+                .ifBlank { requestedPersonaId }
             return ChatMessage(
                 System.nanoTime(),
                 false,
                 response.outputText,
                 response.deviceDisplayName.ifBlank { response.deviceId },
+                routeSummary = "${computePreference.displayName} · ${displayModel(response.modelId)}",
+                profileSummary = "Profile: ${profileId.replaceFirstChar { it.uppercase() }} · $realization",
             )
         }
         val message = when (response.errorCode) {
@@ -188,5 +203,13 @@ class PersonaCareViewModel(application: Application) : AndroidViewModel(applicat
             else -> response.errorMessage.ifBlank { "DragonNest could not complete the request." }
         }
         return ChatMessage(System.nanoTime(), false, message, failed = true)
+    }
+
+    private fun displayModel(modelId: String): String = when {
+        modelId.startsWith("qwen3-0.6b") -> "Qwen3-0.6B"
+        modelId.startsWith("qwen3-1.7b") -> "Qwen3-1.7B"
+        modelId.startsWith("qwen3-4b") -> "Qwen3-4B"
+        modelId.isBlank() -> "model pending"
+        else -> modelId
     }
 }

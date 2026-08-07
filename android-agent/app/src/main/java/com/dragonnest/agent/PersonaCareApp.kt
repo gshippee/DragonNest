@@ -314,7 +314,7 @@ private fun ProfileScreen(
                 maxLines = 10,
             )
             Text(
-                "Default persona",
+                "Response style",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -345,10 +345,6 @@ private fun ChatScreen(
     val chat by viewModel.chat.collectAsStateWithLifecycle()
     val status by viewModel.agentStatus.collectAsStateWithLifecycle()
     var prompt by rememberSaveable { mutableStateOf("") }
-    var persona by rememberSaveable {
-        mutableStateOf(profile?.personaId() ?: UserProfile.PERSONA_BALANCED)
-    }
-    var useProfile by rememberSaveable { mutableStateOf(true) }
     var computePreference by rememberSaveable {
         mutableStateOf(ComputePreference.AUTO.wireValue)
     }
@@ -392,10 +388,6 @@ private fun ChatScreen(
             ChatComposer(
                 prompt = prompt,
                 onPromptChange = { prompt = it },
-                persona = persona,
-                onPersonaChange = { persona = it },
-                useProfile = useProfile,
-                onUseProfileChange = { useProfile = it },
                 computePreference = computePreference,
                 onComputePreferenceChange = { computePreference = it },
                 sending = chat.sending,
@@ -405,8 +397,6 @@ private fun ChatScreen(
                     if (sent.isNotEmpty()) {
                         viewModel.submit(
                             sent,
-                            persona,
-                            useProfile,
                             ComputePreference.fromWireValue(computePreference),
                         )
                         prompt = ""
@@ -513,10 +503,6 @@ private fun DemoControlsDialog(viewModel: PersonaCareViewModel, onDismiss: () ->
 private fun ChatComposer(
     prompt: String,
     onPromptChange: (String) -> Unit,
-    persona: String,
-    onPersonaChange: (String) -> Unit,
-    useProfile: Boolean,
-    onUseProfileChange: (Boolean) -> Unit,
     computePreference: String,
     onComputePreferenceChange: (String) -> Unit,
     sending: Boolean,
@@ -532,18 +518,10 @@ private fun ChatComposer(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        PersonaSelector(selected = persona, onSelected = onPersonaChange)
         ComputePreferenceSelector(
             selected = computePreference,
             onSelected = onComputePreferenceChange,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CompactToggle("Use profile", useProfile, onUseProfileChange)
-        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
@@ -695,6 +673,20 @@ private fun MessageBubble(message: ChatMessage) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (message.routeSummary.isNotBlank()) {
+                    Text(
+                        message.routeSummary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (message.profileSummary.isNotBlank()) {
+                    Text(
+                        message.profileSummary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

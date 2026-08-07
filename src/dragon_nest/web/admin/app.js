@@ -81,7 +81,7 @@ function renderLiveRequests() {
 function renderTask(task) {
   const profile = task.profile;
   $("selected-prompt").innerHTML = `<span>User request</span><strong>${esc(task.request)}</strong>`;
-  $("profile-strip").innerHTML = profile ? `<span class="profile-item">Compute preference <strong>${esc(preferenceLabel(task.preferred_mode))}</strong></span><span class="profile-item">Classification <strong>${esc(profile.task_class)} / ${esc(profile.complexity)}</strong></span><span class="profile-item">Model selected <strong>${esc(task.result?.metrics?.model_id || task.progress?.[0]?.model_id || "pending")}</strong></span><span class="profile-item">Execution topology <strong>${esc(task.execution_mode)}</strong></span><span class="profile-item">Confidence <strong>${Math.round(profile.confidence * 100)}%</strong></span><span class="profile-item">Privacy <strong>${esc(profile.privacy_tier)}</strong></span><span class="profile-item">Reducer <strong>${esc(task.reducer)}</strong></span>${task.origin_device_id ? `<span class="profile-item">Origin <strong>${esc(task.origin_device_id)}</strong></span>` : ""}${task.steering?.enabled ? `<span class="profile-item">Steering <strong>${esc(task.steering.vector_id)} @ ${task.steering.alpha}</strong></span>` : ""}` : "";
+  $("profile-strip").innerHTML = profile ? `<span class="profile-item">Compute preference <strong>${esc(preferenceLabel(task.preferred_mode))}</strong></span><span class="profile-item">Profile requested <strong>${esc(profileLabel(task.behavior_profile_id || "balanced"))}</strong></span><span class="profile-item">Profile realization <strong>${esc(realizationLabel(task.profile_realization))}</strong></span><span class="profile-item">Classification <strong>${esc(profile.task_class)} / ${esc(profile.complexity)}</strong></span><span class="profile-item">Model selected <strong>${esc(task.result?.metrics?.model_id || task.progress?.[0]?.model_id || "pending")}</strong></span><span class="profile-item">Artifact <strong>${esc(task.selected_artifact_id || "pending")}</strong></span><span class="profile-item">Execution topology <strong>${esc(task.execution_mode)}</strong></span><span class="profile-item">Confidence <strong>${Math.round(profile.confidence * 100)}%</strong></span><span class="profile-item">Privacy <strong>${esc(profile.privacy_tier)}</strong></span><span class="profile-item">Reducer <strong>${esc(task.reducer)}</strong></span>${task.origin_device_id ? `<span class="profile-item">Origin <strong>${esc(task.origin_device_id)}</strong></span>` : ""}${task.steering?.enabled ? `<span class="profile-item">Runtime steering <strong>${esc(task.steering.vector_id)}</strong></span>` : ""}` : "";
   $("route-trace").innerHTML = task.route_reasons?.length ? task.route_reasons.map((reason) => `<li>${esc(reason)}</li>`).join("") : '<li class="empty">No route trace available</li>';
   $("route-topology").innerHTML = renderTopology(task);
   $("progress").textContent = JSON.stringify(task.progress || []);
@@ -125,6 +125,21 @@ function deviceName(deviceId) {
 function preferenceLabel(value) {
   const labels = { auto: "Auto", local: "Local", elastic: "Elastic", quality: "Quality", private: "Private", fast: "Fast", parallel: "Parallel" };
   return labels[value] || value || "Auto";
+}
+
+function profileLabel(value) {
+  const labels = { balanced: "Balanced", concise: "Concise", detailed: "Detailed" };
+  return labels[value] || value || "Balanced";
+}
+
+function realizationLabel(value) {
+  const labels = {
+    none: "Base model",
+    baked_profile: "Baked activation profile",
+    prompt_profile: "Prompt conditioning",
+    runtime_vector: "Runtime activation steering",
+  };
+  return labels[value] || value || "Base model";
 }
 
 function shortPrompt(value) {

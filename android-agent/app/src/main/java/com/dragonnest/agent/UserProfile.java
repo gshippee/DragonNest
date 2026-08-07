@@ -7,7 +7,6 @@ public record UserProfile(String personName, String profileText, String personaI
     public static final String PERSONA_BALANCED = "balanced";
     public static final String PERSONA_CONCISE = "concise";
     public static final String PERSONA_DETAILED = "detailed";
-    private static final String STYLE_VECTOR = "concise-vs-verbose-layer-7";
 
     public UserProfile {
         personName = personName == null ? "" : personName.trim();
@@ -27,18 +26,11 @@ public record UserProfile(String personName, String profileText, String personaI
     }
 
     public PersonalProfileRegistration registration() {
-        PersonalProfileRegistration.Builder registration = PersonalProfileRegistration.newBuilder()
+        return PersonalProfileRegistration.newBuilder()
                 .setPersonName(personName)
                 .setPreferredMode("auto")
                 .setNotes(profileText)
                 .setPersonaId(personaId)
-                .setSteeringPositions("last")
-                .setAllowRemoteVector(false);
-        if (personaId.equals(PERSONA_CONCISE)) {
-            registration.setSteeringVectorId(STYLE_VECTOR).setSteeringAlpha(-2.0f);
-        } else if (personaId.equals(PERSONA_DETAILED)) {
-            registration.setSteeringVectorId(STYLE_VECTOR).setSteeringAlpha(2.0f);
-        }
-        return registration.build();
+                .build();
     }
 }

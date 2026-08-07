@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+
 import hmac
 import socket
 from io import BytesIO
@@ -929,6 +931,9 @@ def _device_dict(
                 "runtime": model.runtime_name,
                 "runtime_version": model.runtime_version,
                 "accelerators": model.supported_accelerators,
+                "artifact_id": model.artifact_id,
+                "steering_modes": model.steering_modes,
+                "behavior_profile_ids": model.behavior_profile_ids,
                 "min_memory_mb": model.min_memory_mb,
                 "warm": model.warm,
                 "steering_vectors": model.steering_vector_ids,
@@ -1013,6 +1018,22 @@ def _task_dict(service: BrainService, task: TaskRecord) -> dict[str, Any]:
     profile = service.task_profiles.get(task.task_id)
     plan = service.execution_plans.get(task.task_id)
     steering = service._steering_specs.get(task.task_id)
+    selected_model_id = (
+        result.metrics.model_id
+        if result and result.metrics
+        else service._attempt_models.get(task.accepted_attempt_id, "")
+    )
+    selected_artifact_id = ""
+    if result and result.device_id and selected_model_id:
+        with contextlib.suppress(KeyError):
+            selected_artifact_id = next(
+                (
+                    model.artifact_id
+                    for model in service.registry.get(result.device_id).device.models
+                    if model.model_id == selected_model_id
+                ),
+                "",
+            )
     return {
         "task_id": task.task_id,
         "state": task.state.value,
@@ -1026,6 +1047,9 @@ def _task_dict(service: BrainService, task: TaskRecord) -> dict[str, Any]:
         "execution_mode": plan.execution_mode.value if plan else "internal",
         "preferred_mode": plan.preferred_mode if plan else "auto",
         "pipeline_id": plan.pipeline_id if plan else "",
+        "behavior_profile_id": plan.behavior_profile_id if plan else "",
+        "profile_realization": plan.profile_realization if plan else "none",
+        "selected_artifact_id": selected_artifact_id,
         "origin_device_id": plan.origin_device_id if plan else "",
         "reducer": plan.reducer if plan else "",
         "route_reasons": service._route_reasons.get(task.task_id, ()),

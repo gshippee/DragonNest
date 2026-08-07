@@ -45,7 +45,7 @@ devices:
         warm: false
         quality_score: 0.70
         steering_modes: [baked_profile]
-        behavior_profile_ids: [concise-l7-alpha-m4]
+        behavior_profile_ids: [concise]
         target_compatibility_class: android-arm64-sm8750-v79-qairt-2.45-geniex-0.3.5
       - model_id: qwen3-1.7b-s0-s25
         artifact_id: qwen3-1.7b-w4a16-demo-v1-s0-s25

@@ -27,6 +27,8 @@ class ExecutionPlanner:
         requested_execution_mode: str = "auto",
         steering: SteeringSpec | None = None,
         origin_device_id: str = "",
+        behavior_profile_id: str = "",
+        profile_realization: str = "none",
         reducer: str = ReducerMode.MOCK_SYNTHESIS.value,
     ) -> ExecutionPlan:
         mode = self._choose_mode(profile, preferred_mode, requested_execution_mode)
@@ -57,6 +59,8 @@ class ExecutionPlanner:
                 steering=steering,
                 origin_device_id=origin_device_id,
                 preferred_mode=preferred_mode,
+                behavior_profile_id=behavior_profile_id,
+                profile_realization=profile_realization,
                 reducer=reducer,
                 reasons=tuple(reasons),
             )
@@ -79,6 +83,8 @@ class ExecutionPlanner:
                 origin_device_id=origin_device_id,
                 preferred_mode=preferred_mode,
                 pipeline_id=pipeline_id,
+                behavior_profile_id=behavior_profile_id,
+                profile_realization=profile_realization,
                 reducer=reducer,
                 reasons=tuple(reasons),
             )
@@ -92,6 +98,8 @@ class ExecutionPlanner:
             steering=steering,
             origin_device_id=origin_device_id,
             preferred_mode=preferred_mode,
+            behavior_profile_id=behavior_profile_id,
+            profile_realization=profile_realization,
             reducer=reducer,
             reasons=tuple(reasons),
         )

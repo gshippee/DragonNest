@@ -271,6 +271,8 @@ class ExecutionPlan:
     origin_device_id: str = ""
     preferred_mode: str = ComputePreference.AUTO.value
     pipeline_id: str = ""
+    behavior_profile_id: str = ""
+    profile_realization: str = "none"
     reducer: str = ReducerMode.MOCK_SYNTHESIS.value
     reasons: tuple[str, ...] = ()
 

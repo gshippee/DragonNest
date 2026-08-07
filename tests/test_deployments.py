@@ -106,6 +106,15 @@ def test_real_s25_concise_artifact_is_a_baked_profile(catalog):
     assert concise.vector_id == "concise-vs-verbose-layer-7"
 
 
+def test_s25_detailed_candidate_remains_unvalidated(catalog):
+    detailed = catalog.get("qwen3-0.6b-s25-detailed")
+
+    assert detailed.steering_realization == "baked_profile"
+    assert detailed.behavior_profile_id == "detailed"
+    assert detailed.vector_id == "concise-vs-verbose-layer-7"
+    assert detailed.readiness == "unvalidated"
+
+
 def test_compatibility_class_mapping():
     x_elite = _device("pc", (), soc="Snapdragon X Elite X1E-80-100")
     s25 = _device("phone", (), soc="Qualcomm SM8750 Snapdragon 8 Elite")

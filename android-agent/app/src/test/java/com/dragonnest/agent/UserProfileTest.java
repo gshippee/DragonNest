@@ -8,13 +8,18 @@ import org.junit.Test;
 
 public final class UserProfileTest {
     @Test
-    public void mapsPersonasToStableRegistrationPolicy() {
+    public void sendsOnlySemanticPersonaRegistrationPolicy() {
         UserProfile concise = new UserProfile("Alex", "Prefers examples", "concise");
+        UserProfile detailed = new UserProfile("Alex", "Prefers detail", "detailed");
         UserProfile balanced = new UserProfile("Alex", "", "balanced");
 
         assertEquals("concise", concise.registration().getPersonaId());
-        assertEquals(-2.0f, concise.registration().getSteeringAlpha(), 0.0f);
+        assertEquals("", concise.registration().getSteeringVectorId());
+        assertEquals(0.0f, concise.registration().getSteeringAlpha(), 0.0f);
         assertEquals("Prefers examples", concise.registration().getNotes());
+        assertEquals("detailed", detailed.registration().getPersonaId());
+        assertEquals("", detailed.registration().getSteeringVectorId());
+        assertEquals(0.0f, detailed.registration().getSteeringAlpha(), 0.0f);
         assertEquals("", balanced.registration().getSteeringVectorId());
     }
 

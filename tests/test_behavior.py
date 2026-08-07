@@ -23,7 +23,9 @@ def registry() -> BehaviorProfileRegistry:
 def test_registry_loads_demo_profiles(registry):
     ids = {profile.profile_id for profile in registry.all()}
     assert {
+        "balanced",
         "concise",
+        "detailed",
         "friendly",
         "medical-safe",
         "creative",
@@ -32,17 +34,21 @@ def test_registry_loads_demo_profiles(registry):
     } <= ids
 
 
-def test_concise_profile_declares_runtime_and_baked_realizations(registry):
+def test_demo_profiles_are_exact_baked_realizations(registry):
     concise = registry.get("concise")
-    modes = [realization.mode for realization in concise.realizations]
-    assert SteeringRealizationMode.RUNTIME_VECTOR in modes
-    assert SteeringRealizationMode.BAKED_PROFILE in modes
-    runtime = next(
-        r for r in concise.realizations
-        if r.mode == SteeringRealizationMode.RUNTIME_VECTOR
-    )
-    assert runtime.vector_id == "concise-vs-verbose-layer-7"
-    assert runtime.alpha_min <= runtime.alpha <= runtime.alpha_max
+    detailed = registry.get("detailed")
+    assert [r.mode for r in concise.realizations] == [
+        SteeringRealizationMode.BAKED_PROFILE
+    ]
+    assert concise.realizations[0].baked_artifact_id == "qwen3-0.6b-s25-concise"
+    assert concise.realizations[0].verification_status == "verified"
+    assert concise.fallback_policy == BehaviorFallbackPolicy.EXACT_ONLY
+    assert [r.mode for r in detailed.realizations] == [
+        SteeringRealizationMode.BAKED_PROFILE
+    ]
+    assert detailed.realizations[0].baked_artifact_id == "qwen3-0.6b-s25-detailed"
+    assert detailed.realizations[0].verification_status == "unverified"
+    assert detailed.fallback_policy == BehaviorFallbackPolicy.EXACT_ONLY
 
 
 def test_fallback_ladder_expands_with_policy():

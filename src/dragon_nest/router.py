@@ -10,6 +10,7 @@ from .models import (
     ModelCapability,
     PipelineStage,
     RouteDecision,
+    SteeringMode,
     SteeringSpec,
     TaskProfile,
 )
@@ -533,6 +534,20 @@ class DeterministicRouter:
             for model in device.models:
                 if model.segment is not None:
                     continue
+                if steering.mode == SteeringMode.BAKED_PROFILE.value:
+                    if (
+                        not steering.behavior_profile_id
+                        or steering.behavior_profile_id
+                        not in model.behavior_profile_ids
+                        or SteeringMode.BAKED_PROFILE.value
+                        not in model.steering_modes
+                    ):
+                        continue
+                elif not steering.enabled and model.behavior_profile_ids:
+                    # A statically baked behavior is a distinct executable
+                    # realization, not a generic full model. It must never
+                    # compete for an unprofiled/balanced request.
+                    continue
                 if require_data_parallel and not model.supports_data_parallel:
                     continue
                 if not self._has_model_memory(device, model):
@@ -548,7 +563,12 @@ class DeterministicRouter:
                     if not ok:
                         continue
                 else:
-                    steering_reason = "steering disabled"
+                    steering_reason = (
+                        f"profile {steering.behavior_profile_id} realized by "
+                        f"baked artifact {model.artifact_id or model.model_id}"
+                        if steering.mode == SteeringMode.BAKED_PROFILE.value
+                        else "steering disabled"
+                    )
                 score = self._score(device, model)
                 reason = (
                     f"{model.model_id} supports {profile.task_class}; "

@@ -155,7 +155,7 @@ def test_baked_profile_routes_only_to_matching_artifact():
     spec = SteeringSpec(
         enabled=True,
         mode="baked_profile",
-        behavior_profile_id="concise-l7-alpha-m4",
+        behavior_profile_id="concise",
     )
     baked = ModelCapability(
         model_id="qwen3-0.6b-s25-concise",
@@ -166,7 +166,7 @@ def test_baked_profile_routes_only_to_matching_artifact():
         warm=False,
         quality_score=0.7,
         steering_modes=("baked_profile",),
-        behavior_profile_ids=("concise-l7-alpha-m4",),
+        behavior_profile_ids=("concise",),
     )
     base = baked.__class__(
         **{
