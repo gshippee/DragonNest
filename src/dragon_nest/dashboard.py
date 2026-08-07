@@ -956,7 +956,12 @@ def _device_dict(
             else ()
         ),
         "runtime_steering_enabled": (
-            device.device_id not in service.runtime_steering_disabled
+            any(
+                model.supports_steering
+                and "runtime_vector" in model.steering_modes
+                for model in device.models
+            )
+            and device.device_id not in service.runtime_steering_disabled
         ),
         "deployments": (
             [

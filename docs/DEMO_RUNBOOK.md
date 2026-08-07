@@ -96,14 +96,48 @@ This complete two-request transition has passed on the physical S25 and X
 Elite stage setup. Repeat it as a demo procedure; it is no longer an
 unverified topology claim.
 
-The current thin APK executes Request 1 with `android-mock-v1`. This proves
-the phone-origin routing and live RAM-pressure transition, not phone NPU
-execution. Do not claim phone NPU execution until a real Android runtime
-artifact is integrated and physically verified.
+The thin APK executes Request 1 with `android-mock-v1`; that remains the
+portable Act 1/2 control-plane build. The explicit S25 hardware build disables
+the mock and admits Base/Concise/Detailed only after checksums, target match,
+GenieX load, and an execution-ready probe. Reference-app execution of all
+three bundles is physically proven. In the integrated DragonNest app, the
+Detailed bundle has passed the real GenieX/HTP load probe and advertised
+honestly, but the normal Brain task did not return text before that phone
+session ended. Do not claim integrated local text execution until the
+acceptance below is completed.
 
 Choosing **Local** sends `preferred_mode=local`. Under 64 MB that request must
 fail on the phone rather than fall back to the laptop. Legacy callers that send
 `preferred_mode=private` retain the same hard origin-only placement semantics.
+
+### Real S25 Local acceptance (next phone session)
+
+The external cache already contains complete prompt+decode bundles for Base,
+Concise, and Detailed; no AI Hub job is pending. On the machine with the S25:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\artifact_tools\stage_s25_geniex_artifacts.py `
+  --cache-root C:\DragonNestArtifacts\qwen3-0.6b\s25 `
+  --inventory docs\results\s25_geniex_artifacts.json `
+  --verify-only
+
+$env:JAVA_HOME = 'C:\path\to\jdk-17'
+$env:ANDROID_HOME = 'C:\path\to\android-sdk'
+.\android-agent\gradlew.bat -p android-agent :app:testDebugUnitTest :app:assembleDebug `
+  -PincludeS25GenieXRuntime=true --no-daemon
+adb install -r android-agent\app\build\outputs\apk\debug\app-debug.apk
+.\scripts\deploy_s25_local_artifacts.ps1 `
+  -CacheRoot C:\DragonNestArtifacts\qwen3-0.6b\s25 `
+  -AdbPath "$env:ANDROID_HOME\platform-tools\adb.exe"
+```
+
+Enroll normally, set **Compute = Local**, and run Balanced with `What is the
+capital of Japan?`. Then run Concise and Detailed with the same
+steering-sensitive prompt. Accept only exact model IDs
+`qwen3-0.6b-s25-base`, `qwen3-0.6b-s25-concise`, and
+`qwen3-0.6b-s25-detailed`, runtime GenieX, accelerator HTP, nonempty text, and
+no `android-mock-v1` capability. Missing exact profile artifacts must fail as
+`PROFILE_UNAVAILABLE`.
 
 ## 3. Control-plane fallback: Brain + two simulated agents + dashboard
 
@@ -261,11 +295,10 @@ including origin-preference, private mode, and disconnect recovery.
   real worker; `x-elite-01` is the simulated/control-plane demo identity.
   Windows memory/battery telemetry is native. Real Qwen3-4B Genie/HTP
   execution is physically verified; runtime steering remains correctly off.
-- **Galaxy S25 Ultra:** build/install the Android Agent
-  (`scripts/build_android.sh`), enroll via the dashboard **Add device** QR,
-  and it registers over the LAN with real inventory (SoC `SM8750`) and
-  telemetry. Mock execution works out of the box; NPU execution needs the
-  Genie JNI bundle described in `android-agent/README.md`.
+- **Galaxy S25 Ultra:** the thin build keeps mock execution for portable
+  control-plane work. The explicit `-PincludeS25GenieXRuntime=true` build
+  disables mock execution and uses externally provisioned QAIRT 2.45 GenieX
+  bundles. Follow the exact acceptance above and `android-agent/README.md`.
 - Remaining physical Android execution/provisioning obligations are specified
   in `docs/HARDWARE_CONTRACT.md`.
 
