@@ -136,15 +136,37 @@ Selecting a profile in PersonaCare therefore drives runtime steering with no
 UI change, and the response metadata truthfully reports
 `persona realized: concise (mode=runtime_vector)`.
 
-A **Steering strength** slider was added to the profile screen at product
-request (−10…+10, centre = "Profile default"). Off-centre it sends an explicit
-`SteeringSpec` with the request; Brain still validates vector/layer/alpha and
-fails closed. This deviates from the original brief's "expose semantic labels
-only" rule, on an explicit product decision.
 
-**Not established:** the slider is built, installed, and unit-tested, but no
-request has been driven through it from the UI on hardware. The α ±8 evidence
-above came from the profile ladder, not the slider.
+### Response style is a single slider
+
+At product request the profile screen now has **one** control: a Response style
+slider spanning the vector's validated range. The Balanced/Concise/Detailed
+chips were removed rather than kept alongside it.
+
+Two controls over the same axis let the user express a contradiction -- Balanced
+*and* strongly steered -- which has no coherent realization, and an earlier
+build did exactly that: chip on Balanced plus an off-centre slider sent explicit
+runtime steering with `behavior_profile_id: balanced`, routing an unsteered
+request onto the forked runtime and breaking the A/B safety boundary. The
+persona is now *derived* from slider position (`UserProfile.personaForAlpha`),
+so centre is exactly Balanced and cannot carry steering.
+
+Physically verified on the S25 through the normal Brain path:
+
+| Slider | Artifact | Generated tokens | Character |
+|---|---|---|---|
+| -8 | runtime-steerable | 11 | single terse sentence |
+| -6 | runtime-steerable | 72 | short but complete |
+| 0 (centre) | `qwen3-0.6b-s25-base` (stock) | ~85 | normal, unsteered |
+| +6 | runtime-steerable | 96 (cap) | structured breakdown |
+| +8 | runtime-steerable | 96 (cap) | elaborate |
+
+`prefill_aux_writes=2` on every steered request; `decode_aux_writes` 142 at -6
+and 192 at +6. Centre produced no aux activity at all.
+
+**Not established:** these went through the slider's exact wire format (an
+explicit `SteeringSpec`, as `BrainTaskClient` builds it), driven from the CLI.
+The on-screen widget itself has not been touched on hardware.
 
 ## Fail-closed behaviour
 

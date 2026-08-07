@@ -87,14 +87,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 
-private data class PersonaChoice(val id: String, val label: String)
-
-private val personas = listOf(
-    PersonaChoice(UserProfile.PERSONA_BALANCED, "Balanced"),
-    PersonaChoice(UserProfile.PERSONA_CONCISE, "Concise"),
-    PersonaChoice(UserProfile.PERSONA_DETAILED, "Detailed"),
-)
-
 @Composable
 fun PersonaCareApp(viewModel: PersonaCareViewModel) {
     val navController = rememberNavController()
@@ -281,7 +273,9 @@ private fun ProfileScreen(
     var name by rememberSaveable { mutableStateOf(existing?.personName().orEmpty()) }
     var about by rememberSaveable { mutableStateOf(existing?.profileText().orEmpty()) }
     var persona by rememberSaveable {
-        mutableStateOf(existing?.personaId() ?: UserProfile.PERSONA_BALANCED)
+        mutableStateOf(
+            UserProfile.personaForAlpha(existing?.steeringAlpha() ?: 0f)
+        )
     }
     var steeringAlpha by rememberSaveable {
         mutableStateOf(existing?.steeringAlpha() ?: 0f)
@@ -330,15 +324,13 @@ private fun ProfileScreen(
                 minLines = 6,
                 maxLines = 10,
             )
-            Text(
-                "Response style",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            PersonaSelector(selected = persona, onSelected = { persona = it })
             SteeringStrengthSlider(
                 value = steeringAlpha,
-                onValueChange = { steeringAlpha = it; error = "" },
+                onValueChange = {
+                    steeringAlpha = it
+                    persona = UserProfile.personaForAlpha(it)
+                    error = ""
+                },
             )
             if (error.isNotBlank()) InlineError(error)
             Button(
@@ -615,23 +607,6 @@ private fun ComputePreferenceSelector(
     }
 }
 
-@Composable
-private fun PersonaSelector(selected: String, onSelected: (String) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        personas.forEach { choice ->
-            FilterChip(
-                selected = selected == choice.id,
-                onClick = { onSelected(choice.id) },
-                label = { Text(choice.label, maxLines = 1) },
-                modifier = Modifier.weight(1f).testTag("persona_${choice.id}"),
-            )
-        }
-    }
-}
-
 /**
  * Activation-steering strength applied on top of the selected response style.
  *
@@ -649,15 +624,15 @@ private fun SteeringStrengthSlider(value: Float, onValueChange: (Float) -> Unit)
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "Steering strength",
+                "Response style",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                if (kotlin.math.abs(value) < 0.01f) {
-                    "Profile default"
-                } else {
-                    String.format("%+.1f", value)
+                when (UserProfile.personaForAlpha(value)) {
+                    UserProfile.PERSONA_CONCISE -> "Concise (%.1f)".format(value)
+                    UserProfile.PERSONA_DETAILED -> "Detailed (+%.1f)".format(value)
+                    else -> "Balanced"
                 },
                 style = MaterialTheme.typography.labelLarge,
             )
@@ -672,12 +647,13 @@ private fun SteeringStrengthSlider(value: Float, onValueChange: (Float) -> Unit)
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Shorter", style = MaterialTheme.typography.labelSmall)
-            Text("Longer", style = MaterialTheme.typography.labelSmall)
+            Text("Concise", style = MaterialTheme.typography.labelSmall)
+            Text("Balanced", style = MaterialTheme.typography.labelSmall)
+            Text("Detailed", style = MaterialTheme.typography.labelSmall)
         }
         Text(
-            "Applies only where the device runs a steerable model; otherwise " +
-                "your response style is used on its own.",
+            "Centre runs the plain base model. Either side steers the reply " +
+                "toward shorter or longer, where the device runs a steerable model.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

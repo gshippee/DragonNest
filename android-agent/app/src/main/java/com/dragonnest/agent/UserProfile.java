@@ -46,6 +46,22 @@ public record UserProfile(
         return Math.abs(steeringAlpha) > 0.01f;
     }
 
+    /**
+     * The semantic profile a slider position represents.
+     *
+     * The slider is the single response-style control, so the persona is
+     * derived rather than chosen separately -- two controls over the same axis
+     * let the user express a contradiction (Balanced *and* strongly steered)
+     * that has no coherent realization. Centre is exactly Balanced, which is
+     * what keeps an unsteered request on the stock base artifact.
+     */
+    public static String personaForAlpha(float alpha) {
+        if (Math.abs(alpha) <= 0.01f) {
+            return PERSONA_BALANCED;
+        }
+        return alpha < 0 ? PERSONA_CONCISE : PERSONA_DETAILED;
+    }
+
     public PersonalProfileRegistration registration() {
         return PersonalProfileRegistration.newBuilder()
                 .setPersonName(personName)
